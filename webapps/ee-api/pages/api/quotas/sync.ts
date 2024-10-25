@@ -10,7 +10,7 @@ import { getServerLog } from "../../../lib/log";
 //A little copy-paste doesn't hurt
 //Values should be the same as in BillingSettings from webapps/console/lib/schema/index.ts
 export const freePlanLimitations = {
-  dailyActiveSyncs: 5,
+  dailyActiveSyncs: 1,
 };
 
 const handler = async function handler(req: NextApiRequest, res: NextApiResponse) {
