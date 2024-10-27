@@ -4,6 +4,9 @@ on:
     branches: [newjitsu]
   pull_request:
     branches: [newjitsu]
+  workflow_dispatch:
+
+
 
 env:
   #container jitsucom/node18builder:latest has playwright browsers binaries preinstalled on this path:
@@ -50,9 +53,11 @@ jobs:
       - name: Notify Slack
         uses: rtCamp/action-slack-notify@v2
         # Do not send notification for PRs, feature branches, or forks
-        if: ${{ secrets.SLACK_DEV_CHANNEL != '' && github.ref == 'refs/heads/newjitsu' }}
+        if: ${{ env.SLACK_WEBHOOK != '' && github.ref == 'refs/heads/newjitsu' }}
         env:
+          SLACK_USERNAME: "GitHub Actions"
           SLACK_WEBHOOK: ${{ secrets.SLACK_DEV_CHANNEL }}
           SLACK_COLOR: ${{ job.status }}
+          MSG_MINIMAL: "true"
           SLACK_ICON_EMOJI: ":github-mark:"
           SLACK_MESSAGE: "${{ job.status }}: Jitsu 2.0 Build: ${{ github.event.head_commit.message }}"
