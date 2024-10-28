@@ -84,6 +84,7 @@ const postAndPutCfg = {
             kind: "profile",
             name: "Profile Builder function",
             code: body.code,
+            draft: body.code,
           },
         },
       });
@@ -121,6 +122,7 @@ export const api: Api = {
               kind: "profile",
               name: "Profile Builder function",
               draft: defaultProfileBuilderFunction,
+              code: defaultProfileBuilderFunction,
             },
           },
         });
