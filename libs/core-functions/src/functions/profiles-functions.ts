@@ -3,10 +3,8 @@ import { JitsuFunction } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import { getSingleton, parseNumber } from "juava";
 import { MongoClient } from "mongodb";
-import * as crypto from "crypto";
+import { createHash } from "crypto";
 import { mongodb } from "./lib/mongodb";
-
-const hash = crypto["hash"];
 
 export const userIdHashColumn = "_user_id_hash";
 export const userIdHash32MaxValue = 2147483647;
@@ -42,6 +40,10 @@ export const createClient = async (config: ProfilesConfig) => {
 
   return client;
 };
+
+export function hash(algorithm: string, value: string) {
+  return createHash(algorithm).update(value).digest("hex");
+}
 
 export function int32Hash(value) {
   // Hash the value using SHA-256 (or another algorithm if desired)
