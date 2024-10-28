@@ -60,6 +60,7 @@ import { FunctionResult } from "../FunctionsDebugger/FunctionResult";
 import { FunctionVariables } from "../FunctionsDebugger/FunctionVariables";
 import omit from "lodash/omit";
 import { CodeViewer } from "../FunctionsDebugger/CodeViewer";
+import { WLink } from "../Workspace/WLink";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -95,7 +96,7 @@ const statuses: Record<
     documentation: (
       <>
         Profile builder is not enabled for your account. You still can define profiles with JavaScript function, and run
-        test. To enable profile builder, please for your account please <Link href={"/support"}>contact support</Link>
+        test. To enable profile builder, please for your account please <WLink href={"/support"}>contact support</WLink>
       </>
     ),
     icon: <Lock className="full" />,
@@ -200,7 +201,7 @@ const SettingsTab: React.FC<{ profileBuilder: ProfileBuilderData; dispatch: Reac
             documentation: (
               <>
                 The host name of the profile storage. To make changes, please{" "}
-                <Link href={"/support"}>contact support</Link>
+                <WLink href={"/support"}>contact support</WLink>
               </>
             ),
             component: (
