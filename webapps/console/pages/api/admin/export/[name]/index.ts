@@ -411,6 +411,7 @@ const exports: Export[] = [
         (await db.prisma().$queryRaw`
             select
               greatest(
+                  (select max("updatedAt") from newjitsu."ConfigurationObject" where type='function'),
                   (select max("updatedAt") from newjitsu."ProfileBuilder"),
                   (select max("updatedAt") from newjitsu."ProfileBuilderFunction"),
                   (select max("updatedAt") from newjitsu."Workspace")
@@ -427,7 +428,7 @@ const exports: Export[] = [
             deleted: false,
             profileBuilders: { some: { version: { gt: 0 } } },
           },
-          include: { profileBuilders: { include: { functions: true } } },
+          include: { profileBuilders: { include: { functions: { include: { function: true } } } } },
           take: batchSize,
           cursor: lastId ? { id: lastId } : undefined,
           orderBy: { id: "asc" },
@@ -441,6 +442,15 @@ const exports: Export[] = [
           if (needComma) {
             writer.write(",");
           }
+          row.profileBuilders = row.profileBuilders.map(pb => {
+            pb.functions = pb.functions.map(f => {
+              return {
+                ...omit(f.function, "config"),
+                ...f.function.config,
+              };
+            });
+            return pb;
+          });
           writer.write(JSON.stringify(row));
           needComma = true;
         }

@@ -15,6 +15,46 @@ const defaultProfileBuilderFunction = `export default async function(events, use
   }
 };`;
 
+async function updateFunctionCode(workspaceId: string, pbId: string, code: string) {
+  const withFunc = await db.prisma().profileBuilder.findFirst({
+    include: { functions: { include: { function: true } } },
+    where: { id: pbId, workspaceId: workspaceId, deleted: false },
+  });
+  if (withFunc && withFunc.functions.length > 0) {
+    const func = withFunc.functions[0];
+    console.log("Updating function: " + JSON.stringify(func));
+    await db.prisma().configurationObject.update({
+      where: { id: func.functionId },
+      data: {
+        config: {
+          ...(func.function.config as any),
+          code: code,
+          draft: code,
+        },
+      },
+    });
+  } else {
+    const func = await db.prisma().configurationObject.create({
+      data: {
+        workspaceId,
+        type: "function",
+        config: {
+          kind: "profile",
+          name: "Profile Builder function",
+          code: code,
+          draft: code,
+        },
+      },
+    });
+    await db.prisma().profileBuilderFunction.create({
+      data: {
+        profileBuilderId: pbId,
+        functionId: func.id,
+      },
+    });
+  }
+}
+
 const postAndPutCfg = {
   auth: true,
   types: {
@@ -45,6 +85,7 @@ const postAndPutCfg = {
 
     let createdOrUpdated;
     if (existingPb) {
+      await updateFunctionCode(workspaceId, existingPb.id, body.code);
       createdOrUpdated = await db.prisma().profileBuilder.update({
         where: { id: existingPb.id },
         data: { ...pb, deleted: false, workspaceId },
@@ -56,43 +97,7 @@ const postAndPutCfg = {
           workspaceId,
         },
       });
-    }
-    const withFunc = await db.prisma().profileBuilder.findFirst({
-      include: { functions: { include: { function: true } } },
-      where: { id: createdOrUpdated.id, workspaceId: workspaceId, deleted: false },
-    });
-    if (withFunc && withFunc.functions.length > 0) {
-      const func = withFunc.functions[0];
-      console.log("Updating function: " + JSON.stringify(func));
-      await db.prisma().configurationObject.update({
-        where: { id: func.functionId },
-        data: {
-          config: {
-            ...(func.function.config as any),
-            code: body.code,
-            draft: body.code,
-          },
-        },
-      });
-    } else {
-      const func = await db.prisma().configurationObject.create({
-        data: {
-          workspaceId,
-          type: "function",
-          config: {
-            kind: "profile",
-            name: "Profile Builder function",
-            code: body.code,
-            draft: body.code,
-          },
-        },
-      });
-      await db.prisma().profileBuilderFunction.create({
-        data: {
-          profileBuilderId: createdOrUpdated.id,
-          functionId: func.id,
-        },
-      });
+      await updateFunctionCode(workspaceId, createdOrUpdated.id, body.code);
     }
 
     return { id: createdOrUpdated.id, created: !existingPb };

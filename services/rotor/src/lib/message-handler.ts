@@ -16,7 +16,7 @@ import {
   EntityStore,
   EnrichedConnectionConfig,
   FunctionConfig,
-  Workspace,
+  WorkspaceWithProfiles,
 } from "@jitsu/core-functions";
 import NodeCache from "node-cache";
 import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } from "./functions-chain";
@@ -32,7 +32,7 @@ const funcsChainCache = new NodeCache({ stdTTL: funcsChainTTL, checkperiod: 60, 
 export type MessageHandlerContext = {
   connectionStore: EntityStore<EnrichedConnectionConfig>;
   functionsStore: EntityStore<FunctionConfig>;
-  workspaceStore: EntityStore<Workspace>;
+  workspaceStore: EntityStore<WorkspaceWithProfiles>;
   eventsLogger: EventsStore;
   metrics?: Metrics;
   geoResolver?: GeoResolver;

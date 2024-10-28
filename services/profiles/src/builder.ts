@@ -18,7 +18,6 @@ import { db, ProfileBuilderState } from "./lib/db";
 import { getLog, getSingleton, hash, LogFactory, parseNumber, requireDefined, stopwatch } from "juava";
 import PQueue from "p-queue";
 import NodeCache from "node-cache";
-import { functionsStore } from "./lib/repositories";
 import { buildFunctionChain, FuncChain, runChain } from "./lib/functions-chain";
 import { FullContext } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
@@ -82,13 +81,11 @@ export async function profileBuilder(
     closeResolve = resolve;
   });
 
-  const funcStore = await functionsStore.get();
-
   const cacheKey = pbLongId;
   let funcChain: FuncChain | undefined = funcsChainCache.get(cacheKey);
   if (!funcChain) {
     log.atInfo().log(`Refreshing function chain`);
-    funcChain = buildFunctionChain(profileBuilder, funcStore, eventsLogger, fetchTimeoutMs);
+    funcChain = buildFunctionChain(profileBuilder, eventsLogger, fetchTimeoutMs);
     funcsChainCache.set(cacheKey, funcChain);
   }
 

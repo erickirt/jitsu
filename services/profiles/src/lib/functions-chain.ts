@@ -58,7 +58,6 @@ export type FunctionExecLog = FunctionExecRes[];
 
 export function buildFunctionChain(
   profileBuilder: ProfileBuilder,
-  funcStore: EntityStore<FunctionConfig>,
   eventsLogger: EventsStore,
   fetchTimeoutMs: number = 2000
 ): FuncChain {
@@ -78,14 +77,7 @@ export function buildFunctionChain(
     },
     props: profileBuilder.connectionOptions?.variables || {},
   };
-  const udfFuncs: FunctionConfig[] = (profileBuilder.functions || []).map(f => {
-    const functionId = f.functionId;
-    const userFunctionObj = funcStore.getObject(functionId);
-    if (!userFunctionObj || userFunctionObj.workspaceId !== profileBuilder.workspaceId) {
-      throw newError(`Function ${functionId} not found in workspace: ${profileBuilder.workspaceId}`);
-    }
-    return userFunctionObj;
-  });
+  const udfFuncs: FunctionConfig[] = profileBuilder.functions || [];
   if (udfFuncs.length === 0) {
     throw newError(`No UDF functions found for profile builder ${pbLongId}`);
   }
