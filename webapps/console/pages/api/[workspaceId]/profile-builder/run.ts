@@ -38,7 +38,7 @@ export const api: Api = {
         functionId: z.string(),
         functionName: z.string().optional(),
         code: z.string(),
-        event: z.any(),
+        events: z.array(z.any()),
         variables: z.any(),
         store: z.any(),
         userAgent: z.string().optional(),
@@ -60,7 +60,7 @@ export const api: Api = {
         headers["Authorization"] = `Bearer ${rotorAuthKey}`;
       }
 
-      const res = await rpc(rotorURL + "/udfrun", {
+      const res = await rpc(rotorURL + "/profileudfrun", {
         method: "POST",
         body: {
           ...body,

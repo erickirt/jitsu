@@ -14,10 +14,9 @@ import { ColumnsType } from "antd/es/table";
 import { UTCDate, UTCHeader } from "../DataView/EventsBrowser";
 import { examplePageEvent, exampleTrackEvents, exampleIdentifyEvent } from "./example_events";
 import { rpc } from "juava";
-import { logType } from "@jitsu/core-functions";
+import { logType } from "@jitsu/core-functions/src/functions/lib/udf_wrapper";
 import { RetryErrorName, DropRetryErrorName } from "@jitsu/functions-lib";
 
-import Convert from "ansi-to-html";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 dayjs.extend(utc);
@@ -25,13 +24,12 @@ import { defaultFunctionTemplate } from "./code_templates";
 import { FunctionConfig } from "../../lib/schema";
 import { useRouter } from "next/router";
 import { feedbackError } from "../../lib/ui";
-import { Htmlizer } from "../Htmlizer/Htmlizer";
 import Link from "next/link";
-import { CodeBlockLight } from "../CodeBlock/CodeBlockLight";
 import { useStoreReload } from "../../lib/store";
-
-const convert = new Convert({ newline: true });
-const localDate = (date: string | Date) => dayjs(date).format("YYYY-MM-DD HH:mm:ss");
+import { FunctionLogs } from "./FunctionLogs";
+import { FunctionResult } from "./FunctionResult";
+import { FunctionVariables } from "./FunctionVariables";
+import { CodeViewer } from "./CodeViewer";
 
 type FunctionsDebuggerProps = {} & EditorComponentProps;
 
@@ -113,32 +111,12 @@ export const EditableTitle: React.FC<{ children: string; onUpdate: (str: string)
   );
 };
 
-const CodeViewer: React.FC<{ code: string }> = ({ code }) => {
-  const [showCode, setShowCode] = useState(false);
-
-  return (
-    <div>
-      <button className="text-primary" onClick={() => setShowCode(!showCode)}>
-        {showCode ? "Hide code" : "View compiled code"} »
-      </button>
-      {showCode && (
-        <CodeBlockLight
-          className="mt-2 bg-background text-xs py-2 px-3 rounded-lg max-h-60 overflow-y-auto "
-          lang="javascript"
-        >
-          {code}
-        </CodeBlockLight>
-      )}
-    </div>
-  );
-};
-
 export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
   const { push } = useRouter();
 
   const workspace = useWorkspace();
   const [showLogs, setShowLogs] = useState(false);
-  // const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
   const [event, setEvent] = useState<any>(JSON.stringify(examplePageEvent(), undefined, 2));
   const [obj, setObj] = useState<Partial<FunctionConfig>>({
@@ -146,7 +124,7 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
     code: props.isNew ? defaultFunctionTemplate() : props.object.code ?? "",
   });
 
-  const [config, setConfig] = useState<any>("{}");
+  const [config, setConfig] = useState<any>({});
   const [store, setStore] = useState<any>({});
   const [result, setResult] = useState<any>({});
   const [resultType, setResultType] = useState<"ok" | "drop" | "error">("ok");
@@ -174,7 +152,7 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
     } finally {
       setSaving(false);
     }
-  }, [props.isNew, obj, workspace.id, push]);
+  }, [props.isNew, obj, workspace.id, push, reloadStore]);
 
   const runFunction = useCallback(async () => {
     setRunning(true);
@@ -185,7 +163,7 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
         functionName: obj.name,
         code: obj.code,
         event: JSON.parse(event),
-        config: JSON.parse(config),
+        variables: config,
         store,
         userAgent: navigator.userAgent,
       };
@@ -252,7 +230,7 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
     } finally {
       setRunning(false);
     }
-  }, [workspace.id, obj.code, event, config, store, obj.id, obj.name, showLogs]);
+  }, [workspace.id, obj.code, config, event, store, obj.id, obj.name, showLogs]);
 
   return (
     <div className="flex flex-col h-full">
@@ -280,9 +258,9 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
                 {/*  type="default"*/}
                 {/*  disabled={saving}*/}
                 {/*  onClick={() => setShowConfig(!showConfig)}*/}
-                {/*  icon={<Settings className={"inline-block anticon"} size={"1em"} />}*/}
+                {/*  icon={<Parentheses className={"inline-block anticon"} size={"1em"} />}*/}
                 {/*>*/}
-                {/*  Config*/}
+                {/*  Test Environment Variables*/}
                 {/*</Button>*/}
                 <Button
                   type="default"
@@ -353,16 +331,10 @@ declare class RetryError extends Error {
                   />
                 </div>
               )}
-              {/*<div className={`${styles.editor} ${showConfig ? "block" : "hidden"} flex-auto w-1/3 bg-backgroundLight`}>*/}
-              {/*  <div className={"jitsu-label-borderless"}>Config</div>*/}
-              {/*  <CodeEditor*/}
-              {/*    width={"99.9%"}*/}
-              {/*    language={"json"}*/}
-              {/*    value={config}*/}
-              {/*    onChange={setConfig}*/}
-              {/*    monacoOptions={{ lineNumbers: "off" }}*/}
-              {/*  />*/}
-              {/*</div>*/}
+              <div className={`${styles.editor} ${showConfig ? "block" : "hidden"} flex-auto w-1/3 bg-backgroundLight`}>
+                <div className={"jitsu-label-borderless"}>Test Environment Variables</div>
+                <FunctionVariables value={config ?? {}} onChange={setConfig} className={styles.vars} />
+              </div>
             </div>
           </div>
           <div className={`flex-auto ${obj.origin === "jitsu-cli" ? "" : "basis-2/5"} overflow-auto`}>
@@ -416,53 +388,7 @@ declare class RetryError extends Error {
                     </Button>
                   </Badge>
                 </div>
-                <div className={`${styles.editor} flex-auto h-full bg-backgroundLight w-full pl-2`}>
-                  {resultType === "error" && (
-                    <div className={"font-mono p-2 text-xs"}>
-                      <Htmlizer>
-                        {`<span class="text-red-600"><b>${result.name}:</b></span> ` +
-                          convert.toHtml(result.message.replaceAll(" ", "&nbsp;"))}
-                      </Htmlizer>
-                      {result.name === DropRetryErrorName && (
-                        <div className={"pt-1"}>
-                          If such error will happen on an actual event, it will be <b>SKIPPED</b> and retry will be
-                          scheduled in{" "}
-                          {result.retryPolicy?.delays?.[0] ? Math.min(result.retryPolicy.delays[0], 1440) : 5} minutes.
-                        </div>
-                      )}
-                      {result.name === RetryErrorName && (
-                        <div className={"pt-1"}>
-                          If such error will happen on an actual event, this function will be scheduled
-                          <br />
-                          for retry in{" "}
-                          {result.retryPolicy?.delays?.[0] ? Math.min(result.retryPolicy.delays[0], 1440) : 5} minutes,
-                          but event will be processed further.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {resultType === "drop" && (
-                    <div className={"font-mono p-2 text-xs"}>
-                      Further processing will be <b>SKIPPED</b>. Function returned:{" "}
-                      <code>{JSON.stringify(result)}</code>.
-                    </div>
-                  )}
-                  {resultType === "ok" && (
-                    <CodeEditor
-                      width={"99.9%"}
-                      language={typeof result !== "string" ? "json" : "text"}
-                      value={typeof result !== "string" ? JSON.stringify(result, null, 2) : result}
-                      onChange={s => {}}
-                      monacoOptions={{
-                        renderLineHighlight: "none",
-                        lineDecorationsWidth: 8,
-                        lineNumbers: "off",
-                        readOnly: true,
-                        folding: false,
-                      }}
-                    />
-                  )}
-                </div>
+                <FunctionResult className={styles.editor} resultType={resultType} result={result} />
               </div>
               <div className={`flex-auto h-full w-1/2 flex flex-col ${showLogs ? "block" : "hidden"}`}>
                 <div className={"flex-auto w-full flex flex-row justify-between mt-2 mb-2 items-end"}>
@@ -473,42 +399,7 @@ declare class RetryError extends Error {
                     Show Results
                   </Button>
                 </div>
-                <div
-                  className={`${styles.logs} flex-auto flex flex-col place-content-start flex-nowrap pb-4 bg-backgroundLight w-full h-full`}
-                >
-                  {logs.map((log, index) => {
-                    const colors = (() => {
-                      switch (log.level) {
-                        case "error":
-                          return { text: "#A4000F", bg: "#FDF3F5", border: "#F8D6DB" };
-                        case "debug":
-                          return { text: "#646464", bg: "#FBF3F5", border: "#FBF3F5" };
-                        case "warn":
-                          return { text: "#705100", bg: "#FFFBD6", border: "#F4E89A" };
-                        default:
-                          return { text: "black", bg: "white", border: "#eaeaea" };
-                      }
-                    })();
-                    return (
-                      <div
-                        key={index}
-                        style={{ borderColor: colors.border, backgroundColor: colors.bg }}
-                        className={"font-mono text-xs shrink-0 gap-x-6 w-full flex flex-row border-b py-0.5 px-3"}
-                      >
-                        {/*<div className={"text-textLight whitespace-nowrap"}>{localDate(log.timestamp)}</div>*/}
-                        <div
-                          style={{ color: colors.text }}
-                          className={"w-10 flex-grow-0 flex-shrink-0 whitespace-nowrap"}
-                        >
-                          {log.level.toUpperCase()}
-                        </div>
-                        <div style={{ color: colors.text }} className={"flex-auto whitespace-pre-wrap break-all"}>
-                          {log.message}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <FunctionLogs logs={logs} className={styles.logs} />
               </div>
             </div>
           </div>

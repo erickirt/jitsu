@@ -1,4 +1,17 @@
-//** @UDF_FUNCTIONS_IMPORT **//
+import { DropRetryErrorName, RetryErrorName } from "@jitsu/functions-lib";
+
+export const functionsLibCode = `const DropRetryErrorName = "Drop & RetryError";
+const RetryErrorName = "RetryError";
+class RetryError extends Error {
+    constructor(message, options) {
+        super(message);
+        this.name = options?.drop ? "${DropRetryErrorName}" : "${RetryErrorName}";
+    }
+}
+
+export { DropRetryErrorName, RetryError, RetryErrorName };`;
+
+export const chainWrapperCode = `//** @UDF_FUNCTIONS_IMPORT **//
 import {DropRetryErrorName, RetryError, RetryErrorName} from "@jitsu/functions-lib";
 
 global.RetryError = RetryError;
@@ -13,7 +26,7 @@ export function checkError(chainRes) {
             //         ..._jitsu_funcCtx.function,
             //         id: error.functionId || el.functionId
             //     }
-            // }, `Function execution failed`, error.name, error.message], {arguments: {copy: true}});
+            // }, \`Function execution failed\`, error.name, error.message], {arguments: {copy: true}});
         }
     }
 }
@@ -24,15 +37,15 @@ function isDropResult(result) {
 
 async function runChain(
     chain,
-    ctx,
     events,
-    user
+    user,
+    ctx
 ) {
     const execLog = [];
     const f = chain[0];
     let result = undefined;
     try {
-        result = await f.f(ctx, events, user);
+        result = await f.f(events, user, ctx);
     } catch (err) {
         if (err.name === DropRetryErrorName) {
             result = "drop";
@@ -51,10 +64,10 @@ async function runChain(
     return {result, execLog};
 }
 
-const wrappedFunctionChain = async function (ctx, events, user) {
+const wrappedFunctionChain = async function (events, user, ctx) {
     let chain = [];
     //** @UDF_FUNCTIONS_CHAIN **//
-    const chainRes = await runChain(chain, ctx, events, user);
+    const chainRes = await runChain(chain, events, user, ctx);
     checkError(chainRes);
     return chainRes.result;
 };
@@ -142,7 +155,7 @@ const wrappedUserFunction = (id, f, funcCtx) => {
         };
     }
 
-    return async function (c, events, user) {
+    return async function (events, user, c) {
         const fetchLogEnabled = _jitsu_fetch_log_level !== "debug" || (funcCtx.function.debugTill && funcCtx.function.debugTill > new Date());
         let ftch = fetch
         if (fetchLogEnabled) {
@@ -157,8 +170,9 @@ const wrappedUserFunction = (id, f, funcCtx) => {
             store,
             fetch: ftch,
         };
-        return await f(ctx, events, user);
+        return await f(events, user, ctx);
     }
 };
 
 export {wrappedFunctionChain};
+`;
