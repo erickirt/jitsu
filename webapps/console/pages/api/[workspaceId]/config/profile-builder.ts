@@ -6,7 +6,7 @@ import { ProfileBuilderDbModel } from "../../../../prisma/schema";
 import { safeParseWithDate } from "../../../../lib/zod";
 import { ApiError } from "../../../../lib/shared/errors";
 
-const defaultProfileBuilderFunction = `export default async function({ context, events, user }) {
+const defaultProfileBuilderFunction = `export default async function(events, user, context) {
   context.log.info("Profile userId: " + user.id)
   const profile = {}
   profile.traits = user.traits

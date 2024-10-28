@@ -78,7 +78,7 @@ export const config = {
     description: ""
 };
 
-const profileExample: ProfileFunction = async ({ context, events, user}) => {
+const profileExample: ProfileFunction = async (events, user, context) => {
   context.log.info("Profile func: " + user.id)
   const profile = {} as any
   for (const event of events) {
