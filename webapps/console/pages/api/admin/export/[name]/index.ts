@@ -298,7 +298,7 @@ const exports: Export[] = [
             JSON.stringify({
               ...omit(row, "deleted", "config"),
               ...row.config,
-              codeHash: hash(row.config?.code),
+              codeHash: hash(row.config?.code || row.config?.draft || ""),
             })
           );
           needComma = true;
