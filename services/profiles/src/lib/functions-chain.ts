@@ -162,7 +162,7 @@ export async function runChain(chain: FuncChain, events: any[], user: ProfileUse
   try {
     result = await f.exec(events, user, f.context);
     return {
-      user_id: user.userId,
+      user_id: user.id,
       traits: user.traits,
       custom_properties: result?.properties || {},
       updated_at: new Date(),

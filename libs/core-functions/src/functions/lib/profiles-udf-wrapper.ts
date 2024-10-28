@@ -16,7 +16,7 @@ import { createMemoryStore, memoryStoreDump } from "./store";
 const log = getLog("udf-wrapper");
 
 export type ProfileUser = {
-  userId: string;
+  id: string;
   anonymousId: string;
   traits: Record<string, any>;
 };
@@ -331,7 +331,7 @@ function makeReference(refs: Reference[], obj: any): Reference {
 }
 
 export function mergeUserTraits(events: AnalyticsServerEvent[], userId?: string): ProfileUser {
-  const user = { traits: {}, userId: userId || events[0]?.userId } as ProfileUser;
+  const user = { traits: {}, id: userId || events[0]?.userId } as ProfileUser;
   events
     .filter(e => e.type === "identify")
     .forEach(e => {
@@ -459,7 +459,7 @@ export async function ProfileUDFTestRun({
     }
     const result = await wrapper?.userFunction(events, user, funcCtx);
     const profile = {
-      user_id: user.userId,
+      user_id: user.id,
       traits: user.traits,
       custom_properties: result?.properties || {},
       updated_at: new Date(),
@@ -478,7 +478,7 @@ export async function ProfileUDFTestRun({
         retryPolicy: e.retryPolicy,
       },
       result: {
-        user_id: user.userId,
+        user_id: user.id,
         traits: user.traits,
         custom_properties: {},
         updated_at: new Date(),
