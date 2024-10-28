@@ -83,6 +83,7 @@ export default createRoute()
         events: events.map(e => omit(e, ["_id", userIdHashColumn])),
       };
     } catch (e: any) {
+      log.atError().withCause(e).log(`Error while fetching events from MongoDB: ${e}`);
       return {
         status: "error",
         error: e.message,
