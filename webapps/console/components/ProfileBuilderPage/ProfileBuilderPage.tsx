@@ -68,7 +68,6 @@ dayjs.extend(relativeTime);
 export const defaultProfileBuilderFunction = `export default async function(events, user, context) {
   context.log.info("Profile userId: " + user.id)
   const profile = {}
-  profile.traits = user.traits
   profile.anonId = user.anonymousId
   return {
     properties: profile
