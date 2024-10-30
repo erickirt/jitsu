@@ -93,7 +93,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         editor.getAction(`editor.foldLevel${foldLevel}`)?.run();
       }
     }
-  }, [value]);
+  }, [value, foldLevel]);
 
   return (
     <div className="w-full h-full">

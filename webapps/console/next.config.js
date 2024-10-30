@@ -49,25 +49,21 @@ module.exports = {
       },
     ];
   },
-  experimental: {
-    instrumentationHook: true,
-    outputFileTracingExcludes: {
-      "*": [
-        "./**/node_modules/@swc/core-linux-x64-gnu",
-        "./**/node_modules/@swc/core-linux-x64-musl",
-        "./**/node_modules/esbuild/linux",
-        "./**/node_modules/webpack",
-        "./**/node_modules/rollup",
-        "./**/node_modules/terser",
-      ],
-    },
+  outputFileTracingExcludes: {
+    "*": [
+      "./**/node_modules/@swc/core-linux-x64-gnu",
+      "./**/node_modules/@swc/core-linux-x64-musl",
+      "./**/node_modules/esbuild/linux",
+      "./**/node_modules/webpack",
+      "./**/node_modules/rollup",
+      "./**/node_modules/terser",
+    ],
   },
   ...(process.env.NEXTJS_STANDALONE_BUILD === "1"
     ? {
         output: "standalone",
       }
     : {}),
-  outputFileTracing: true,
   webpack: (config, opts) => {
     if (prevWebpack) {
       prevWebpack(config, opts);
