@@ -205,17 +205,23 @@ async function processUser(
 ) {
   const ms = stopwatch();
   try {
+    const metrics = {} as any;
     const events = await getUserEvents(mongo, config, userId, endTimestamp);
+    metrics.db_find = ms.lapMs();
     const eventsArray = await events.toArray();
+    metrics.to_array = ms.lapMs();
     const user = mergeUserTraits(eventsArray as unknown as AnalyticsServerEvent[], userId);
+    metrics.merge_user_traits = ms.lapMs();
     const result = await runChain(funcChain, eventsArray, user);
+    metrics.udf = ms.lapMs();
     if (result) {
       await sendToBulker(profileBuilder, result, funcChain.context);
+      metrics.bulker = ms.lapMs();
       funcChain.context.log.info(
         funcCtx,
         `User ${userId} processed in ${ms.elapsedMs()}ms (events: ${eventsArray.length}). Result: ${JSON.stringify(
           result
-        )}`
+        )} Metrics: ${JSON.stringify(metrics)}`
       );
     } else {
       funcChain.context.log.warn(
