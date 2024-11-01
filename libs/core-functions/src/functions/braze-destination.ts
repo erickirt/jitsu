@@ -160,7 +160,7 @@ function updateUserProfile(event: AnalyticsServerEvent, ctx: FullContext<BrazeCr
         image_url: traits.avatar,
         time_zone: geo.location?.timezone,
         gender: toBrazeGender(traits.gender),
-        ...omit(traits, ["firstName", "lastName", "avatar", "gender"]),
+        ...omit(traits, ["firstName", "lastName", "avatar", "gender", "user_alias", "braze_id"]),
         _update_existing_only: false,
       },
     ],
