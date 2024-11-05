@@ -6,7 +6,8 @@ import {
   ProfilesConfig,
   createClient,
   int32Hash,
-  userIdHashColumn,
+  profileIdHashColumn,
+  profileIdColumn,
 } from "@jitsu/core-functions/src/functions/profiles-functions";
 import { mongodb } from "@jitsu/core-functions/src/functions/lib/mongodb";
 
@@ -73,14 +74,14 @@ export default createRoute()
         .db(config.eventsDatabase)
         .collection(config.eventsCollectionName)
         .find({
-          [userIdHashColumn]: int32Hash(userId),
+          [profileIdHashColumn]: int32Hash(userId),
           userId: userId,
         })
         .toArray();
 
       return {
         status: "ok",
-        events: events.map(e => omit(e, ["_id", userIdHashColumn])),
+        events: events.map(e => omit(e, ["_id", profileIdHashColumn, profileIdColumn])),
       };
     } catch (e: any) {
       log.atError().withCause(e).log(`Error while fetching events from MongoDB: ${e}`);

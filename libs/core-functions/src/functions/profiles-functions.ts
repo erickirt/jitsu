@@ -6,8 +6,9 @@ import { MongoClient } from "mongodb";
 import { createHash } from "crypto";
 import { mongodb } from "./lib/mongodb";
 
-export const userIdHashColumn = "_user_id_hash";
-export const userIdHash32MaxValue = 2147483647;
+export const profileIdHashColumn = "_profile_id_hash";
+export const profileIdColumn = "_profile_id";
+export const idHash32MaxValue = 2147483647;
 
 export const ProfilesConfig = z.object({
   mongoUrl: z.string().optional(),
@@ -16,6 +17,7 @@ export const ProfilesConfig = z.object({
   runPeriodSec: z.number().optional().default(60),
   eventsDatabase: z.string().optional().default("profiles"),
   eventsCollectionName: z.string().optional().default("profiles-raw"),
+  traitsCollectionName: z.string().optional().default("profiles-traits"),
 });
 
 const MongoCreatedCollections = new Set<string>();
@@ -50,7 +52,7 @@ export function int32Hash(value) {
   const h = hash("sha256", value);
 
   // Convert the first 8 characters of the hash (or more) to an integer
-  return parseInt(h.substring(0, 8), 16) % userIdHash32MaxValue;
+  return parseInt(h.substring(0, 8), 16) % idHash32MaxValue;
 }
 
 export const ProfilesFunction: JitsuFunction<AnalyticsServerEvent, ProfilesConfig> = async (event, ctx) => {
@@ -81,14 +83,61 @@ export const ProfilesFunction: JitsuFunction<AnalyticsServerEvent, ProfilesConfi
       : mongodb;
     const mongo = await mongoSingleton.waitInit();
     await pbEnsureMongoCollection(mongo, config.eventsDatabase, config.eventsCollectionName, config.profileWindowDays, [
-      userIdHashColumn,
-      "userId",
+      profileIdHashColumn,
+      profileIdColumn,
+      "type",
     ]);
+    await pbEnsureMongoCollection(
+      mongo,
+      config.eventsDatabase,
+      config.traitsCollectionName,
+      config.profileWindowDays,
+      [profileIdColumn],
+      true
+    );
+
+    if (event.type === "identify") {
+      const d = new Date();
+      const traits = await mongo
+        .db(config.eventsDatabase)
+        .collection(config.traitsCollectionName)
+        .findOneAndUpdate(
+          { [profileIdColumn]: userId },
+          [
+            {
+              $set: {
+                [profileIdColumn]: userId,
+                userId: {
+                  $ifNull: ["$userId", userId],
+                },
+                anonymousId: {
+                  $ifNull: ["$anonymousId", event.anonymousId],
+                },
+                traits: {
+                  $mergeObjects: ["$traits", event.traits],
+                },
+                createdAt: {
+                  $ifNull: ["$createdAt", d],
+                },
+                updatedAt: d,
+              },
+            },
+          ],
+          {
+            upsert: true,
+            returnDocument: "after",
+          }
+        );
+      ctx.log.info(`Merged profile: ${JSON.stringify(traits)}`);
+    }
 
     const res = await mongo
       .db(config.eventsDatabase)
       .collection(config.eventsCollectionName)
-      .insertOne({ [userIdHashColumn]: int32Hash(userId), ...event }, { writeConcern: { w: 1, journal: false } });
+      .insertOne(
+        { [profileIdHashColumn]: int32Hash(userId), [profileIdColumn]: userId, ...event },
+        { writeConcern: { w: 1, journal: false } }
+      );
     if (!res.acknowledged) {
       ctx.log.error(`Failed to insert to MongoDB: ${JSON.stringify(res)}`);
     } else {
@@ -104,7 +153,8 @@ export async function pbEnsureMongoCollection(
   databaseName: string,
   collectionName: string,
   ttlDays: number,
-  indexFields: string[] = []
+  indexFields: string[] = [],
+  unique?: boolean
 ) {
   if (MongoCreatedCollections.has(collectionName)) {
     return;
@@ -135,7 +185,11 @@ export async function pbEnsureMongoCollection(
       indexFields.forEach(field => {
         index[field] = 1;
       });
-      await collection.createIndex(index);
+      if (unique) {
+        await collection.createIndex(index, { unique: true });
+      } else {
+        await collection.createIndex(index);
+      }
     }
     MongoCreatedCollections.add(collectionName);
   } catch (err) {

@@ -64,10 +64,69 @@ async function runChain(
     return {result, execLog};
 }
 
-const wrappedFunctionChain = async function (events, user, ctx) {
+const wrappedFunctionChain = async function (eventsProvider, userProvider, ctx) {
     let chain = [];
     //** @UDF_FUNCTIONS_CHAIN **//
-    const chainRes = await runChain(chain, events, user, ctx);
+    const iterator = {
+        [Symbol.iterator]() {
+            return {
+                next() {
+                    const s = eventsProvider.applySyncPromise(undefined, [], {
+                        arguments: {copy: true}
+                    })
+                    if (typeof s === "undefined") {
+                        return {done: true};
+                    } else {
+                        return {done: false, value: JSON.parse(s) };
+                    }
+                },
+            };
+        },
+        get length() {
+            throw new Error("The object doesn't have the \`length\` property, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        filter() {
+            throw new Error("The object doesn't have the \`filter\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        map() {
+            throw new Error("The object doesn't have the \`map\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        find() {
+            throw new Error("The object doesn't have the \`find\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        some() {
+            throw new Error("The object doesn't have the \`some\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        reduce() {
+            throw new Error("The object doesn't have the \`reduce\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+        sort() {
+            throw new Error("The object doesn't have the \`sort\` method, however you can iterate through it with \`for const item of events\` syntax");
+        },
+    };
+    let lazyUser;
+    function lazyLoad() {
+        if (!lazyUser) {
+            lazyUser = JSON.parse(userProvider.applySyncPromise(undefined, [], {
+                arguments: {copy: true}
+            }));
+        }
+        return lazyUser;
+    }
+
+    const user = {
+        get anonymousId() {
+            return lazyLoad().anonymousId;
+        },
+        get id() {
+            return lazyLoad().id;
+        },
+        get traits() {
+            return lazyLoad().traits;
+        },
+    };
+
+    const chainRes = await runChain(chain, iterator, user, ctx);
     checkError(chainRes);
     return chainRes.result;
 };

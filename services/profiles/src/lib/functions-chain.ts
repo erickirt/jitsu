@@ -1,6 +1,5 @@
 import {
   createMongoStore,
-  EntityStore,
   EventsStore,
   FunctionChainContext,
   FunctionConfig,
@@ -13,7 +12,8 @@ import {
   ProfileBuilder,
   ProfileFunctionWrapper,
   ProfileUDFWrapper,
-  ProfileUser,
+  EventsProvider,
+  ProfileUserProvider,
 } from "@jitsu/core-functions";
 
 import { getLog, newError } from "juava";
@@ -148,14 +148,19 @@ export function buildFunctionChain(
   };
 }
 
-export async function runChain(chain: FuncChain, events: any[], user: ProfileUser): Promise<Profile | undefined> {
+export async function runChain(
+  profileId: string,
+  chain: FuncChain,
+  eventsProvider: EventsProvider,
+  userProvider: ProfileUserProvider
+): Promise<Profile | undefined> {
   const f = chain.functions[0];
   let result: ProfileResult | undefined = undefined;
   try {
-    result = await f.exec(events, user, f.context);
+    result = await f.exec(eventsProvider, userProvider, f.context);
     return {
-      user_id: user.id,
-      traits: user.traits,
+      profile_id: profileId,
+      traits: result?.traits,
       custom_properties: result?.properties || {},
       updated_at: new Date(),
     };

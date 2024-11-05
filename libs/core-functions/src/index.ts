@@ -67,6 +67,8 @@ export type {
   ProfileUDFTestRequest,
   ProfileUDFTestResponse,
   ProfileUser,
+  ProfileUserProvider,
+  EventsProvider,
   ProfileFunctionWrapper,
   Profile,
 } from "./functions/lib/profiles-udf-wrapper";

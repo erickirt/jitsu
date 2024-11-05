@@ -165,6 +165,7 @@ async function profilesHandler(
             ...builder.intermediateStorageCredentials,
             profileWindowDays: builder.connectionOptions.profileWindow,
             eventsCollectionName: `profiles-raw-${wp.id}-${builder.id}`,
+            traitsCollectionName: `profiles-traits-${wp.id}-${builder.id}`,
           } as ProfilesConfig,
           store: createDummyStore(),
           log: {

@@ -4,16 +4,17 @@ import {
   mongodb,
   ProfilesConfig,
   pbEnsureMongoCollection,
-  userIdHashColumn,
+  profileIdHashColumn,
   int32Hash,
-  userIdHash32MaxValue,
+  idHash32MaxValue,
   EventsStore,
   bulkerDestination,
   FunctionContext,
   FunctionChainContext,
-  mergeUserTraits,
+  profileIdColumn,
+  ProfileUser,
 } from "@jitsu/core-functions";
-import { MongoClient, ObjectId } from "mongodb";
+import { FindCursor, MongoClient, ObjectId, WithId, Document } from "mongodb";
 import { db, ProfileBuilderState } from "./lib/db";
 import { getLog, getSingleton, hash, LogFactory, parseNumber, requireDefined, stopwatch } from "juava";
 import PQueue from "p-queue";
@@ -30,7 +31,7 @@ const fetchTimeoutMs = parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
 
 const instanceIndex = process.env.INSTANCE_INDEX ? parseInt(process.env.INSTANCE_INDEX, 10) : 0;
 const totalInstances = process.env.INSTANCES_COUNT ? parseInt(process.env.INSTANCES_COUNT, 10) : 1;
-const partitionsRange = selectRange(userIdHash32MaxValue, totalInstances, instanceIndex);
+const partitionsRange = selectRange(idHash32MaxValue, totalInstances, instanceIndex);
 
 //cache function chains for 1m
 const funcsChainTTL = 60;
@@ -94,6 +95,7 @@ export async function profileBuilder(
     profileWindowDays: profileBuilder.connectionOptions.profileWindow,
     eventsDatabase: `profiles`,
     eventsCollectionName: `profiles-raw-${workspaceId}-${profileBuilder.id}`,
+    traitsCollectionName: `profiles-traits-${workspaceId}-${profileBuilder.id}`,
   });
 
   const mongoSingleton = config.mongoUrl
@@ -118,9 +120,18 @@ export async function profileBuilder(
   const mongo = await mongoSingleton.waitInit();
 
   await pbEnsureMongoCollection(mongo, config.eventsDatabase, config.eventsCollectionName, config.profileWindowDays, [
-    userIdHashColumn,
-    "userId",
+    profileIdHashColumn,
+    profileIdColumn,
+    "type",
   ]);
+  await pbEnsureMongoCollection(
+    mongo,
+    config.eventsDatabase,
+    config.traitsCollectionName,
+    config.profileWindowDays,
+    [profileIdColumn],
+    true
+  );
 
   const loadedState = await db
     .pgHelper()
@@ -204,35 +215,58 @@ async function processUser(
   endTimestamp: Date
 ) {
   const ms = stopwatch();
+  let cursor: FindCursor<WithId<Document>>;
   try {
-    const metrics = {} as any;
-    const events = await getUserEvents(mongo, config, userId, endTimestamp);
+    const metrics = { db_events: 0 } as any;
+    cursor = await getUserEvents(mongo, config, userId, endTimestamp);
     metrics.db_find = ms.lapMs();
-    const eventsArray = await events.toArray();
-    metrics.to_array = ms.lapMs();
-    const user = mergeUserTraits(eventsArray as unknown as AnalyticsServerEvent[], userId);
-    metrics.merge_user_traits = ms.lapMs();
-    const result = await runChain(funcChain, eventsArray, user);
+    let count = 0;
+    const userProvider = async () => {
+      const start = Date.now();
+      const u = await getProfileUser(mongo, config, userId);
+      metrics.db_user = Date.now() - start;
+      return u;
+    };
+
+    const eventsProvider = async () => {
+      const start = Date.now();
+      const next = await cursor.next();
+      metrics.db_events += Date.now() - start;
+      if (next) {
+        count++;
+        return next as unknown as AnalyticsServerEvent;
+      } else {
+        return undefined;
+      }
+    };
+
+    const result = await runChain(userId, funcChain, eventsProvider, userProvider);
     metrics.udf = ms.lapMs();
+    metrics.db = metrics.db_events + metrics.db_user + metrics.db_find;
     if (result) {
       await sendToBulker(profileBuilder, result, funcChain.context);
       metrics.bulker = ms.lapMs();
       funcChain.context.log.info(
         funcCtx,
-        `User ${userId} processed in ${ms.elapsedMs()}ms (events: ${eventsArray.length}). Result: ${JSON.stringify(
+        `User ${userId} processed in ${ms.elapsedMs()}ms (events: ${count}). Result: ${JSON.stringify(
           result
         )} Metrics: ${JSON.stringify(metrics)}`
       );
     } else {
       funcChain.context.log.warn(
         funcCtx,
-        `No profile result for user ${userId}. processed in ${ms.elapsedMs()}ms (events: ${eventsArray.length}).`
+        `No profile result for user ${userId}. processed in ${ms.elapsedMs()}ms (events: ${count}).  Metrics: ${JSON.stringify(
+          metrics
+        )}`
       );
     }
     state.processedUsers++;
   } catch (e: any) {
     state.errorUsers++;
     funcChain.context.log.error(funcCtx, `Error while processing user ${userId}: ${e.message}`);
+  } finally {
+    // @ts-ignore
+    cursor?.close();
   }
 }
 
@@ -289,10 +323,30 @@ async function getUserEvents(mongo: MongoClient, config: ProfilesConfig, userId:
     .db(config.eventsDatabase)
     .collection(config.eventsCollectionName)
     .find({
-      [userIdHashColumn]: int32Hash(userId),
-      userId: userId,
+      [profileIdHashColumn]: int32Hash(userId),
+      [profileIdColumn]: userId,
       _id: { $lt: new ObjectId(Math.floor(endTimestamp.getTime() / 1000).toString(16) + "0000000000000000") },
     });
+}
+
+async function getProfileUser(mongo: MongoClient, config: ProfilesConfig, userId: string): Promise<ProfileUser> {
+  const u = await mongo
+    .db(config.eventsDatabase)
+    .collection(config.traitsCollectionName)
+    .findOne({ [profileIdColumn]: userId });
+  if (!u) {
+    return {
+      id: userId,
+      anonymousId: "",
+      traits: {},
+    };
+  } else {
+    return {
+      id: u.userId,
+      anonymousId: u.anonymousId,
+      traits: u.traits,
+    };
+  }
 }
 
 async function getUsersHavingEventsSince(
@@ -321,12 +375,12 @@ async function getUsersHavingEventsSince(
       {
         $match: {
           ...dateFilter,
-          [userIdHashColumn]: { $gte: partitionsRange[0], $lte: partitionsRange[1] },
+          [profileIdHashColumn]: { $gte: partitionsRange[0], $lte: partitionsRange[1] },
         },
       },
       {
         $group: {
-          _id: "$userId",
+          _id: "$" + profileIdColumn,
         },
       },
     ])

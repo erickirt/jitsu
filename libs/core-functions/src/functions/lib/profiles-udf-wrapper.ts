@@ -21,16 +21,19 @@ export type ProfileUser = {
   traits: Record<string, any>;
 };
 
+export type ProfileUserProvider = () => Promise<ProfileUser>;
+export type EventsProvider = () => Promise<AnalyticsServerEvent | undefined>;
+
 export type Profile = {
-  user_id: string;
-  traits: Record<string, any>;
+  profile_id: string;
+  traits?: Record<string, any>;
   custom_properties: Record<string, any>;
   updated_at: Date;
 };
 
 export type ProfileFunctionWrapper = (
-  events: AnalyticsServerEvent[],
-  user: ProfileUser,
+  eventsProvider: EventsProvider,
+  userProvider: ProfileUserProvider,
   context: FunctionContext
 ) => Promise<ProfileResult | undefined>;
 
@@ -235,28 +238,38 @@ function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper:
   if (!ref || ref.typeof !== "function") {
     throw new Error("Function not found. Please export wrappedFunctionChain function.");
   }
-  const userFunction: ProfileFunctionWrapper = async (events, user, ctx): Promise<ProfileResult | undefined> => {
+  const userFunction: ProfileFunctionWrapper = async (
+    eventsProvider,
+    userProvider,
+    ctx
+  ): Promise<ProfileResult | undefined> => {
     if (isolate.isDisposed) {
       throw new RetryError("Isolate is disposed", { drop: true });
     }
-    const eventCopy = new ExternalCopy(events);
     const ctxCopy = new ExternalCopy(ctx);
-    const userCopy = new ExternalCopy(user);
 
-    const udfTimeoutMs = parseNumber(process.env.UDF_TIMEOUT_MS, 5000);
+    const udfTimeoutMs = parseNumber(process.env.UDF_TIMEOUT_MS, 60000);
     let isTimeout = false;
     const timer = setTimeout(() => {
       isTimeout = true;
       isolate.dispose();
     }, udfTimeoutMs);
+    const eventsProviderRef = new Reference(async () => {
+      const ev = await eventsProvider();
+      if (typeof ev !== "undefined") {
+        return JSON.stringify(ev);
+      } else {
+        return undefined;
+      }
+    });
+    const userProviderRef = new Reference(async () => {
+      return JSON.stringify(await userProvider());
+    });
+
     try {
       const res = await ref.apply(
         undefined,
-        [
-          eventCopy.copyInto({ release: true, transferIn: true }),
-          userCopy.copyInto({ release: true, transferIn: true }),
-          ctxCopy.copyInto({ release: true, transferIn: true }),
-        ],
+        [eventsProviderRef, userProviderRef, ctxCopy.copyInto({ release: true, transferIn: true })],
         {
           result: { promise: true },
         }
@@ -297,6 +310,8 @@ function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper:
       //log.atInfo().log(`ERROR name: ${e.name} message: ${e.message} json: ${e.stack}`);
       throw e;
     } finally {
+      eventsProviderRef.release();
+      userProviderRef.release();
       clearTimeout(timer);
     }
   };
@@ -330,18 +345,18 @@ function makeReference(refs: Reference[], obj: any): Reference {
   return ref;
 }
 
-export function mergeUserTraits(events: AnalyticsServerEvent[], userId?: string): ProfileUser {
+export async function mergeUserTraits(events: AnalyticsServerEvent[], userId?: string): Promise<ProfileUser> {
   const user = { traits: {}, id: userId || events[0]?.userId } as ProfileUser;
-  events
-    .filter(e => e.type === "identify")
-    .forEach(e => {
+  for await (const e of events) {
+    if (e.type === "identify") {
       if (e.anonymousId) {
         user.anonymousId = e.anonymousId;
       }
       if (e.traits) {
         Object.assign(user.traits, e.traits);
       }
-    });
+    }
+  }
   return user;
 }
 
@@ -381,7 +396,17 @@ export async function ProfileUDFTestRun({
   const logs: logType[] = [];
   let wrapper: UDFWrapperResult | undefined = undefined;
   let realStore = false;
-  const user = mergeUserTraits(events);
+  const user = await mergeUserTraits(events);
+  const userProvider = async () => user;
+  const iter = events[Symbol.iterator]();
+  const eventsProvider = async () => {
+    const iv = iter.next();
+    if (!iv.done) {
+      return iv.value;
+    } else {
+      return undefined;
+    }
+  };
   try {
     let storeImpl: TTLStore;
     if (
@@ -457,10 +482,10 @@ export async function ProfileUDFTestRun({
     } else {
       wrapper = code;
     }
-    const result = await wrapper?.userFunction(events, user, funcCtx);
+    const result = await wrapper?.userFunction(eventsProvider, userProvider, funcCtx);
     const profile = {
-      user_id: user.id,
-      traits: user.traits,
+      profile_id: user.id,
+      traits: result?.traits,
       custom_properties: result?.properties || {},
       updated_at: new Date(),
     };
@@ -478,8 +503,7 @@ export async function ProfileUDFTestRun({
         retryPolicy: e.retryPolicy,
       },
       result: {
-        user_id: user.id,
-        traits: user.traits,
+        profile_id: user.id,
         custom_properties: {},
         updated_at: new Date(),
       },

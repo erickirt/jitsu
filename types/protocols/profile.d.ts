@@ -3,6 +3,7 @@ import { AnalyticsServerEvent } from "./analytics";
 
 export type ProfileResult = {
   properties: Record<string, any>;
+  traits?: Record<string, any>;
 };
 
 export type ProfileFunction = (
