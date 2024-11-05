@@ -29,11 +29,11 @@ export default createRoute()
     for (let i = 0; i < 3; i++) {
       // endpoint prone to 500 errors
       try {
-        const tags = (await rpc(`https://hub.docker.com/v2/repositories/${packageId}/tags?page_size=100`)).results.map(
+        const tags = (await rpc(`https://hub.docker.com/v2/repositories/${packageId}/tags?page_size=200`)).results.map(
           ({ name }) => ({
             name,
             isRelease: name.match(/^[0-9.]+$/) !== null,
-            isMit: !mitVersions || mitVersions.includes(name),
+            isMit: !!mitVersions?.length,
           })
         );
         return {
