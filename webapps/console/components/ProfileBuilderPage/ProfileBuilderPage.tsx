@@ -59,8 +59,8 @@ import { FunctionLogs } from "../FunctionsDebugger/FunctionLogs";
 import { FunctionResult } from "../FunctionsDebugger/FunctionResult";
 import { FunctionVariables } from "../FunctionsDebugger/FunctionVariables";
 import omit from "lodash/omit";
-import { CodeViewer } from "../FunctionsDebugger/CodeViewer";
 import { WLink } from "../Workspace/WLink";
+import { getCoreDestinationTypeNonStrict } from "../../lib/schema/destinations";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -70,7 +70,7 @@ export const defaultProfileBuilderFunction = `export default async function(even
   const profile = {}
   profile.anonId = user.anonymousId
   return {
-    properties: profile
+    traits: profile
   }
 };`;
 
@@ -166,7 +166,10 @@ const SettingsTab: React.FC<{ profileBuilder: ProfileBuilderData; dispatch: Reac
 }) => {
   const settings = profileBuilder.settings;
 
-  const destinations = useConfigObjectList("destination");
+  const destinations = useConfigObjectList("destination").filter(d => {
+    const dest = getCoreDestinationTypeNonStrict(d.destinationType);
+    return dest?.usesBulker;
+  });
 
   useEffect(() => {
     if (destinations.length && !settings.destinationId) {
@@ -644,6 +647,8 @@ export function ProfileBuilderPage() {
   const { data: pbState, isLoading: stateLoading } = useProfileBuilderState(initialData!, enabled, stateRefreshDate);
   const [saving, setSaving] = useState(false);
   const [obj, dispatch] = useReducer(pbDataReducer, defaultProfileBuilderData);
+  const [editorShown, setEditorShown] = useState(false);
+
   const [activePrimaryTab, setActivePrimaryTab] = useState("code");
   const [activeSecondaryTab, setActiveSecondaryTab] = useState("test");
   const [testData, setTestData] = useState<string>(testDataExample);
@@ -676,6 +681,7 @@ export function ProfileBuilderPage() {
   useEffect(() => {
     if (initialData) {
       dispatch({ type: "replace", value: initialData });
+      setEditorShown(!initialData.cli);
     }
   }, [initialData, isLoading]);
 
@@ -959,19 +965,20 @@ export function ProfileBuilderPage() {
                   children: (
                     <TabContent>
                       {!isEqual(obj, defaultProfileBuilderData) &&
-                        (obj.cli ? (
+                        (!editorShown ? (
                           <div className="px-2">
                             <div className="mb-2">
                               The function is compiled and deployed with{" "}
                               <Link href="https://docs.jitsu.com/functions/sdk">
                                 <code>jitsu-cli</code>
                               </Link>{" "}
-                              and can't be edited in the UI.
+                              it is recommended to use the CLI to edit the function code.
                               <br />
-                              However, you can still run it with different events and see the results below. And you can
-                              view the code
+                              However, you can still run it with different events and see the results below.
                             </div>
-                            <CodeViewer code={obj.draft as string} />
+                            <button className="text-primary" onClick={() => setEditorShown(true)}>
+                              {"Enable code editor"}
+                            </button>
                           </div>
                         ) : (
                           <CodeEditor
@@ -1052,7 +1059,7 @@ export function ProfileBuilderPage() {
                 <div className="flex items-center gap-2">
                   {activePrimaryTab === "code" && (
                     <>
-                      {obj.status !== "incomplete" && activeSecondaryTab === "test" && (
+                      {obj.status !== "incomplete" && enabled && activeSecondaryTab === "test" && (
                         <Popover
                           content={
                             <UserIdDialog

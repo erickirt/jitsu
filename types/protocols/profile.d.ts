@@ -5,6 +5,12 @@ export type ProfileResult = {
   traits: Record<string, any>;
 };
 
+export type ProfileUser = {
+  id?: string;
+  anonymousId?: string;
+  traits: Record<string, any>;
+};
+
 export type ProfileBuilderContext = {
   profileBuilder: {
     id: string;
@@ -14,10 +20,6 @@ export type ProfileBuilderContext = {
 
 export type ProfileFunction = (
   events: Iterable<AnalyticsServerEvent>,
-  user: {
-    id?: string;
-    anonymousId?: string;
-    traits: Record<string, any>;
-  },
+  user: ProfileUser,
   context: FunctionContext & ProfileBuilderContext
 ) => Promise<ProfileResult | undefined>;

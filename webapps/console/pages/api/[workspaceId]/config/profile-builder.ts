@@ -11,7 +11,7 @@ const defaultProfileBuilderFunction = `export default async function(events, use
   const profile = {}
   profile.anonId = user.anonymousId
   return {
-    properties: profile
+    traits: profile
   }
 };`;
 

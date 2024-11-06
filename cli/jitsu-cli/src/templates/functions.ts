@@ -73,8 +73,8 @@ let profileCode = ({}: TemplateVars) => {
 import { ProfileFunction } from "@jitsu/protocols/profile";
 
 export const config = {
+    profileBuilderId: "", // Required: id of Profile Builder where this function will be used. Can be found in the Profile Builder Settings UI
     slug: "profile-example.ts", //id (uniq per workspace) used to identify function in Jitsu
-    profileBuilderId: "", // id of Profile Builder object where this function will be used
     description: ""
 };
 
@@ -84,10 +84,9 @@ const profileExample: ProfileFunction = async (events, user, context) => {
   for (const event of events) {
      profile.lastMessageDate = Math.max(new Date(event.timestamp).getTime(),profile.lastMessageDate??0)
   }
-  profile.traits = user.traits
   profile.anonId = user.anonymousId
   return {
-    properties: profile
+    traits: profile
   }
 };
 
