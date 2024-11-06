@@ -220,12 +220,10 @@ async function processUser(
     const metrics = { db_events: 0 } as any;
     cursor = await getUserEvents(mongo, config, userId, endTimestamp);
     metrics.db_find = ms.lapMs();
+    const userPromise = getProfileUser(mongo, config, userId, metrics);
     let count = 0;
     const userProvider = async () => {
-      const start = Date.now();
-      const u = await getProfileUser(mongo, config, userId);
-      metrics.db_user = Date.now() - start;
-      return u;
+      return await userPromise;
     };
 
     const eventsProvider = async () => {
@@ -240,7 +238,7 @@ async function processUser(
       }
     };
 
-    const result = await runChain(userId, funcChain, eventsProvider, userProvider);
+    const result = await runChain(profileBuilder, userId, funcChain, eventsProvider, userProvider);
     metrics.udf = ms.lapMs();
     metrics.db = metrics.db_events + metrics.db_user + metrics.db_find;
     if (result) {
@@ -329,11 +327,18 @@ async function getUserEvents(mongo: MongoClient, config: ProfilesConfig, userId:
     });
 }
 
-async function getProfileUser(mongo: MongoClient, config: ProfilesConfig, userId: string): Promise<ProfileUser> {
+async function getProfileUser(
+  mongo: MongoClient,
+  config: ProfilesConfig,
+  userId: string,
+  metrics: any
+): Promise<ProfileUser> {
+  const start = Date.now();
   const u = await mongo
     .db(config.eventsDatabase)
     .collection(config.traitsCollectionName)
     .findOne({ [profileIdColumn]: userId });
+  metrics.db_user = Date.now() - start;
   if (!u) {
     return {
       id: userId,

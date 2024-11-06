@@ -26,8 +26,8 @@ export type EventsProvider = () => Promise<AnalyticsServerEvent | undefined>;
 
 export type Profile = {
   profile_id: string;
-  traits?: Record<string, any>;
-  custom_properties: Record<string, any>;
+  traits: Record<string, any>;
+  version?: number;
   updated_at: Date;
 };
 
@@ -50,12 +50,14 @@ type UDFFunction = {
 };
 
 export const ProfileUDFWrapper = (
-  profileBulderId: string,
+  id: string,
+  version: number,
+  fullId: string,
   chainCtx: FunctionChainContext,
   funcCtx: FunctionContext,
   functions: UDFFunction[]
 ): UDFWrapperResult => {
-  log.atInfo().log(`[CON:${profileBulderId}] Compiling ${functions.length} UDF functions`);
+  log.atInfo().log(`[CON:${fullId}] Compiling ${functions.length} UDF functions`);
   const sw = stopwatch();
   let isolate: Isolate;
   let context: Context;
@@ -73,6 +75,8 @@ export const ProfileUDFWrapper = (
       new ExternalCopy({ env: funcCtx.props || {} }).copyInto({ release: true, transferIn: true })
     );
 
+    jail.setSync("_jitsu_pbId", id);
+    jail.setSync("_jitsu_pbVersion", version);
     jail.setSync("_jitsu_funcCtx", new ExternalCopy(funcCtx).copyInto({ release: true, transferIn: true }));
     jail.setSync(
       "_jitsu_log",
@@ -150,7 +154,7 @@ export const ProfileUDFWrapper = (
     for (let i = 0; i < functions.length; i++) {
       const sw = stopwatch();
       const f = functions[i];
-      log.atDebug().log(`[CON:${profileBulderId}]: [f:${f.id}] Compiling UDF function '${f.name}'`);
+      log.atDebug().log(`[CON:${fullId}]: [f:${f.id}] Compiling UDF function '${f.name}'`);
       const moduleName = "f_" + sanitize(f.name, "_") + "_" + f.id;
       const udf = isolate.compileModuleSync(f.code, { filename: moduleName + ".js" });
       udf.instantiateSync(context, (specifier: string) => {
@@ -162,9 +166,7 @@ export const ProfileUDFWrapper = (
         throw new Error(`import is not allowed: ${specifier}`);
       });
       udfModules[moduleName] = udf;
-      log
-        .atDebug()
-        .log(`[CON:${profileBulderId}] [f:${f.id}] UDF function '${f.name}' compiled in ${sw.elapsedPretty()}`);
+      log.atDebug().log(`[CON:${fullId}] [f:${f.id}] UDF function '${f.name}' compiled in ${sw.elapsedPretty()}`);
     }
 
     let code = chainWrapperCode.replace(
@@ -200,8 +202,8 @@ export const ProfileUDFWrapper = (
       throw new Error(`import is not allowed: ${specifier}`);
     });
     wrapper.evaluateSync();
-    const wrapperFunc = wrap(profileBulderId, isolate, context, wrapper);
-    log.atInfo().log(`[CON:${profileBulderId}] total UDF compile time: ${sw.elapsedPretty()}`);
+    const wrapperFunc = wrap(fullId, isolate, context, wrapper);
+    log.atInfo().log(`[CON:${fullId}] total UDF compile time: ${sw.elapsedPretty()}`);
     return wrapperFunc;
   } catch (e) {
     return {
@@ -219,10 +221,10 @@ export const ProfileUDFWrapper = (
             }
             context.release();
             isolate.dispose();
-            log.atInfo().log(`[${profileBulderId}] isolate closed`);
+            log.atInfo().log(`[${fullId}] isolate closed`);
           }
         } catch (e) {
-          log.atError().log(`[${profileBulderId}] Error while closing isolate: ${e}`);
+          log.atError().log(`[${fullId}] Error while closing isolate: ${e}`);
         }
       },
     };
@@ -361,8 +363,9 @@ export async function mergeUserTraits(events: AnalyticsServerEvent[], userId?: s
 }
 
 export type ProfileUDFTestRequest = {
-  functionId: string;
-  functionName: string;
+  id: string;
+  name: string;
+  version: number;
   code: string | UDFWrapperResult;
   events: AnalyticsServerEvent[];
   variables: any;
@@ -384,8 +387,9 @@ export type ProfileUDFTestResponse = {
 };
 
 export async function ProfileUDFTestRun({
-  functionId: id,
-  functionName: name,
+  id,
+  name,
+  version,
   code,
   store,
   events,
@@ -471,22 +475,22 @@ export async function ProfileUDFTestRun({
     d.setDate(d.getDate() + 1);
     const funcCtx: FunctionContext = {
       function: {
-        type: "udf",
-        id,
+        type: "profile",
+        id: id,
         debugTill: d,
       },
       props: variables,
     };
     if (typeof code === "string") {
-      wrapper = ProfileUDFWrapper(id, chainCtx, funcCtx, [{ id, name, code }]);
+      wrapper = ProfileUDFWrapper(id, version, id, chainCtx, funcCtx, [{ id, name, code }]);
     } else {
       wrapper = code;
     }
     const result = await wrapper?.userFunction(eventsProvider, userProvider, funcCtx);
     const profile = {
       profile_id: user.id,
-      traits: result?.traits,
-      custom_properties: result?.properties || {},
+      traits: { ...user.traits, ...result?.traits },
+      version: version,
       updated_at: new Date(),
     };
     return {
@@ -504,7 +508,7 @@ export async function ProfileUDFTestRun({
       },
       result: {
         profile_id: user.id,
-        custom_properties: {},
+        traits: {},
         updated_at: new Date(),
       },
       store: !realStore && store ? memoryStoreDump(store) : {},

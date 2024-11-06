@@ -2,8 +2,14 @@ import { FunctionContext } from "./functions";
 import { AnalyticsServerEvent } from "./analytics";
 
 export type ProfileResult = {
-  properties: Record<string, any>;
-  traits?: Record<string, any>;
+  traits: Record<string, any>;
+};
+
+export type ProfileBuilderContext = {
+  profileBuilder: {
+    id: string;
+    version: number;
+  };
 };
 
 export type ProfileFunction = (
@@ -13,5 +19,5 @@ export type ProfileFunction = (
     anonymousId?: string;
     traits: Record<string, any>;
   },
-  context: FunctionContext
+  context: FunctionContext & ProfileBuilderContext
 ) => Promise<ProfileResult | undefined>;

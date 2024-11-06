@@ -71,8 +71,8 @@ export function buildFunctionChain(
   };
   const funcCtx = {
     function: {
-      id: "profile-builder",
-      type: "udf",
+      id: profileBuilder.id,
+      type: "profile",
       debugTill: profileBuilder.debugTill ? new Date(profileBuilder.debugTill) : undefined,
     },
     props: profileBuilder.connectionOptions?.variables || {},
@@ -89,10 +89,12 @@ export function buildFunctionChain(
   if (!cached || !isEqual(cached?.hash, hash)) {
     log.atInfo().log(`UDF for connection ${pbLongId} changed (hash ${hash} != ${cached?.hash}). Reloading`);
     const wrapper = ProfileUDFWrapper(
+      profileBuilder.id,
+      profileBuilder.version,
       pbLongId,
       chainCtx,
       funcCtx,
-      udfFuncs.map(f => ({ id: f.id, name: f.name, code: f.code }))
+      udfFuncs.map(f => ({ id: profileBuilder.id, name: f.name, code: f.code }))
     );
     const oldWrapper = cached?.wrapper;
     if (oldWrapper) {
@@ -115,10 +117,12 @@ export function buildFunctionChain(
           if (cached.wrapper.isDisposed()) {
             log.atError().log(`UDF for pb:${pbLongId} VM was disposed. Reloading`);
             const wrapper = ProfileUDFWrapper(
+              profileBuilder.id,
+              profileBuilder.version,
               pbLongId,
               chainCtx,
               funcCtx,
-              udfFuncs.map(f => ({ id: f.id, name: f.name, code: f.code }))
+              udfFuncs.map(f => ({ id: profileBuilder.id, name: f.name, code: f.code }))
             );
             cached = { wrapper, hash };
             udfCache.set(pbLongId, cached);
@@ -149,6 +153,7 @@ export function buildFunctionChain(
 }
 
 export async function runChain(
+  profileBuilder: ProfileBuilder,
   profileId: string,
   chain: FuncChain,
   eventsProvider: EventsProvider,
@@ -160,8 +165,8 @@ export async function runChain(
     result = await f.exec(eventsProvider, userProvider, f.context);
     return {
       profile_id: profileId,
-      traits: result?.traits,
-      custom_properties: result?.properties || {},
+      traits: { ...(await userProvider()).traits, ...result?.traits },
+      version: profileBuilder.version,
       updated_at: new Date(),
     };
   } catch (err: any) {

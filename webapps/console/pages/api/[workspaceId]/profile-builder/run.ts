@@ -35,8 +35,9 @@ export const api: Api = {
         workspaceId: z.string(),
       }),
       body: z.object({
-        functionId: z.string(),
-        functionName: z.string().optional(),
+        id: z.string(),
+        name: z.string().optional(),
+        version: z.number().optional(),
         code: z.string(),
         events: z.array(z.any()),
         variables: z.any(),

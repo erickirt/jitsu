@@ -129,16 +129,16 @@ const exports: Export[] = [
               name: "profiles",
               fields: [
                 {
-                  name: "user_id",
+                  name: "profile_id",
                   type: 4, //string. See bulker's DataType
                 },
                 {
                   name: "traits",
-                  type: 6, // json
+                  type: 6, //json
                 },
                 {
-                  name: "custom_properties",
-                  type: 6, // json
+                  name: "version",
+                  type: 2, //int. See bulker's DataType
                 },
                 {
                   name: "updated_at",
@@ -158,7 +158,7 @@ const exports: Export[] = [
                   frequency: 1,
                   ...omit(connectionOptions, "tableName", "profileWindow", "variables"),
                   deduplicate: true,
-                  primaryKey: "user_id",
+                  primaryKey: "profile_id",
                   schema: JSON.stringify(schema),
                 },
                 updatedAt: dateMax(updatedAt, destination.updatedAt),

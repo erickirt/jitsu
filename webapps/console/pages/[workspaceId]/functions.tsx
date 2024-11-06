@@ -40,6 +40,20 @@ export const FunctionTitle: React.FC<{
   );
 };
 
+export const ProfileBuilderTitle: React.FC<{
+  f?: FunctionConfig;
+  size?: "small" | "default" | "large";
+  title?: (d?: FunctionConfig) => string | React.ReactNode;
+}> = ({ f, title = d => d?.name ?? "unknown function", size = "default" }) => {
+  return (
+    <ObjectTitle
+      icon={f ? <FunctionSquare className={"text-text w-full h-full"} /> : undefined}
+      size={size}
+      title={title ? title(f) : "unknown function"}
+    />
+  );
+};
+
 const FunctionsList: React.FC<{}> = () => {
   const router = useRouter();
   const workspace = useWorkspace();

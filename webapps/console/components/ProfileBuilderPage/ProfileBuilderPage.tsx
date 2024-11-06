@@ -773,8 +773,9 @@ export function ProfileBuilderPage() {
     let body = {};
     try {
       body = {
-        functionId: obj.functionId,
-        functionName: "Profile Builder",
+        id: obj.id,
+        name: obj.name,
+        version: obj.version,
         code: obj.draft,
         events: JSON.parse(testData),
         variables: obj.settings.variables,
