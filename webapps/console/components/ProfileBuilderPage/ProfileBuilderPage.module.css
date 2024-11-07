@@ -9,3 +9,7 @@
 .settingsTable :global(.ant-tabs-content) {
   height: 100% !important;
 }
+
+.splitterFix :global(.ant-splitter-bar-dragger::before) {
+  background-color: white !important;
+}

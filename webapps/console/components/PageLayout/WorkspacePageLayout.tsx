@@ -66,6 +66,7 @@ import { MenuItemType } from "antd/lib/menu/interface";
 
 export type PageLayoutProps = {
   fullscreen?: boolean;
+  screen?: boolean;
   onClose?: () => void;
   noPadding?: boolean;
   className?: string;
@@ -721,11 +722,12 @@ export const VerticalSection: React.FC<PropsWithChildren<{ className?: string }>
 };
 
 export const WidthControl: React.FC<PropsWithChildren<{ className?: string }>> = ({ children, className }) => {
-  return <div className={classNames(className, "flex-grow", styles.widthControl)}>{children}</div>;
+  return <div className={classNames(className, "flex-grow overflow-auto", styles.widthControl)}>{children}</div>;
 };
 
 export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> = ({
   className,
+  screen,
   fullscreen,
   noPadding,
   onClose,
@@ -769,9 +771,9 @@ export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> =
     </VerticalSection>
   );
   return (
-    <div className={`flex flex-col ${className}`}>
+    <div className={`flex flex-col ${screen ? "h-screen" : ""} ${className}`}>
       {!doNotBlockIfUsageExceeded && <BillingBlockingDialog />}
-      <div className={`flex-auto ${fullscreen ? "overflow-hidden" : ""} flex flex-col`}>
+      <div className={`flex-auto ${fullscreen || screen ? "overflow-hidden" : ""} flex flex-col`}>
         {!workspace.slug && (
           <WorkspaceSettingsModal
             onboarding={true}

@@ -41,8 +41,6 @@ export const FunctionResult: React.FC<{ resultType: "ok" | "drop" | "error"; res
       )}
       {resultType === "ok" && (
         <CodeEditor
-          width={"99.9%"}
-          height={"99.9%"}
           language={typeof result !== "string" ? "json" : "text"}
           value={typeof result !== "string" ? JSON.stringify(result, null, 2) : result}
           onChange={s => {}}

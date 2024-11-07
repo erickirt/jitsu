@@ -8,6 +8,7 @@ import {
   Input,
   Popover,
   Progress,
+  Splitter,
   Statistic,
   Tabs,
   Tag,
@@ -404,8 +405,11 @@ const BuildProgress: React.FC<{
 
 const TabContent: React.FC<PropsWithChildrenClassname> = ({ children, className }) => {
   return (
-    <div className={`border-l border-r border-b px-2 py-4 flex ${className ?? ""}`} style={{ minHeight: "100%" }}>
-      <div className="flex-auto">{children}</div>
+    <div
+      className={`h-full flex flex-col overflow-auto border-l border-r border-b px-2 py-4 ${className ?? ""}`}
+      style={{ minHeight: "100%" }}
+    >
+      {children}
     </div>
   );
 };
@@ -860,8 +864,8 @@ export function ProfileBuilderPage() {
   }, [obj.functionId, obj.draft, obj.settings.variables, testData, workspace.id, activeSecondaryTab]);
 
   return (
-    <WorkspacePageLayout noPadding={true}>
-      <div className="mx-12 relative" style={{ paddingTop: `${verticalPaddingPx}px` }}>
+    <WorkspacePageLayout screen={true} noPadding={true}>
+      <div className="mx-12 relative flex flex-col h-full pb-4" style={{ paddingTop: `${verticalPaddingPx}px` }}>
         <Overlay
           visible={isLoading}
           className="bg-white bg-opacity-40 backdrop-blur-xs flex flex-col gap-4  items-center justify-center text-lg text-text"
@@ -885,11 +889,12 @@ export function ProfileBuilderPage() {
           }
           pbEnabled={enabled}
         />
-        <VerticalSpacer className="flex flex-col">
-          <div style={{ height: "400px" }}>
+        <Splitter layout="vertical" className={`flex-auto flex-grow overflow-auto gap-1 ${styles.splitterFix}`}>
+          <Splitter.Panel className={"flex flex-col"}>
             <Tabs
               className={classNames(styles.tabsHeightFix)}
               key={"code"}
+              rootClassName={"flex-auto"}
               onChange={setActivePrimaryTab}
               tabBarExtraContent={
                 <div className="flex items-center gap-2">
@@ -984,7 +989,6 @@ export function ProfileBuilderPage() {
                           <CodeEditor
                             value={obj.draft || ""}
                             language={"javascript"}
-                            height={"99.9%"}
                             onChange={c => dispatch({ type: "draft", value: c })}
                           />
                         ))}
@@ -1050,57 +1054,55 @@ export function ProfileBuilderPage() {
                 },
               ]}
             />
-          </div>
-          <div className={`grow mt-2`} style={{ minHeight: 200 }}>
+          </Splitter.Panel>
+          <Splitter.Panel>
             <Tabs
               className={classNames(styles.tabsHeightFix)}
               onChange={handleTabChange}
               tabBarExtraContent={
                 <div className="flex items-center gap-2">
-                  {activePrimaryTab === "code" && (
-                    <>
-                      {obj.status !== "incomplete" && enabled && activeSecondaryTab === "test" && (
-                        <Popover
-                          content={
-                            <UserIdDialog
-                              profileBuilderId={obj.id!}
-                              setter={setTestData}
-                              hideCallback={() => {
-                                setUserIdDialogOpen(false);
-                              }}
+                  <>
+                    {obj.status !== "incomplete" && enabled && activeSecondaryTab === "test" && (
+                      <Popover
+                        content={
+                          <UserIdDialog
+                            profileBuilderId={obj.id!}
+                            setter={setTestData}
+                            hideCallback={() => {
+                              setUserIdDialogOpen(false);
+                            }}
+                          />
+                        }
+                        title="Enter UserId"
+                        open={userIdDialogOpen}
+                        onOpenChange={(newOpen: boolean) => {
+                          setUserIdDialogOpen(newOpen);
+                        }}
+                        trigger="click"
+                      >
+                        <Button type="text" disabled={isLoading || !!globalError}>
+                          <ButtonLabel icon={<SearchCode className="w-4 h-4" />}>Load Test Data</ButtonLabel>
+                        </Button>
+                      </Popover>
+                    )}
+                    <Button onClick={runFunction} type="text" disabled={isLoading || !!globalError}>
+                      <ButtonLabel
+                        icon={
+                          running ? (
+                            <RefreshCw className={"w-3.5 h-3.5 animate-spin"} />
+                          ) : (
+                            <Play
+                              className="w-3.5 h-3.5"
+                              fill={isLoading || !!globalError ? "gray" : "green"}
+                              stroke={isLoading || !!globalError ? "gray" : "green"}
                             />
-                          }
-                          title="Enter UserId"
-                          open={userIdDialogOpen}
-                          onOpenChange={(newOpen: boolean) => {
-                            setUserIdDialogOpen(newOpen);
-                          }}
-                          trigger="click"
-                        >
-                          <Button type="text" disabled={isLoading || !!globalError}>
-                            <ButtonLabel icon={<SearchCode className="w-4 h-4" />}>Load Test Data</ButtonLabel>
-                          </Button>
-                        </Popover>
-                      )}
-                      <Button onClick={runFunction} type="text" disabled={isLoading || !!globalError}>
-                        <ButtonLabel
-                          icon={
-                            running ? (
-                              <RefreshCw className={"w-3.5 h-3.5 animate-spin"} />
-                            ) : (
-                              <Play
-                                className="w-3.5 h-3.5"
-                                fill={isLoading || !!globalError ? "gray" : "green"}
-                                stroke={isLoading || !!globalError ? "gray" : "green"}
-                              />
-                            )
-                          }
-                        >
-                          Run
-                        </ButtonLabel>
-                      </Button>
-                    </>
-                  )}
+                          )
+                        }
+                      >
+                        Run
+                      </ButtonLabel>
+                    </Button>
+                  </>
                 </div>
               }
               type={"card"}
@@ -1119,7 +1121,6 @@ export function ProfileBuilderPage() {
                       <CodeEditor
                         monacoOptions={{ folding: true }}
                         foldLevel={3}
-                        height={"99.9%"}
                         value={testData}
                         language="javascript"
                         onChange={setTestData}
@@ -1159,8 +1160,8 @@ export function ProfileBuilderPage() {
                 },
               ]}
             />
-          </div>
-        </VerticalSpacer>
+          </Splitter.Panel>
+        </Splitter>
       </div>
     </WorkspacePageLayout>
   );

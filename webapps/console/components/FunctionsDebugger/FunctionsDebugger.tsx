@@ -313,7 +313,6 @@ export const FunctionsDebugger: React.FC<FunctionsDebuggerProps> = props => {
               ) : (
                 <div className={`${styles.editor} flex-auto pl-2 bg-backgroundLight`}>
                   <CodeEditor
-                    width={"99.9%"}
                     language={"javascript"}
                     value={obj.code ?? ""}
                     ctrlEnterCallback={runFunction}
@@ -353,7 +352,6 @@ declare class RetryError extends Error {
                 </div>
                 <div className={`${styles.editor} flex-auto bg-backgroundLight w-full pl-2`}>
                   <CodeEditor
-                    width={"99.9%"}
                     language={"json"}
                     value={event}
                     onChange={setEvent}

@@ -22,7 +22,7 @@ type CodeEditorProps = {
 export const CodeEditor: React.FC<CodeEditorProps> = ({
   language,
   height,
-  width = "100%",
+  width,
   onChange,
   value,
   ctrlEnterCallback,
@@ -108,6 +108,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         onMount={handleEditorDidMount}
         className={styles.editor}
         options={{
+          fixedOverflowWidgets: true,
           automaticLayout: true,
           glyphMargin: false,
           scrollBeyondLastLine: false,
