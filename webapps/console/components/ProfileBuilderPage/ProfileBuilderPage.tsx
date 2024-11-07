@@ -1,5 +1,5 @@
 import { WorkspacePageLayout } from "../../components/PageLayout/WorkspacePageLayout";
-import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import React, { useCallback, useEffect, useReducer, useState } from "react";
 import {
   Badge,
   Button,
@@ -147,7 +147,7 @@ const Header: React.FC<{ status: ProfileBuilderStatus | "loading"; pbEnabled: bo
   );
 };
 
-function Dot() {
+export function Dot() {
   return (
     <svg
       className={"w-1.5 h-1.5"}
@@ -409,33 +409,6 @@ const TabContent: React.FC<PropsWithChildrenClassname> = ({ children, className 
       className={`h-full flex flex-col overflow-auto border-l border-r border-b px-2 py-4 ${className ?? ""}`}
       style={{ minHeight: "100%" }}
     >
-      {children}
-    </div>
-  );
-};
-
-const verticalPaddingPx = 30;
-
-const VerticalSpacer: React.FC<PropsWithChildrenClassname> = ({ children, className }) => {
-  const divRef = useRef<HTMLDivElement>(null); // Ref to access the div element
-  const [height, setHeight] = useState("auto");
-
-  useEffect(() => {
-    const updateHeight = () => {
-      if (divRef.current) {
-        const top = divRef.current.getBoundingClientRect().top;
-        const availableHeight = window.innerHeight - top - verticalPaddingPx;
-        setHeight(`${availableHeight}px`);
-      }
-    };
-
-    updateHeight();
-    window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
-  }, []);
-
-  return (
-    <div ref={divRef} className={className} style={{ height }}>
       {children}
     </div>
   );
@@ -864,8 +837,8 @@ export function ProfileBuilderPage() {
   }, [obj.functionId, obj.draft, obj.settings.variables, testData, workspace.id, activeSecondaryTab]);
 
   return (
-    <WorkspacePageLayout screen={true} noPadding={true}>
-      <div className="mx-12 relative flex flex-col h-full pb-4" style={{ paddingTop: `${verticalPaddingPx}px` }}>
+    <WorkspacePageLayout screen={true} contentClassName={"!py-6"}>
+      <div className="relative flex flex-col h-full">
         <Overlay
           visible={isLoading}
           className="bg-white bg-opacity-40 backdrop-blur-xs flex flex-col gap-4  items-center justify-center text-lg text-text"
@@ -1119,7 +1092,7 @@ export function ProfileBuilderPage() {
                   children: (
                     <TabContent>
                       <CodeEditor
-                        monacoOptions={{ folding: true }}
+                        monacoOptions={{ folding: true, lineDecorationsWidth: 8 }}
                         foldLevel={3}
                         value={testData}
                         language="javascript"

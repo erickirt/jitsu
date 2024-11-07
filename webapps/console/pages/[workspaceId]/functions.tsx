@@ -14,33 +14,15 @@ const log = getLog("functions");
 
 const Functions: React.FC<any> = () => {
   const router = useRouter();
+  const editor = router.pathname === "/[workspaceId]/functions" && typeof router.query["id"] !== "undefined";
   return (
-    <WorkspacePageLayout
-      className={`${
-        router.pathname === "/[workspaceId]/functions" && typeof router.query["id"] !== "undefined" ? "h-screen" : ""
-      }`}
-      fullscreen={router.pathname === "/[workspaceId]/functions" && typeof router.query["id"] !== "undefined"}
-    >
+    <WorkspacePageLayout contentClassName={editor ? "!py-6" : ""} screen={editor}>
       <FunctionsList />
     </WorkspacePageLayout>
   );
 };
 
 export const FunctionTitle: React.FC<{
-  f?: FunctionConfig;
-  size?: "small" | "default" | "large";
-  title?: (d?: FunctionConfig) => string | React.ReactNode;
-}> = ({ f, title = d => d?.name ?? "unknown function", size = "default" }) => {
-  return (
-    <ObjectTitle
-      icon={f ? <FunctionSquare className={"text-text w-full h-full"} /> : undefined}
-      size={size}
-      title={title ? title(f) : "unknown function"}
-    />
-  );
-};
-
-export const ProfileBuilderTitle: React.FC<{
   f?: FunctionConfig;
   size?: "small" | "default" | "large";
   title?: (d?: FunctionConfig) => string | React.ReactNode;

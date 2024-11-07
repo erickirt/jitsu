@@ -68,7 +68,7 @@ export type PageLayoutProps = {
   fullscreen?: boolean;
   screen?: boolean;
   onClose?: () => void;
-  noPadding?: boolean;
+  contentClassName?: string;
   className?: string;
   doNotBlockIfUsageExceeded?: boolean;
 };
@@ -729,7 +729,7 @@ export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> =
   className,
   screen,
   fullscreen,
-  noPadding,
+  contentClassName,
   onClose,
   children,
   doNotBlockIfUsageExceeded,
@@ -808,7 +808,7 @@ export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> =
         ) : (
           pHeader
         )}
-        <VerticalSection className={`flex-auto overflow-auto ${fullscreen ? "py-2" : noPadding ? "" : "py-12"}`}>
+        <VerticalSection className={`flex-auto overflow-auto ${fullscreen ? "py-2" : "py-12"} ${contentClassName}`}>
           {fullscreen && (
             <button
               className="absolute right-0 top-0 mt-1 mr-2 hover:bg-neutral-100 p-1.5 rounded-lg flex justify-center items-center z-50"
@@ -817,7 +817,7 @@ export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> =
               <X className="w-8 h-8" />
             </button>
           )}
-          <WidthControl className={noPadding ? "" : "px-8"}>{children}</WidthControl>
+          <WidthControl className={"px-8"}>{children}</WidthControl>
         </VerticalSection>
       </div>
     </div>

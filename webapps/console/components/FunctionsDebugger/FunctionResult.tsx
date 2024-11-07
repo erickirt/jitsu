@@ -11,7 +11,7 @@ export const FunctionResult: React.FC<{ resultType: "ok" | "drop" | "error"; res
   className,
 }) => {
   return (
-    <div className={`${className ?? ""} flex-auto h-full bg-backgroundLight w-full pl-2`}>
+    <div className={`${className ?? ""} flex-auto h-full bg-backgroundLight w-full`}>
       {resultType === "error" && (
         <div className={"font-mono p-2 text-xs"}>
           <Htmlizer>
