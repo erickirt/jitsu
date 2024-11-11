@@ -20,6 +20,7 @@ import { Expandable } from "../Expandable/Expandable";
 import { useStoreReload } from "../../lib/store";
 import { DestinationSelector } from "../Selectors/DestinationSelector";
 import { SourceSelector } from "../Selectors/SourceSelector";
+import { FunctionVariables } from "../FunctionsDebugger/FunctionVariables";
 
 const log = getLog("ConnectionEditorPage");
 
@@ -678,7 +679,6 @@ function ConnectionEditor({
         <FieldListEditorLayout
           groups={{
             Advanced: { expandable: true },
-            Functions: { expandable: true },
           }}
           items={configItems}
         />
@@ -697,6 +697,23 @@ function ConnectionEditor({
             onChange={enabledFunctions => {
               updateOptions({ functions: enabledFunctions.map(f => ({ functionId: `udf.${f.id}` })) });
             }}
+          />
+        </Expandable>
+        <Expandable
+          initiallyExpanded={!!connectionOptions.functions?.length}
+          title={<h2 className="font-bold my-4 text-xl text-textDark">Environment Variables</h2>}
+          hideArrow={false}
+          caretSize="1.5em"
+          contentLeftPadding={false}
+        >
+          <div className={"text-textLight px-1 mb-2"}>
+            Provided variables can be used inside functions via <code>process.env</code> object. For example:{" "}
+            <code>process.env.DEBUG</code>
+          </div>
+          <FunctionVariables
+            className={"!px-0"}
+            value={connectionOptions.functionsEnv || {}}
+            onChange={functionsEnv => updateOptions({ functionsEnv })}
           />
         </Expandable>
       </div>

@@ -107,7 +107,7 @@ export function buildFunctionChain(
   }
   udfCache.ttl(pbLongId, udfTTL);
 
-  const udfPipelineFunc = (chainCtx: FunctionChainContext, funcCtx: FunctionContext): ProfileFunctionWrapper => {
+  const udfPipelineFunc = (chainCtx: FunctionChainContext): ProfileFunctionWrapper => {
     return async (events, user, ctx) => {
       try {
         return await cached.wrapper.userFunction(events, user, ctx);
@@ -142,7 +142,7 @@ export function buildFunctionChain(
     {
       id: "udf.PIPELINE",
       context: funcCtx,
-      exec: udfPipelineFunc(chainCtx, funcCtx),
+      exec: udfPipelineFunc(chainCtx),
     },
   ];
 

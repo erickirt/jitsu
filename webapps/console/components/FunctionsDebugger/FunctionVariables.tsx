@@ -11,7 +11,7 @@ const Var: React.FC<{
   const [editing, setEditing] = React.useState(false);
 
   return (
-    <div className={"flex px-4 gap-2"}>
+    <div className={"flex gap-2"}>
       <Input
         value={name}
         className={"flex-auto h-10 p-2 basis-1/2 border "}
@@ -85,9 +85,9 @@ export const FunctionVariables: React.FC<{
     <div
       className={`${
         className ?? ""
-      } flex-auto flex flex-col pt-2 gap-2 place-content-start flex-nowrap pb-4 bg-backgroundLight w-full h-full`}
+      } flex-auto px-4 flex flex-col pt-2 gap-2 place-content-start flex-nowrap pb-4 bg-backgroundLight w-full h-full`}
     >
-      <div className={"flex px-4 gap-2"}>
+      <div className={"flex gap-2"}>
         <div className={"flex-auto text-textLight basis-1/2 px-0.5 text-xs"}>Name</div>
         <div className={"flex-auto text-textLight basis-1/2 px-0.5 text-xs"}>Value</div>
         <div className={"w-16 flex-shrink-0"}></div>
@@ -95,7 +95,7 @@ export const FunctionVariables: React.FC<{
       {array.map(([n, v], index) => {
         return <Var key={index} name={n} value={v} onChange={(nm, vl) => change(index, nm, vl)} />;
       })}
-      <div className="flex justify-start px-4">
+      <div className="flex justify-start">
         <Button
           icon={<CirclePlusIcon className={"w-4 h-4"} />}
           onClick={() => setArray([...array, ["", ""]])}

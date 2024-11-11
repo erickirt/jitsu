@@ -50,7 +50,7 @@ export const config = {
     description: ""
 };
 
-const helloWorldFunction: JitsuFunction<AnalyticsServerEvent, any> = async (event, { log, fetch, props, store, geo, ...meta }) => {
+const helloWorldFunction: JitsuFunction<AnalyticsServerEvent, any> = async (event, { log, fetch, store, geo, ...meta }) => {
     //output "Hello World!" to logs and return unchanged event
     log.info("Hello World!");
     return event
