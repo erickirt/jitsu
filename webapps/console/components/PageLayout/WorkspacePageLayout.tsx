@@ -715,7 +715,7 @@ const log = getLog("WorkspacePageLayout");
 
 export const VerticalSection: React.FC<PropsWithChildren<{ className?: string }>> = ({ children, className }) => {
   return (
-    <div style={{ minWidth: minWidth }} className={classNames("w-full flex lg:justify-center", className)}>
+    <div style={{ minWidth: minWidth }} className={classNames("w-full flex flex-col lg:items-center", className)}>
       {children}
     </div>
   );
