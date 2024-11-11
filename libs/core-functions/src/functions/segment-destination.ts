@@ -2,6 +2,7 @@ import { JitsuFunction } from "@jitsu/protocols/functions";
 import { RetryError } from "@jitsu/functions-lib";
 import type { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import { SegmentCredentials } from "../meta";
+import omit from "lodash/omit";
 
 export type HttpRequest = {
   method?: string;
@@ -26,7 +27,8 @@ const SegmentDestination: JitsuFunction<AnalyticsServerEvent, SegmentCredentials
     apiBase = apiBase.substring(0, apiBase.length - 1);
   }
 
-  const eventWithoutWriteKey = { ...event, writeKey: null };
+  // Jitsu Stream WriteKey clashes with Segment Authentication
+  const eventWithoutWriteKey = omit(event, "writeKey");
 
   let httpRequest: HttpRequest = {
     url: `${apiBase}/${event.type}`,
