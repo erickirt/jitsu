@@ -25,9 +25,12 @@ const SegmentDestination: JitsuFunction<AnalyticsServerEvent, SegmentCredentials
   if (apiBase.charAt(apiBase.length - 1) === "/") {
     apiBase = apiBase.substring(0, apiBase.length - 1);
   }
+
+  const eventWithoutWriteKey = { ...event, writeKey: null };
+
   let httpRequest: HttpRequest = {
     url: `${apiBase}/${event.type}`,
-    payload: event,
+    payload: eventWithoutWriteKey,
     method: "POST",
     headers: {
       "Content-type": "application/json",
