@@ -695,7 +695,12 @@ function ConnectionEditor({
             destination={destinations.find(d => d.id === dstId) || destinations[0]}
             selectedFunctions={connectionOptions.functions}
             onChange={enabledFunctions => {
-              updateOptions({ functions: enabledFunctions.map(f => ({ functionId: `udf.${f.id}` })) });
+              const nonUdfs = (connectionOptions.functions ?? []).filter(f => !f.functionId.startsWith("udf."));
+              const enabledF = enabledFunctions.map(f => ({ functionId: `udf.${f.id}` }));
+              if (nonUdfs.length > 0) {
+                enabledF.push(...nonUdfs);
+              }
+              updateOptions({ functions: enabledF });
             }}
           />
         </Expandable>
