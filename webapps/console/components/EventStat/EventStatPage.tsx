@@ -265,7 +265,7 @@ export const EventStatPage: React.FC = () => {
   );
   return (
     <div>
-      <h1 className="text-3xl  mt-4 mb-4">Workspace Statistics</h1>
+      <h1 className="text-3xl mb-6">Workspace Statistics</h1>
       <div className="border border-textDisabled px-4 py-6 rounded-lg">
         <section className="flex justify-between items-start">
           <div className="flex items-center justify-end gap-2 w-full">

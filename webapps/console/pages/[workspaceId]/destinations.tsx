@@ -819,7 +819,7 @@ const DestinationsList: React.FC<{ type?: string }> = ({ type }) => {
         />
       </Modal>
       {!router.query.id && appConfig.ee?.available && (
-        <div className="my-6">
+        <div className="mb-6">
           <ProvisionedDestinations refresh={refresh} />
         </div>
       )}

@@ -669,7 +669,7 @@ function ConnectionEditor({
   // }
   return (
     <div className="max-w-5xl grow">
-      <div className="flex justify-between pt-6 pb-0 mb-0 items-center">
+      <div className="flex justify-between pb-0 mb-0 items-center">
         <h1 className="text-3xl">{(existingLink ? "Edit" : "Create") + " connection"}</h1>
         <JitsuButton icon={<ChevronLeft className="w-6 h-6" />} type="link" size="small" onClick={() => router.back()}>
           Back

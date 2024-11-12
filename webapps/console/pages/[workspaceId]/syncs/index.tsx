@@ -452,7 +452,7 @@ function Syncs(props: RemoteEntitiesProps) {
   }
   return (
     <div>
-      <div className="flex justify-between py-6">
+      <div className="flex justify-between pb-6">
         <div className="flex items-center">
           <div className="text-3xl">Syncs</div>
           {destinationFilter && (

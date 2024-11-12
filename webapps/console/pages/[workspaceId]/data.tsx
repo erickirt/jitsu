@@ -10,7 +10,7 @@ const DataViewPage: React.FC<any> = () => {
   return (
     <WorkspacePageLayout>
       <div className="flex flex-col">
-        <div className="flex mt-4 mb-4">
+        <div className="flex mb-4">
           <h1 className="text-3xl">Live Events</h1>
         </div>
         <div className="w-full">

@@ -10,7 +10,7 @@ const BillingPage: React.FC<{}> = () => {
   return (
     <WorkspacePageLayout doNotBlockIfUsageExceeded={true}>
       <div>
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-6">
           <h1 className="text-4xl">Plan & Billing</h1>
           <WJitsuButton href={`/settings`} size="large" type="primary" icon={<ChevronLeft className="w-5 h-5" />}>
             Back to settings

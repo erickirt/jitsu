@@ -126,7 +126,7 @@ export const BillingDetails: React.FC = () => {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl mt-4 mb-4">Billing Details</h1>
+        <h1 className="text-3xl mb-6">Billing Details</h1>
         <div>
           <Button href={`/${workspace.slugOrId}/settings/billing`} type="primary" size="large">
             <ButtonLabel icon={<ArrowLeft className="ant-icon" />}>Back to billing page</ButtonLabel>

@@ -85,8 +85,8 @@ function TaskLogs() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="mt-4 mb-4 flex flex-row justify-between">
-        <h1 className="text-3xl">Sync Tasks</h1>
+      <div className="mb-4 flex flex-row justify-between">
+        <h1 className="text-3xl">Sync Logs</h1>
         <div>
           <JitsuButton
             icon={<FileDown className="w-6 h-6" />}

@@ -841,7 +841,7 @@ function Tasks() {
 const TasksPage = () => {
   return (
     <WorkspacePageLayout>
-      <div className="flex mt-4 mb-4">
+      <div className="flex mb-4">
         <h1 className="text-3xl">Sync Tasks</h1>
       </div>
       <Tasks />
