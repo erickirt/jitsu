@@ -233,10 +233,10 @@ const WorkspaceSettingsComponent: React.FC<any> = () => {
   const config = useAppConfig();
   const workspace = useWorkspace();
   return (
-    <div className="flex justify-center pt-6">
+    <div className="flex justify-center">
       <div className="w-full max-w-4xl grow">
         {config.billingEnabled && (
-          <div className="px-8 py-6 border border-textDisabled rounded-lg mt-12 mb-12">
+          <div className="px-8 py-6 border border-textDisabled rounded-lg mt-6 mb-12">
             <div className="text-lg font-bold pb-6">Plans & Billing</div>
             <div className="flex justify-center">
               <WJitsuButton
