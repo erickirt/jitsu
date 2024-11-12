@@ -115,11 +115,13 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
     //   );
     for (const invoice of customerInvoices) {
       if (!invoice.lines.data.length) {
-        log.atWarn().log(`No lines found for invoice ${invoice.id}`);
+        log.atWarn().log(`No lines found for invoice of ${invoice.customer} ${invoice.id}`);
         continue;
       }
       if (!getSubscriptionInvoiceLine(invoice)) {
-        log.atInfo().log(`Not a subscription invoice - skipping: ${stripeLink("invoices", invoice.id)}`);
+        log
+          .atInfo()
+          .log(`Not a subscription invoice of ${invoice.customer} - skipping: ${stripeLink("invoices", invoice.id)}`);
         continue;
       }
       const start = getInvoiceStartDate(invoice);
@@ -143,21 +145,31 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
           log
             .atWarn()
             .log(
-              `No subscription data (nor manual, neither automatic) found for invoice ${stripeLink(
-                "invoices",
-                invoice.id
-              )}, skipping`
+              `No subscription data (nor manual, neither automatic) found for invoice of ${
+                invoice.customer
+              } ${stripeLink("invoices", invoice.id)}, skipping`
             );
           continue;
         }
       } else {
         const plan = availableProducts.find(p => p.id === product);
         if (!plan) {
-          log.atWarn().log(`No plan found for ${product} from invoice ${stripeLink("invoices", invoice.id)}`);
+          log
+            .atWarn()
+            .log(
+              `No plan found for ${product} from invoice of ${invoice.customer} ${stripeLink("invoices", invoice.id)}`
+            );
           continue;
         }
         if (!plan?.metadata?.plan_data) {
-          log.atWarn().log(`No plan data found for ${product} from invoice ${stripeLink("invoices", invoice.id)}`);
+          log
+            .atWarn()
+            .log(
+              `No plan data found for ${product} from invoice of ${invoice.customer} ${stripeLink(
+                "invoices",
+                invoice.id
+              )}`
+            );
           continue;
         }
         planData = JSON.parse(plan.metadata.plan_data);

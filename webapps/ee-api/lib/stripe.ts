@@ -386,11 +386,7 @@ export async function listAllInvoices() {
 //for multi-line invoices - try our best to find the line that relates to subscription,
 //so we can get a subscription period
 export function getSubscriptionInvoiceLine(invoice: Stripe.Invoice): Stripe.InvoiceLineItem | undefined {
-  const relevantLines = invoice.lines.data
-    .filter(l => !!l.period.start && !!l.period.end)
-    .filter(l => l.description && l.description.toLowerCase().indexOf("overage") < 0)
-    .filter(l => l.description && l.description.toLowerCase().indexOf("consulting") < 0)
-    .filter(l => l.description && l.description.toLowerCase().indexOf("custom") < 0);
+  const relevantLines = invoice.lines.data.filter(l => !!l.period.start && !!l.period.end).filter(l => l.subscription);
   if (relevantLines.length >= 1) {
     if (relevantLines.length > 1) {
       getLog()
