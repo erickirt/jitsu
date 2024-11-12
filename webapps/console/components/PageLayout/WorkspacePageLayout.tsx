@@ -581,7 +581,7 @@ function PageHeader() {
         { title: "All Logs", path: "/syncs/tasks", icon: <ScrollText className="w-full h-full" /> },
       ],
     },
-    {
+    appConfig.ee?.available && {
       title: "Customers",
       icon: <User className="w-full h-full" />,
       items: [{ title: "Profile Builder", path: "/profile-builder", icon: <UserRoundPen className="w-full h-full" /> }],
