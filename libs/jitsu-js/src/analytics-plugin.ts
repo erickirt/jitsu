@@ -415,7 +415,7 @@ function adjustPayload(
   const query = parsedUrl ? parseQuery(parsedUrl.search) : {};
   const properties = payload.properties || {};
 
-  if (payload.type === "page" && url) {
+  if (payload.type === "page" && (properties.url || url)) {
     const targetUrl = properties.url || url;
     properties.url = targetUrl.replace(hashRegex, "");
     properties.path = fixPath(urlPath(targetUrl));

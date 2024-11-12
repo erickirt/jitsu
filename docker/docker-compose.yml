@@ -183,8 +183,37 @@ services:
         condition: service_healthy
       bulker:
         condition: service_healthy
-  #    ports:
-  #      - "3401:3401"
+
+  profiles:
+    tty: true
+    image: jitsucom/profiles:${DOCKER_TAG:-latest}
+    platform: linux/amd64
+    restart: "unless-stopped"
+    environment:
+      ROTOR_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-default}
+      BULKER_URL: "http://bulker:3042"
+      BULKER_AUTH_KEY: ${BULKER_TOKEN:-default}
+      #      REDIS_URL: "redis://default:${REDIS_PASSWORD:-default}@redis:6379"
+      REPOSITORY_BASE_URL: "http://console:3000/api/admin/export/"
+      REPOSITORY_AUTH_TOKEN: "service-admin-account:${CONSOLE_TOKEN:-default}"
+      REPOSITORY_CACHE_DIR: "/tmp/cache"
+      MONGODB_URL: "mongodb://default:${MONGO_PASSWORD:-default}@mongo/"
+      CLICKHOUSE_HOST: "clickhouse:8123"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
+      CLICKHOUSE_DATABASE: "newjitsu_metrics"
+      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD:-default}@postgres:5432/postgres?schema=newjitsu"
+      UDF_TIMEOUT_MS: "300000"
+      CONCURRENCY: "10"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://profiles:3402/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+    depends_on:
+      console:
+        condition: service_healthy
+      bulker:
+        condition: service_healthy
 
   ingest:
     tty: true
