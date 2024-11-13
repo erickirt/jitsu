@@ -3,7 +3,7 @@ import utc from "dayjs/plugin/utc";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { EventsLogRecord } from "../../lib/server/events-log";
 import { ColumnsType } from "antd/es/table";
-import { Alert, Collapse, DatePicker, Select, Spin, Table, Tag, Tooltip } from "antd";
+import { Alert, Collapse, DatePicker, Input, Select, Table, Tag, Tooltip } from "antd";
 import { TableWithDrawer } from "./TableWithDrawer";
 import { JSONView } from "./JSONView";
 import { useAppConfig, useWorkspace } from "../../lib/context";
@@ -21,7 +21,7 @@ import Icon, {
 } from "@ant-design/icons";
 import { get, getConfigApi, useEventsLogApi } from "../../lib/useApi";
 import { FunctionTitle } from "../../pages/[workspaceId]/functions";
-import { DestinationConfig, FunctionConfig, ServiceConfig, StreamConfig } from "../../lib/schema";
+import { FunctionConfig } from "../../lib/schema";
 import { arrayToMap } from "../../lib/shared/arrays";
 import { Bug, Globe, RefreshCw, Server } from "lucide-react";
 import { JitsuButton } from "../JitsuButton/JitsuButton";
@@ -31,8 +31,15 @@ import { trimMiddle } from "../../lib/shared/strings";
 import { countries } from "../../lib/shared/countries";
 
 import zlib from "zlib";
-import { useConfigObjectLinkMutation, UseConfigObjectLinkResult, useConfigObjectLinks } from "../../lib/store";
+import {
+  useConfigObjectLinkMutation,
+  UseConfigObjectLinkResult,
+  useConfigObjectLinks,
+  useConfigObjectList,
+  useProfileBuilders,
+} from "../../lib/store";
 import { coreDestinationsMap } from "../../lib/schema/destinations";
+import debounce from "lodash/debounce";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -48,19 +55,58 @@ type EventsBrowserProps = {
   level: Level;
   actorId: string;
   dates: DatesRange;
+  search?: string;
   patchQueryStringState: (key: string, value: any) => void;
 };
 
 type EventsBrowserState = {
   bulkerMode?: "stream" | "batch";
-  entitiesLoading: boolean;
-  entitiesMap?: Record<string, any>;
   eventsLoading: boolean;
   events?: EventsLogRecord[];
+  initDate: Date;
   refreshTime: Date;
+  previousRefreshTime?: Date;
   beforeDate?: Date;
   error?: string;
 };
+
+const defaultState: EventsBrowserState = {
+  bulkerMode: undefined,
+  eventsLoading: false,
+  events: undefined,
+  beforeDate: undefined,
+  refreshTime: new Date(),
+  initDate: new Date(),
+};
+
+function eventStreamReducer(state: EventsBrowserState, action: any) {
+  if (action.type === "patch") {
+    let ev = state.events;
+    if (action.value.addEvents) {
+      ev = [...(state.events ?? []), ...action.value.addEvents];
+      delete action.value.addEvents;
+    } else if (action.value.events) {
+      ev = action.value.events;
+    }
+    return {
+      ...state,
+      ...action.value,
+      events: ev,
+    };
+  } else if (action.type === "resetAndPatch") {
+    return {
+      ...state,
+      events: undefined,
+      beforeDate: undefined,
+      refreshTime: state.initDate,
+      ...action.value,
+    };
+  }
+  return {
+    ...state,
+    [action.type]: action.value,
+  };
+}
 
 export const UTCHeader: React.FC<{}> = () => {
   return (
@@ -88,27 +134,6 @@ export const UTCDate: React.FC<{ date: string | Date }> = ({ date }) => {
   );
 };
 
-export function linksQuery(
-  workspaceId: string,
-  type: "push" | "sync" | "all" = "push",
-  withProfileBuilders: boolean = false
-) {
-  return async () => {
-    const promises = [
-      getConfigApi<StreamConfig>(workspaceId, "stream").list(),
-      getConfigApi<ServiceConfig>(workspaceId, "service").list(),
-      getConfigApi<DestinationConfig>(workspaceId, "destination").list(),
-      get(`/api/${workspaceId}/config/link`).then(res =>
-        res.links.filter(l => l.type === type || (type === "push" && !l.type) || type === "all")
-      ),
-    ];
-    if (withProfileBuilders) {
-      promises.push(get(`/api/${workspaceId}/config/profile-builder`).then(res => res.profileBuilders));
-    }
-    return await Promise.all(promises);
-  };
-}
-
 export const RelativeDate: React.FC<{ date: string | Date; fromNow?: boolean }> = ({ date, fromNow = true }) => {
   return (
     <Tooltip overlayClassName="min-w-fit" title={formatDate(date)}>
@@ -117,17 +142,138 @@ export const RelativeDate: React.FC<{ date: string | Date; fromNow?: boolean }> 
   );
 };
 
-export const EventsBrowser = ({
+const useMap = (initialValue: any[]) => {
+  return useMemo(() => arrayToMap(initialValue), [initialValue]);
+};
+
+const DebouncedInput = ({ value, onChange, debounceMs, ...props }: any) => {
+  const [state, setState] = useState(value);
+  useEffect(() => {
+    setState(value);
+  }, [value]);
+  const debouncedChange = useMemo(() => debounce(onChange, debounceMs || 500), [debounceMs, onChange]);
+  return (
+    <Input
+      {...props}
+      value={state}
+      onChange={e => {
+        setState(e.target.value);
+        debouncedChange(e.target.value);
+      }}
+    />
+  );
+};
+
+const EventsBrowser0 = ({
   streamType = "incoming",
   level = "all",
   actorId = "",
   dates,
+  search,
   patchQueryStringState,
 }: EventsBrowserProps) => {
   const workspace = useWorkspace();
   const entityType = streamType === "incoming" ? "stream" : "link";
-  const connections = useConfigObjectLinks({ type: "push" });
+  const connections = useConfigObjectLinks();
+  const streams = useConfigObjectList("stream");
+  const streamsMap = useMap(streams);
+  const services = useConfigObjectList("service");
+  const servicesMap = useMap(services);
+  const destinations = useConfigObjectList("destination");
+  const destinationsMap = useMap(destinations);
+  const profileBuilders = useProfileBuilders();
+  const mappedConnections = useMemo(
+    () =>
+      connections
+        .filter(c => streamType === "bulker" || c.type === "push")
+        .map(link => {
+          const dst = destinationsMap[link.toId];
+          const destinationType = coreDestinationsMap[dst?.destinationType];
+          return {
+            id: link.id,
+            name: `${streamsMap[link.fromId]?.name ?? "DELETED"} → ${destinationsMap[link.toId]?.name ?? "DELETED"}`,
+            mode: link.type === "sync" ? "batch" : link.data?.mode,
+            stream: streamsMap[link.fromId],
+            service: servicesMap[link.fromId],
+            destination: dst,
+            usesBulker: destinationType?.usesBulker || false,
+            hybrid: destinationType?.hybrid || false,
+            //usesFunctions: Array.isArray(link.data?.functions) && link.data?.functions.length > 0,
+          };
+        }),
+    [connections, destinationsMap, servicesMap, streamType, streamsMap]
+  );
+  const mappedConnectionsMap = useMap(mappedConnections);
+  const entities = useMemo(() => {
+    return streamType == "incoming"
+      ? streams
+      : [
+          ...mappedConnections.filter(
+            link => (streamType === "bulker" && (link.usesBulker || link.hybrid)) || streamType === "function"
+          ),
+          ...profileBuilders.map(p => {
+            const dst = destinationsMap[p.destinationId!];
+            const destinationType = coreDestinationsMap[dst?.destinationType];
+            return {
+              ...p,
+              mode: p.connectionOptions?.["mode"] || "batch",
+              destination: dst,
+              usesBulker: destinationType?.usesBulker || false,
+              type: "profile-builder",
+            };
+          }),
+        ];
+  }, [destinationsMap, mappedConnections, profileBuilders, streamType, streams]);
+
+  const entitiesMap = useMemo(() => {
+    return streamType == "incoming" ? streamsMap : arrayToMap(entities as { id: any }[]);
+  }, [streamType, streamsMap, entities]);
+
+  const entitiesSelectOptions = useMemo(() => {
+    if (entitiesMap) {
+      return Object.entries(entitiesMap).map(entity => ({
+        value: entity[0],
+        label:
+          entity[1].type === "stream" ? (
+            <StreamTitle stream={entity[1]} size={"small"} />
+          ) : entity[1].type === "profile-builder" ? (
+            <ProfileBuilderTitle profileBuilder={entity[1]} destination={entity[1].destination} />
+          ) : (
+            <ConnectionTitle
+              connectionId={entity[0]}
+              stream={entity[1].stream}
+              service={entity[1].service}
+              destination={entity[1].destination}
+            />
+          ),
+      }));
+    } else {
+      return [];
+    }
+  }, [entitiesMap]);
+
   const [connection, setConnection] = useState<UseConfigObjectLinkResult | undefined>(undefined);
+  const [
+    { bulkerMode, eventsLoading, events, beforeDate, initDate, refreshTime, previousRefreshTime, error },
+    dispatch,
+  ] = useReducer(eventStreamReducer, defaultState, d => {
+    const initDate = new Date();
+    return { ...d, refreshTime: initDate, initDate };
+  });
+
+  const [shownEvents, setShownEvents] = useState<any[]>([]);
+
+  const searchFunc = useCallback(
+    value => {
+      dispatch({
+        type: "resetAndPatch",
+        value: {},
+      });
+      patchQueryStringState("search", value);
+    },
+    [patchQueryStringState]
+  );
+
   const [debugEnabled, setDebugEnabled] = useState(false);
 
   const onSaveMutation = useConfigObjectLinkMutation(async (obj: any) => {
@@ -136,47 +282,19 @@ export const EventsBrowser = ({
     });
   });
 
-  const defaultState: EventsBrowserState = {
-    bulkerMode: undefined,
-    entitiesLoading: false,
-    entitiesMap: undefined,
-    eventsLoading: false,
-    events: undefined,
-    beforeDate: undefined,
-    refreshTime: new Date(),
-  };
+  const eventsLogApi = useEventsLogApi();
 
-  function eventStreamReducer(state: EventsBrowserState, action: any) {
-    if (action.type === "addEvents") {
-      return {
-        ...state,
-        events: [...(state.events ?? []), ...action.value],
-      };
+  useEffect(() => {
+    if (!actorId || !entitiesMap[actorId]) {
+      patchQueryStringState("actorId", entities[0].id);
     }
-    return {
-      ...state,
-      [action.type]: action.value,
-    };
-  }
-
-  const initDate = useMemo(() => {
-    return new Date();
-  }, []);
-
-  const [
-    { bulkerMode, entitiesLoading, entitiesMap, eventsLoading, events, beforeDate, refreshTime, error },
-    dispatch,
-  ] = useReducer(eventStreamReducer, { ...defaultState, refreshTime: initDate });
-
-  const [shownEvents, setShownEvents] = useState<any[]>([]);
+  }, [actorId, entities, patchQueryStringState, entitiesMap]);
 
   useEffect(() => {
     if (events) {
       setShownEvents(events);
     }
   }, [events]);
-
-  const eventsLogApi = useEventsLogApi();
 
   useEffect(() => {
     if (streamType === "function" && actorId) {
@@ -201,136 +319,92 @@ export const EventsBrowser = ({
     return () => clearInterval(interval);
   }, [connection]);
 
-  const loadEvents = useCallback(
-    async (
-      streamType: StreamType,
-      entitiesMap: any,
-      level: Level,
-      actorId: string,
-      dates: DatesRange,
-      bulkerMode?: "stream" | "batch",
-      beforeDate?: Date
-    ) => {
-      try {
-        if (actorId && entitiesMap && entitiesMap[actorId]) {
-          let eventsLogStream = streamType as string;
-          if (streamType === "bulker") {
-            const entity = entitiesMap[actorId];
-            if (!bulkerMode) {
-              bulkerMode = entity.mode;
-              dispatch({ type: "bulkerMode", value: bulkerMode });
+  useEffect(() => {
+    if (actorId && entitiesMap && entitiesMap[actorId]) {
+      // beforeDate set to undefined along with any query changes or "Refresh" button click
+      // refreshTime !== previousRefreshTime - on "Load previous events button" click
+      if (!beforeDate || refreshTime !== previousRefreshTime) {
+        let cancelled = false;
+
+        dispatch({ type: "eventsLoading", value: true });
+        (async () => {
+          let error = "";
+          let newBeforeDate: Date | undefined = undefined;
+          let events: EventsLogRecord[] | undefined = undefined;
+          let addEvents: EventsLogRecord[] | undefined = undefined;
+          try {
+            let eventsLogStream = streamType as string;
+            if (streamType === "bulker") {
+              if (!bulkerMode) {
+                const entity = entitiesMap[actorId];
+                dispatch({ type: "bulkerMode", value: entity.mode });
+                return;
+              }
+              eventsLogStream = "bulker_" + bulkerMode;
             }
-            eventsLogStream = "bulker_" + bulkerMode;
+            const data = await eventsLogApi.get(
+              `${eventsLogStream}`,
+              level === "all" ? "all" : [level],
+              actorId,
+              {
+                start: dates && dates[0] ? new Date(dates[0]) : undefined,
+                end: beforeDate || (dates && dates[1] ? new Date(dates[1]) : undefined),
+              },
+              100,
+              search
+            );
+            if (beforeDate) {
+              addEvents = data;
+            } else {
+              events = data;
+            }
+            if (data.length > 0) {
+              const d = dayjs(data[data.length - 1].date);
+              newBeforeDate = d.toDate();
+            }
+          } catch (e) {
+            console.error("Error while loading events", e);
+            error = "Error while loading events";
+          } finally {
+            if (!cancelled) {
+              const patch = {
+                previousRefreshTime: refreshTime || new Date(),
+                eventsLoading: false,
+              } as any;
+              if (error) {
+                patch.error = error;
+              } else {
+                if (addEvents) {
+                  patch.addEvents = addEvents;
+                } else if (events) {
+                  patch.events = events;
+                }
+              }
+              if (newBeforeDate) {
+                patch.beforeDate = newBeforeDate;
+              }
+              dispatch({ type: "patch", value: patch });
+            }
           }
-          dispatch({ type: "eventsLoading", value: true });
-          const data = await eventsLogApi.get(
-            `${eventsLogStream}`,
-            level === "all" ? "all" : [level],
-            actorId,
-            {
-              start: dates && dates[0] ? new Date(dates[0]) : undefined,
-              end: beforeDate || (dates && dates[1] ? new Date(dates[1]) : undefined),
-            },
-            100
-          );
-          if (beforeDate) {
-            dispatch({ type: "addEvents", value: data });
-          } else {
-            dispatch({ type: "events", value: data });
-          }
-          if (data.length > 0) {
-            const d = dayjs(data[data.length - 1].date);
-            dispatch({ type: "beforeDate", value: d.toDate() });
-          }
-          dispatch({ type: "error", value: "" });
-        }
-      } catch (e) {
-        console.error("Error while loading events", e);
-        dispatch({ type: "error", value: "Error while loading events" });
-      } finally {
-        dispatch({ type: "eventsLoading", value: false });
+        })();
+        return () => {
+          cancelled = true;
+        };
       }
-    },
-    [eventsLogApi]
-  );
-
-  //load entities
-  useEffect(() => {
-    (async () => {
-      if (typeof entitiesMap !== "undefined" || entitiesLoading) {
-        return;
-      }
-      try {
-        let query: () => Promise<any[]>;
-        if (streamType === "incoming") {
-          query = () => getConfigApi(workspace.id, "stream").list();
-        } else {
-          query = async () => {
-            const data = await linksQuery(workspace.id, streamType === "bulker" ? "all" : "push", true)();
-            const streamsMap = arrayToMap(data[0]);
-            const servicesMap = arrayToMap(data[1]);
-            const dstMap = arrayToMap(data[2]);
-            const profiles = data[4];
-            return [
-              ...data[3]
-                .map(link => {
-                  const dst = dstMap[link.toId];
-                  const destinationType = coreDestinationsMap[dst?.destinationType];
-                  return {
-                    id: link.id,
-                    name: `${streamsMap[link.fromId]?.name ?? "DELETED"} → ${dstMap[link.toId]?.name ?? "DELETED"}`,
-                    mode: link.type === "sync" ? "batch" : link.data?.mode,
-                    stream: streamsMap[link.fromId],
-                    service: servicesMap[link.fromId],
-                    destination: dst,
-                    usesBulker: destinationType?.usesBulker || false,
-                    hybrid: destinationType?.hybrid || false,
-                    //usesFunctions: Array.isArray(link.data?.functions) && link.data?.functions.length > 0,
-                  };
-                })
-                .filter(
-                  link => (streamType === "bulker" && (link.usesBulker || link.hybrid)) || streamType === "function"
-                ),
-              ...profiles.map(p => {
-                const dst = dstMap[p.destinationId];
-                const destinationType = coreDestinationsMap[dst?.destinationType];
-                return {
-                  ...p,
-                  mode: p.connectionOptions?.mode || "batch",
-                  destination: dst,
-                  usesBulker: destinationType?.usesBulker || false,
-                  type: "profile-builder",
-                };
-              }),
-            ];
-          };
-        }
-
-        dispatch({ type: "entitiesLoading", value: true });
-
-        const data = await query();
-        if (data.length > 0) {
-          const mp = arrayToMap(data);
-          dispatch({ type: "entitiesMap", value: mp });
-          if (!actorId || !mp[actorId]) {
-            patchQueryStringState("actorId", data[0].id);
-          }
-        } else {
-          dispatch({ type: "entitiesMap", value: {} });
-        }
-        dispatch({ type: "error", value: "" });
-      } catch (e) {
-        console.error("Error while loading entities objects", e);
-        dispatch({ type: "error", value: "Error while loading entities objects" });
-      } finally {
-        dispatch({ type: "entitiesLoading", value: false });
-      }
-    })();
-  }, [streamType, entitiesMap, actorId, workspace.id, patchQueryStringState, entitiesLoading]);
-
-  useEffect(() => {
-    loadEvents(streamType, entitiesMap, level, actorId, dates, bulkerMode);
-  }, [loadEvents, streamType, entitiesMap, level, actorId, dates, bulkerMode, refreshTime]);
+    }
+  }, [
+    eventsLogApi,
+    streamType,
+    entitiesMap,
+    level,
+    actorId,
+    dates,
+    bulkerMode,
+    previousRefreshTime,
+    refreshTime,
+    beforeDate,
+    search,
+  ]);
 
   // //load more events on reaching bottom
   // useEffect(() => {
@@ -363,29 +437,6 @@ export const EventsBrowser = ({
   //   };
   // }, [loadEvents, eventsLoading, streamType, entitiesMap, eventType, actorId, dates, refreshTime, beforeDate]);
 
-  const entitiesSelectOptions = useMemo(() => {
-    if (entitiesMap) {
-      return Object.entries(entitiesMap).map(entity => ({
-        value: entity[0],
-        label:
-          entity[1].type === "stream" ? (
-            <StreamTitle stream={entity[1]} size={"small"} />
-          ) : entity[1].type === "profile-builder" ? (
-            <ProfileBuilderTitle profileBuilder={entity[1]} destination={entity[1].destination} />
-          ) : (
-            <ConnectionTitle
-              connectionId={entity[0]}
-              stream={entity[1].stream}
-              service={entity[1].service}
-              destination={entity[1].destination}
-            />
-          ),
-      }));
-    } else {
-      return [];
-    }
-  }, [entitiesMap]);
-
   const TableElement: React.FC<TableProps> = (function () {
     switch (streamType) {
       case "incoming":
@@ -406,11 +457,11 @@ export const EventsBrowser = ({
     <>
       <div className={"flex flex-row justify-between items-center pb-3.5"}>
         <div key={"left"}>
-          <div className={"flex flex-row gap-4 mr-2"}>
+          <div className={"flex flex-row gap-3 mr-2"}>
             <div>
               <span>{entityType == "stream" ? "Site: " : "Connection: "}</span>
               <Select
-                dropdownMatchSelectWidth={false}
+                popupMatchSelectWidth={false}
                 notFoundContent={
                   entityType === "stream" ? (
                     <div>Project doesn't have Sites</div>
@@ -420,12 +471,20 @@ export const EventsBrowser = ({
                     <div>Project doesn't have data warehouse Connections</div>
                   )
                 }
-                style={{ width: 300 }}
-                loading={entitiesLoading}
+                style={{ width: 280 }}
                 onChange={e => {
-                  dispatch({ type: "events", value: [] });
-                  dispatch({ type: "bulkerMode", value: undefined });
-                  dispatch({ type: "beforeDate", value: undefined });
+                  let bulkerMode: string | undefined = undefined;
+                  if (streamType === "bulker") {
+                    const entity = entitiesMap[e];
+                    bulkerMode = entity.mode;
+                  }
+                  dispatch({
+                    type: "resetAndPatch",
+                    value: {
+                      events: [],
+                      bulkerMode,
+                    },
+                  });
                   patchQueryStringState("actorId", e);
                 }}
                 value={actorId}
@@ -438,8 +497,10 @@ export const EventsBrowser = ({
                 style={{ width: 90 }}
                 value={level}
                 onChange={e => {
-                  dispatch({ type: "events", value: undefined });
-                  dispatch({ type: "beforeDate", value: undefined });
+                  dispatch({
+                    type: "resetAndPatch",
+                    value: {},
+                  });
                   patchQueryStringState("level", e);
                 }}
                 options={
@@ -466,9 +527,12 @@ export const EventsBrowser = ({
                   value={bulkerMode}
                   onChange={e => {
                     setShownEvents([]);
-                    dispatch({ type: "events", value: undefined });
-                    dispatch({ type: "beforeDate", value: undefined });
-                    dispatch({ type: "bulkerMode", value: e });
+                    dispatch({
+                      type: "resetAndPatch",
+                      value: {
+                        bulkerMode: e,
+                      },
+                    });
                   }}
                   options={[
                     { value: "batch", label: "Batch" },
@@ -477,35 +541,49 @@ export const EventsBrowser = ({
                 />
               </div>
             )}
-            <div>
-              <span>Date range: </span>
-              <DatePicker.RangePicker
-                value={
-                  (dates ?? [null, null]).map(d => (d ? dayjs(d).utc() : null)).slice(0, 2) as [
-                    Dayjs | null,
-                    Dayjs | null
-                  ]
-                }
-                disabledDate={d => false}
-                allowEmpty={[true, true]}
-                showTime={{
-                  format: "HH:mm",
-                  defaultValue: [dayjs("00:00:00.000", "HH:mm:ss.SSS"), dayjs("23:59.59.999", "HH:mm:ss.SSS")],
-                }}
-                format={date => date.format("MMM DD, HH:mm")}
-                onChange={d => {
-                  if (d) {
-                    patchQueryStringState("dates", [
-                      d[0] ? d[0].utc(true).set("millisecond", 0).toISOString() : null,
-                      d[1] ? d[1].utc(true).set("millisecond", 999).toISOString() : null,
-                    ]);
-                  } else {
-                    patchQueryStringState("dates", [null, null]);
+            <div className={"flex flex-row items-baseline flex-wrap"}>
+              <span className={"whitespace-nowrap"}>Date range:&nbsp;</span>
+              <div style={{ width: 270 }}>
+                <DatePicker.RangePicker
+                  value={
+                    (dates ?? [null, null]).map(d => (d ? dayjs(d).utc() : null)).slice(0, 2) as [
+                      Dayjs | null,
+                      Dayjs | null
+                    ]
                   }
-                  dispatch({ type: "events", value: undefined });
-                  dispatch({ type: "beforeDate", value: undefined });
+                  disabledDate={d => false}
+                  allowEmpty={[true, true]}
+                  showTime={{
+                    format: "HH:mm",
+                    defaultValue: [dayjs("00:00:00.000", "HH:mm:ss.SSS"), dayjs("23:59.59.999", "HH:mm:ss.SSS")],
+                  }}
+                  format={date => date.format("MMM DD, HH:mm")}
+                  onChange={d => {
+                    if (d) {
+                      patchQueryStringState("dates", [
+                        d[0] ? d[0].utc(true).set("millisecond", 0).toISOString() : null,
+                        d[1] ? d[1].utc(true).set("millisecond", 999).toISOString() : null,
+                      ]);
+                    } else {
+                      patchQueryStringState("dates", [null, null]);
+                    }
+                    dispatch({
+                      type: "resetAndPatch",
+                      value: {},
+                    });
+                  }}
+                  // onOpenChange={onOpenChange}
+                />
+              </div>
+            </div>
+            <div>
+              <span>Search: </span>
+              <DebouncedInput
+                style={{ width: 180 }}
+                value={search}
+                onChange={e => {
+                  searchFunc(e);
                 }}
-                // onOpenChange={onOpenChange}
               />
             </div>
           </div>
@@ -530,7 +608,7 @@ export const EventsBrowser = ({
                   onSaveMutation.mutateAsync(newConnection);
                 }}
               >
-                {!debugEnabled ? "Enable debug logs" : "Disable debug logs"}
+                {!debugEnabled ? "Enable debug" : "Disable debug"}
               </JitsuButton>
             </Tooltip>
           )}
@@ -539,9 +617,13 @@ export const EventsBrowser = ({
             type="link"
             size="small"
             onClick={e => {
-              dispatch({ type: "events", value: undefined });
-              dispatch({ type: "beforeDate", value: undefined });
-              dispatch({ type: "refreshTime", value: new Date() });
+              dispatch({
+                type: "resetAndPatch",
+                value: {
+                  eventsLoading: true,
+                  refreshTime: new Date(),
+                },
+              });
             }}
           >
             Refresh
@@ -556,12 +638,21 @@ export const EventsBrowser = ({
       )}
       {!error ? (
         <TableElement
-          loading={eventsLoading || entitiesLoading}
+          loading={eventsLoading}
           streamType={streamType}
           entityType={entityType}
           actorId={actorId}
+          mappedConnections={mappedConnectionsMap}
           events={shownEvents}
-          loadEvents={() => loadEvents(streamType, entitiesMap, level, actorId, dates, bulkerMode, beforeDate)}
+          loadEvents={() =>
+            dispatch({
+              type: "patch",
+              value: {
+                eventsLoading: true,
+                refreshTime: new Date(),
+              },
+            })
+          }
         />
       ) : (
         <Alert message={error} type="error" showIcon />
@@ -570,13 +661,15 @@ export const EventsBrowser = ({
   );
 };
 
+export const EventsBrowser = React.memo(EventsBrowser0);
+
 type TableProps = {
   loading: boolean;
   events?: EventsLogRecord[];
   streamType: string;
   entityType: string;
   actorId: string;
-
+  mappedConnections: Record<string, any>;
   loadEvents: () => void;
 };
 
@@ -593,7 +686,10 @@ const FunctionsLogTable = ({ loadEvents, loading, streamType, entityType, actorI
     })();
   }, [workspace.id]);
 
-  const functionLogs = events || ([] as EventsLogRecord[]);
+  const functionLogs = (events || ([] as EventsLogRecord[])).map((e, i) => ({
+    ...e,
+    id: e.date + "_" + i,
+  }));
 
   const mapHttpBody = (r: { event: EventsLogRecord }): { event: EventsLogRecord } => {
     const e = r.event;
@@ -723,8 +819,11 @@ const FunctionsLogTable = ({ loadEvents, loading, streamType, entityType, actorI
 
 const StreamEventsTable = ({ loadEvents, loading, streamType, entityType, actorId, events }: TableProps) => {
   const streamEvents = events
-    ? events.map(e => {
-        e = { ...e };
+    ? events.map((e, i) => {
+        e = {
+          ...e,
+          id: e.date + "_" + i,
+        };
         if (e.content.original) {
           try {
             e.content.original = JSON.parse(e.content.original);
@@ -807,6 +906,11 @@ const StreamEventsTable = ({ loadEvents, loading, streamType, entityType, actorI
 };
 
 const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, events }: TableProps) => {
+  const batchEvents = (events || ([] as EventsLogRecord[])).map((e, i) => ({
+    ...e,
+    id: e.date + "_" + i,
+  }));
+
   const columns: ColumnsType<EventsLogRecord> = [
     {
       title: <UTCHeader />,
@@ -855,41 +959,20 @@ const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, even
       className="border border-backgroundDark rounded-lg"
       loading={loading}
       loadEvents={loadEvents}
-      events={events}
+      events={batchEvents}
       drawerNode={event => <JSONView data={event.event.content} />}
       columns={columns}
     />
   );
 };
 
-const IncomingEventDrawer = ({ event }: { event: IncomingEvent }) => {
-  const workspace = useWorkspace();
-  const [loading, setLoading] = useState(true);
-  const [destinationsMap, setDestinationsMap] = useState<any>([]);
-
-  const hasEvent = typeof event !== "undefined";
-  useEffect(() => {
-    if (!event) return;
-    linksQuery(workspace.id, "push")()
-      .then(data => {
-        const streamsMap = arrayToMap(data[0]);
-        const dstMap = arrayToMap(data[2]);
-        return data[3].map(link => ({
-          id: link.id,
-          name: `${streamsMap[link.fromId]?.name ?? "DELETED"} → ${dstMap[link.toId]?.name ?? "DELETED"}`,
-          mode: link.data?.mode,
-          stream: streamsMap[link.fromId],
-          destination: dstMap[link.toId],
-          usesBulker: typeof link.data?.mode === "string",
-        }));
-      })
-      .then(d => {
-        console.log("destinations", d);
-        setDestinationsMap(arrayToMap(d));
-      })
-      .finally(() => setLoading(false));
-  }, [hasEvent, event, workspace.id]);
-
+const IncomingEventDrawer = ({
+  event,
+  mappedConnections,
+}: {
+  event: IncomingEvent;
+  mappedConnections?: Record<string, any>;
+}) => {
   const drawerColumns: ColumnsType<any> = [
     {
       title: "Name",
@@ -906,17 +989,11 @@ const IncomingEventDrawer = ({ event }: { event: IncomingEvent }) => {
   const drawerData = useMemo(() => {
     const drawerData: { name: ReactNode; value: ReactNode }[] = [];
     if (event) {
-      const DestinationsList = (props: {
-        loading: boolean;
-        destinationsMap: Record<string, any>;
-        destinationIds: string[];
-      }) => {
-        return props.loading ? (
-          <Spin />
-        ) : (
+      const DestinationsList = (props: { mappedConnections: Record<string, any>; destinationIds: string[] }) => {
+        return (
           <div className={"flex flex-row flex-wrap gap-4"}>
             {props.destinationIds
-              .map(d => props.destinationsMap[d]?.destination)
+              .map(d => props.mappedConnections[d]?.destination)
               .filter(d => typeof d !== "undefined")
               .map((d, i) => (
                 <WLink key={i} href={`/destinations?id=${d.id}`}>
@@ -972,9 +1049,7 @@ const IncomingEventDrawer = ({ event }: { event: IncomingEvent }) => {
       });
       drawerData.push({
         name: "Destinations",
-        value: (
-          <DestinationsList loading={loading} destinationsMap={destinationsMap} destinationIds={event.destinations} />
-        ),
+        value: <DestinationsList mappedConnections={mappedConnections!} destinationIds={event.destinations} />,
       });
       drawerData.push({
         name: "Jitsu Domain",
@@ -1020,7 +1095,7 @@ const IncomingEventDrawer = ({ event }: { event: IncomingEvent }) => {
       });
     }
     return drawerData;
-  }, [event, destinationsMap, loading]);
+  }, [event, mappedConnections]);
 
   return event ? (
     <Table
@@ -1059,6 +1134,7 @@ export const Geo: React.FC<{ geo?: aGeo }> = ({ geo }) => {
     }
     return (
       <Tooltip
+        key={"geo"}
         title={
           <div className="whitespace-pre">
             {[
@@ -1119,11 +1195,19 @@ type IncomingEvent = {
   destinations: string[];
 };
 
-const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, actorId, events }: TableProps) => {
+const IncomingEventsTable = ({
+  loadEvents,
+  loading,
+  streamType,
+  entityType,
+  actorId,
+  events,
+  mappedConnections,
+}: TableProps) => {
   const appConfig = useAppConfig();
   const mapEvents = evs =>
     evs
-      ? evs.map(ev => {
+      ? evs.map((ev, i) => {
           let ingestPayload: any = {};
           let unparsedPayload = "";
           if (typeof ev.content.body === "string") {
@@ -1138,7 +1222,7 @@ const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, acto
           const context = event?.context;
 
           return {
-            id: ev.id,
+            id: ev.date + "_" + i,
             date: ev.date,
             ingestType: ingestPayload.ingestType,
 
@@ -1178,6 +1262,7 @@ const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, acto
   const columns: ColumnsType<IncomingEvent> = [
     {
       title: "",
+      key: "status",
       width: "2em",
       dataIndex: "status",
       render: d => {
@@ -1196,10 +1281,12 @@ const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, acto
     {
       title: <UTCHeader />,
       dataIndex: "date",
+      key: "date",
       render: d => <UTCDate date={d} />,
       width: "12em",
     },
     {
+      key: "type",
       title: "Type",
       width: "12em",
       //dataIndex: "type",
@@ -1260,35 +1347,35 @@ const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, acto
           <div className={"flex flex-row"}>
             <Geo geo={d.context?.geo} />
             {d.host && (
-              <Tooltip title={"Host"}>
+              <Tooltip title={"Host"} key={"host"}>
                 <Tag color={"geekblue"} icon={<GlobalOutlined />} className={"whitespace-nowrap"}>
                   {d.host}
                 </Tag>
               </Tooltip>
             )}
             {d.email && (
-              <Tooltip title={"Email"}>
+              <Tooltip title={"Email"} key={"email"}>
                 <Tag color={"green"} icon={<UserOutlined />} className={"whitespace-nowrap"}>
                   {d.email}
                 </Tag>
               </Tooltip>
             )}
             {d.userId && !d.email && (
-              <Tooltip title={"User ID"}>
+              <Tooltip title={"User ID"} key={"userId"}>
                 <Tag color={"green"} icon={<UserOutlined />} className={"whitespace-nowrap"}>
                   {d.userId.toString()}
                 </Tag>
               </Tooltip>
             )}
             {d.referringDomain && d.host !== d.referringDomain && (
-              <Tooltip title={"Referring Domain"}>
+              <Tooltip title={"Referring Domain"} key={"rDomain"}>
                 <Tag color={"purple"} icon={<LinkOutlined />} className={"whitespace-nowrap"}>
                   {d.referringDomain}
                 </Tag>
               </Tooltip>
             )}
             {!d.userId && d.anonymousId && (
-              <Tooltip title={"Anonymous ID"}>
+              <Tooltip title={"Anonymous ID"} key={"anonymousId"}>
                 <Tag icon={<QuestionCircleOutlined />} className={"whitespace-nowrap"}>
                   {d.anonymousId.toString()}
                 </Tag>
@@ -1313,6 +1400,7 @@ const IncomingEventsTable = ({ loadEvents, loading, streamType, entityType, acto
       loading={loading}
       loadEvents={loadEvents}
       events={mapEvents(events)}
+      mappedConnections={mappedConnections}
       drawerNode={IncomingEventDrawer}
       columns={columns}
     />

@@ -7,7 +7,8 @@ type TableWithDrawerProps<EventType> = {
   columns: ColumnsType<EventType>;
   events?: EventType[];
   loadEvents: () => void;
-  drawerNode: React.FC<{ event: EventType }>;
+  mappedConnections?: Record<string, any>;
+  drawerNode: React.FC<{ event: EventType; mappedConnections?: Record<string, any> }>;
   className?: string;
 };
 
@@ -16,6 +17,7 @@ export const TableWithDrawer = <T extends object>({
   loading,
   columns,
   events,
+  mappedConnections,
   drawerNode: DrawerNode,
   className,
 }: TableWithDrawerProps<T>) => {
@@ -68,7 +70,7 @@ export const TableWithDrawer = <T extends object>({
         onClose={onDrawerClose}
         open={drawerOpen}
       >
-        {selectedEvent && <DrawerNode event={selectedEvent} />}
+        {selectedEvent && <DrawerNode event={selectedEvent} mappedConnections={mappedConnections} />}
       </Drawer>
     </>
   );

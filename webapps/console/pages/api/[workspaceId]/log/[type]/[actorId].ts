@@ -26,6 +26,7 @@ export const api: Api = {
         limit: z.coerce.number().optional().default(50),
         start: z.coerce.date().optional(),
         end: z.coerce.date().optional(),
+        search: z.string().optional(),
       }),
       result: z.any(),
     },
@@ -58,7 +59,8 @@ export const api: Api = {
              ${query.levels ? "and level in ({levels:Array(String)})" : ""}
              ${query.start ? "and timestamp >= {start:String}" : ""}
              ${query.end ? "and timestamp < {end:String}" : ""}
-        order by timestamp desc limit {limit:UInt32}`;
+                ${query.search ? "and message ilike concat('%',{search:String},'%')" : ""}
+                        order by timestamp desc limit {limit:UInt32}`;
       const result: any[] = [];
 
       const chResult = (await (
@@ -70,6 +72,7 @@ export const api: Api = {
             levels: query.levels ? query.levels.split(",") : undefined,
             start: query.start ? dayjs(query.start).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
             end: query.end ? dayjs(query.end).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
+            search: query.search ? query.search : undefined,
             limit: query.limit,
           },
           clickhouse_settings: {

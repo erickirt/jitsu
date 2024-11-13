@@ -306,10 +306,13 @@ export const TopTabsMenu: React.FC<TopTabsMenuProps> = props => {
     if (item.items) {
       return {
         label: <MenuLabel hasSubMenu={true}>{item.title}</MenuLabel>,
-        key: item.items
-          .filter(Boolean)
-          .map(subItem => subItem!.path)
-          .join("-"),
+        key:
+          "[" +
+          item.items
+            .filter(Boolean)
+            .map(subItem => subItem!.path)
+            .join("-") +
+          "]",
         selected: true,
         children: item.items.filter(Boolean).map(subItem => ({
           key: subItem!.path,

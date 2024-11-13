@@ -45,7 +45,7 @@ import { useWorkspace } from "../../lib/context";
 import { ErrorCard } from "../GlobalError/GlobalError";
 import type { PresetColorType, PresetStatusColorType } from "antd/es/_util/colors";
 import { get, getConfigApi } from "../../lib/useApi";
-import { useConfigObjectList } from "../../lib/store";
+import { useConfigObjectList, useStoreReload } from "../../lib/store";
 import { DestinationSelector } from "../Selectors/DestinationSelector";
 import { NumberEditor } from "../ConfigObjectEditor/Editors";
 import { isEqual, rpc } from "juava";
@@ -646,6 +646,7 @@ export function ProfileBuilderPage() {
     omit(initialData?.settings ?? {}, "variables")
   );
   const hasUnpublishedChanges = hasUnpublishedDraft || !isEqual(obj, initialData);
+  const reloadStore = useStoreReload();
 
   function handleTabChange(key: string) {
     setActiveSecondaryTab(key);
@@ -705,6 +706,7 @@ export function ProfileBuilderPage() {
         .then(() => {
           setPbRefreshDate(new Date());
         })
+        .then(async () => reloadStore())
         .catch(e => {})
         .finally(() => setSaving(false));
     }

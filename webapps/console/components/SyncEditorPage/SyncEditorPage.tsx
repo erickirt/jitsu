@@ -82,9 +82,9 @@ function ServiceSelector(props: SelectorProps<ServiceConfig> & { refreshCatalogC
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={props.disabledReason}>
-        <Select dropdownMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
+        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
           {props.items.map(service => (
-            <Select.Option dropdownMatchSelectWidth={false} key={service.id} value={service.id}>
+            <Select.Option popupMatchSelectWidth={false} key={service.id} value={service.id}>
               <ServiceTitle
                 service={service}
                 size={"small"}
@@ -590,7 +590,7 @@ function SyncEditor({
         component: (
           <Select
             showSearch={true}
-            dropdownMatchSelectWidth={false}
+            popupMatchSelectWidth={false}
             className={"w-80"}
             options={[
               { value: "Etc/UTC", label: "UTC" },
@@ -706,7 +706,7 @@ function SyncEditor({
                           <Select
                             size={"middle"}
                             className={"w-44"}
-                            dropdownMatchSelectWidth={false}
+                            popupMatchSelectWidth={false}
                             disabled={!syncOptions?.streams?.[name] || stream.source_defined_cursor}
                             options={!stream.source_defined_cursor ? cursorFieldOptions : []}
                             value={

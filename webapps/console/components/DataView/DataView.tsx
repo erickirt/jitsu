@@ -1,7 +1,7 @@
 import { useQueryStringState } from "../../lib/useQueryStringState";
 import JSON5 from "json5";
 import { Tabs, TabsProps } from "antd";
-import React from "react";
+import React, { useCallback } from "react";
 import { EventsBrowser } from "./EventsBrowser";
 
 export type DataViewState = {
@@ -32,19 +32,22 @@ export function DataView() {
   const changeActiveView = (activeView: string) =>
     setState({ ...state, activeView: activeView as DataViewState["activeView"] });
 
-  const patchQueryStringState = (key: string, value: any) => {
-    if (state.viewState[state.activeView]?.[key] === value) return;
-    if (value === null) {
-      const newState = { ...state };
-      delete newState[key];
-      setState(newState);
-    } else {
-      setState({
-        ...state,
-        viewState: { ...state.viewState, [state.activeView]: { ...state.viewState[state.activeView], [key]: value } },
-      });
-    }
-  };
+  const patchQueryStringState = useCallback(
+    (key: string, value: any) => {
+      if (state.viewState[state.activeView]?.[key] === value) return;
+      if (value === null) {
+        const newState = { ...state };
+        delete newState[key];
+        setState(newState);
+      } else {
+        setState({
+          ...state,
+          viewState: { ...state.viewState, [state.activeView]: { ...state.viewState[state.activeView], [key]: value } },
+        });
+      }
+    },
+    [setState, state]
+  );
 
   const items: TabsProps["items"] = [
     {

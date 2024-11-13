@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useCallback, useState } from "react";
 import omit from "lodash/omit";
+import { isEqual } from "juava";
 
 export type Serde<T> = {
   parser: (val: string) => T;
@@ -35,9 +36,10 @@ export function useQueryStringState<T = string | undefined>(
     : opt.defaultValue;
 
   const [state, setState] = useState<T>(initialValue as T);
+
   const updateState = useCallback(
     (val: T) => {
-      if (val !== state) {
+      if (val !== state && !isEqual(val, state)) {
         setState(val);
         if (val) {
           const newQuery = { ...query, [param]: opt.serializer ? opt.serializer(val) : (val as string) };

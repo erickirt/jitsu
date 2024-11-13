@@ -136,7 +136,7 @@ const ConnectionSelector = (props: { onChange: (val: string) => void; value?: st
       <Select
         placeholder={"Select connection to see statistics"}
         style={{ width: "500px" }}
-        dropdownMatchSelectWidth={false}
+        popupMatchSelectWidth={false}
         value={connectionId}
         defaultValue={connectionId}
         onSelect={val => {

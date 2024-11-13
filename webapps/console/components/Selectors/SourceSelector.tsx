@@ -11,7 +11,7 @@ export function SourceSelector(props: SelectorProps<StreamConfig>) {
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={props.disabledReason}>
-        <Select dropdownMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
+        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
           {props.items.map(stream => (
             <Select.Option key={stream.id} value={stream.id}>
               <StreamTitle stream={stream} size={"small"} />

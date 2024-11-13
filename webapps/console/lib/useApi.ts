@@ -22,7 +22,8 @@ export type EventsLogApi = {
     levels: ("warn" | "info" | "error" | "debug")[] | "all",
     actorId: string,
     filter: EventsLogFilter,
-    limit: number
+    limit: number,
+    search?: string
   ): Promise<EventsLogRecord[]>;
 };
 
@@ -38,14 +39,15 @@ export function getEventsLogApi(workspaceId: string): EventsLogApi {
       levels: ("warn" | "info" | "error" | "debug")[] | "all",
       actorId: string,
       filter: EventsLogFilter,
-      limit: number
+      limit: number,
+      search?: string
     ): Promise<EventsLogRecord[]> {
       return rpc(
         `/api/${workspaceId}/log/${eventType}/${actorId}?limit=${limit}${
           filter.start ? "&start=" + filter.start.toISOString() : ""
         }${filter.end ? "&end=" + filter.end.toISOString() : ""}${
           levels !== "all" ? `&levels=${levels.join(",")}` : ""
-        }`
+        }${search ? `&search=${encodeURIComponent(search)}` : ""}`
       );
     },
   };

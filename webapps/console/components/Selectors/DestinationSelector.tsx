@@ -20,11 +20,11 @@ export function DestinationSelector(props: SelectorProps<DestinationConfig>) {
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={!props.disabledReason}>
-        <Select dropdownMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
+        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
           {props.items.map(destination => {
             const destinationType = getCoreDestinationType(destination.destinationType);
             return (
-              <Select.Option dropdownMatchSelectWidth={false} value={destination.id} key={destination.id}>
+              <Select.Option popupMatchSelectWidth={false} value={destination.id} key={destination.id}>
                 <DestinationTitle
                   destination={destination}
                   size={"small"}

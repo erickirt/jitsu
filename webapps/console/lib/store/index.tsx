@@ -4,7 +4,7 @@ import { getLog, requireDefined, rpc } from "juava";
 import { useWorkspace } from "../context";
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { ConfigurationObjectLinkDbModel, WorkspaceDbModel } from "../../prisma/schema";
+import { ConfigurationObjectLinkDbModel, ProfileBuilderDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { UseMutationResult } from "@tanstack/react-query/src/types";
 
 export const allConfigTypes = ["stream", "service", "function", "destination"] as const;
@@ -47,6 +47,12 @@ export function getLinksCacheKey(workspaceId: string, opts?: UseConfigObjectLink
   //so far we have one store that always contains data, so withData is always true. We remove data
   //further from hook result. It's just a placeholder for future optimization
   return [`workspaceId=${workspaceId}`, "links", "withData=true"];
+}
+
+export function getProfileBuilderCacheKey(workspaceId: string) {
+  //so far we have one store that always contains data, so withData is always true. We remove data
+  //further from hook result. It's just a placeholder for future optimization
+  return [`workspaceId=${workspaceId}`, "profile-builder", "withData=true"];
 }
 
 type UseConfigObjectsUpdaterResult = { loading: true; error?: never } | { loading: false; error?: Error };
@@ -106,6 +112,17 @@ async function initialDataLoad(
       foreverCache
     )
   );
+  loaders.push(
+    queryClient.prefetchQuery(
+      getProfileBuilderCacheKey(workspace.id),
+      async ({ signal }) => {
+        const { profileBuilders } = await rpc(`/api/${workspace.id}/config/profile-builder`, { signal });
+        getLog().atDebug().log(`Loaded ${profileBuilders.length} config profileBuilders`);
+        return profileBuilders;
+      },
+      foreverCache
+    )
+  );
   try {
     getLog().atInfo().log("@@@@@@@@@@@@@@@@@@@ Loaders", loaders);
     await Promise.all(loaders);
@@ -131,6 +148,12 @@ function fullDataRefresh(workspaceId: string, queryClient: QueryClient) {
     rpc(`/api/${workspaceId}/config/link`).then(({ links }) => {
       getLog().atDebug().log(`Refreshed ${links.length} config links`);
       queryClient.setQueriesData(getLinksCacheKey(workspaceId), links);
+    })
+  );
+  loaders.push(
+    rpc(`/api/${workspaceId}/config/profile-builder`).then(({ profileBuilders }) => {
+      getLog().atDebug().log(`Refreshed ${profileBuilders.length} config profileBuilders`);
+      queryClient.setQueriesData(getProfileBuilderCacheKey(workspaceId), profileBuilders);
     })
   );
   return loaders;
@@ -257,6 +280,7 @@ export type UseConfigObjectLinksParams = { withData?: boolean; type?: "push" | "
 
 export type ConfigurationObjectLinkType = z.infer<typeof ConfigurationObjectLinkDbModel>;
 export type UseConfigObjectLinkResult = Omit<ConfigurationObjectLinkType, "data"> & { data?: any };
+export type ProfileBuilderType = z.infer<typeof ProfileBuilderDbModel>;
 
 export function useConfigObjectLinksLoader(opts?: UseConfigObjectLinksParams): Result<UseConfigObjectLinkResult[]> {
   const workspace = useWorkspace();
@@ -278,6 +302,46 @@ export function useConfigObjectLinksLoader(opts?: UseConfigObjectLinksParams): R
       };
     }
   }, [queryRes.isLoading, queryRes.error, queryRes.data, opts?.type]);
+}
+
+export function useProfileBuildersLoader(): Result<ProfileBuilderType[]> {
+  const workspace = useWorkspace();
+  const queryRes = useQuery(getProfileBuilderCacheKey(workspace.id), noopLoader, {
+    retry: false,
+    staleTime: Infinity,
+    cacheTime: Infinity,
+  });
+  //reserved for future use, due to noopLoader, the loading will be always false
+  return useMemo(() => {
+    if (queryRes.isLoading) {
+      return { isLoading: true };
+    } else if (queryRes.error) {
+      return { isLoading: false, error: toError(queryRes.error) };
+    } else {
+      return {
+        isLoading: false,
+        data: queryRes.data! as ProfileBuilderType[],
+      };
+    }
+  }, [queryRes.isLoading, queryRes.error, queryRes.data]);
+}
+
+export function useProfileBuilders(): ProfileBuilderType[] {
+  const loader = useProfileBuildersLoader();
+  if (loader.isLoading) {
+    getLog()
+      .atError()
+      .log(
+        "useProfileBuilders() assumes that workspace is already loaded, but it is loading. See window.queryClient",
+        getDebugQueryClient()
+      );
+    throw new Error(
+      "useProfileBuilders() assumes that all config objects are already loaded, but they are loading. use useConfigObjectListLoader() instead."
+    );
+  } else if (loader.error) {
+    throw loader.error;
+  }
+  return loader.data;
 }
 
 /**

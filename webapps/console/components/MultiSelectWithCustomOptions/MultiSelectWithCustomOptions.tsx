@@ -28,7 +28,7 @@ export const MultiSelectWithCustomOptions: React.FC<{
       value={selectedIds}
       mode="multiple"
       placeholder="Select at least one item"
-      dropdownMatchSelectWidth={true}
+      popupMatchSelectWidth={true}
       className="w-full"
       onSelect={async val => {
         if (val === "$custom") {
