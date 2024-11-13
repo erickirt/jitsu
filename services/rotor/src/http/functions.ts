@@ -78,7 +78,7 @@ export const FunctionsHandlerMulti =
         connectionIds.forEach((id, i) => {
           handlerMetric.inc({ connectionId: id, status: "error" }, 1);
         });
-        next(e);
+        next(`[${connectionIds}] Error processing functions: ${e.name}: ${e.message}`);
       });
   };
 

@@ -100,6 +100,8 @@ services:
       CLICKHOUSE_HOST: "clickhouse:8123"
       CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
       CLICKHOUSE_DATABASE: "newjitsu_metrics"
+      MONGODB_URL: "mongodb://default:${MONGO_PASSWORD:-default}@mongo/"
+      MONGODB_NETWORK_COMPRESSION: "none"
       UPDATE_DB: "true"
       FORCE_UPDATE_DB: "true"
     healthcheck:
