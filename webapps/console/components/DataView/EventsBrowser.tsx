@@ -286,7 +286,9 @@ const EventsBrowser0 = ({
 
   useEffect(() => {
     if (!actorId || !entitiesMap[actorId]) {
-      patchQueryStringState("actorId", entities[0].id);
+      if (entities.length > 0) {
+        patchQueryStringState("actorId", entities[0].id);
+      }
     }
   }, [actorId, entities, patchQueryStringState, entitiesMap]);
 
@@ -581,6 +583,7 @@ const EventsBrowser0 = ({
               <DebouncedInput
                 style={{ width: 180 }}
                 value={search}
+                allowClear
                 onChange={e => {
                   searchFunc(e);
                 }}

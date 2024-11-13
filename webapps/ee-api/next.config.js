@@ -21,13 +21,16 @@ const nextConfig = {
             key: "X-Frame-Options",
             value: "DENY",
           },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
         ],
       },
     ];
   },
-}
+};
 
-const withTM = require('next-transpile-modules')(['juava']); // pass the modules you would like to see transpiled
+const withTM = require("next-transpile-modules")(["juava"]); // pass the modules you would like to see transpiled
 
 module.exports = withTM(nextConfig);
-
