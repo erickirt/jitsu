@@ -219,7 +219,7 @@ const SettingsTab: React.FC<{ profileBuilder: ProfileBuilderData; dispatch: Reac
             documentation: <>Select the destination database where the profiles will be stored</>,
             component: (
               <DestinationSelector
-                selected={settings.destinationId || destinations[0].id}
+                selected={settings.destinationId || destinations[0]?.id}
                 items={destinations}
                 enabled={true}
                 onSelect={d => dispatch({ type: "settings", value: { ...settings, destinationId: d } })}
