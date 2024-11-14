@@ -151,8 +151,12 @@ const SQLViewer: React.FC<SQLViewerProps> = ({ destinationId }) => {
           query: { destinationId },
           body: { query: sql, offset: offset, limit: limit },
         });
-        setResults(res);
-        setLastQuery({ sql, offset: res.offset, limit: res.limit });
+        if (res.error) {
+          setError(res.error);
+        } else {
+          setResults(res);
+          setLastQuery({ sql, offset: res.offset, limit: res.limit });
+        }
       } catch (e) {
         setError(e);
       } finally {

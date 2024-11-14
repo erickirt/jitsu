@@ -25,14 +25,17 @@ export const getClickhouseClient = (workspaceId: string, cred: ClickhouseCredent
 export const columnType = z.object({ name: z.string(), type: z.string() });
 export type columnType = z.infer<typeof columnType>;
 
-const resultType = z.object({
-  meta: z.array(columnType),
-  data: z.array(z.object({}).passthrough()),
-  rows: z.number(),
-  limit: z.number(),
-  offset: z.number(),
-  statistics: z.object({}).passthrough(),
-});
+const resultType = z.union([
+  z.object({
+    meta: z.array(columnType),
+    data: z.array(z.object({}).passthrough()),
+    rows: z.number(),
+    limit: z.number(),
+    offset: z.number(),
+    statistics: z.object({}).passthrough(),
+  }),
+  z.object({ error: z.string() }),
+]);
 
 export type SQLResultType = z.infer<typeof resultType>;
 
@@ -59,29 +62,33 @@ export default createRoute()
       }),
       `Destination ${destinationId} not found`
     );
-    const cred = ClickhouseCredentials.parse(destination.config);
-    if (!destination?.config?.["provisioned"] && cred.protocol !== "https") {
-      throw new Error(
-        `At this moment, queries are only supported for HTTPS ClickHouse. Destination ${destinationId} uses ${cred.protocol} `
-      );
+    try {
+      const cred = ClickhouseCredentials.parse(destination.config);
+      if (!destination?.config?.["provisioned"] && cred.protocol !== "https") {
+        throw new Error(
+          `At this moment, queries are only supported for HTTPS ClickHouse. Destination ${destinationId} uses ${cred.protocol} `
+        );
+      }
+      const clickhouse = getClickhouseClient(workspaceId, cred);
+
+      const adjustedQuery = adjustQuery(body.query, body.limit || SQLQueryDefaultLimit, body.offset);
+
+      const resultSet = await clickhouse.query({
+        query: adjustedQuery.query,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      });
+      let index = adjustedQuery.offset + 1;
+      const result = (await resultSet.json()) as any;
+      result.data = result.data.map(row => {
+        return { "#": index++, ...row };
+      });
+      result.meta = [{ name: "#", type: "UInt64" }, ...result.meta];
+      return { ...result, limit: adjustedQuery.limit, offset: adjustedQuery.offset };
+    } catch (e) {
+      return { error: e.message };
     }
-    const clickhouse = getClickhouseClient(workspaceId, cred);
-
-    const adjustedQuery = adjustQuery(body.query, body.limit || SQLQueryDefaultLimit, body.offset);
-
-    const resultSet = await clickhouse.query({
-      query: adjustedQuery.query,
-      clickhouse_settings: {
-        wait_end_of_query: 1,
-      },
-    });
-    let index = adjustedQuery.offset + 1;
-    const result = (await resultSet.json()) as any;
-    result.data = result.data.map(row => {
-      return { "#": index++, ...row };
-    });
-    result.meta = [{ name: "#", type: "UInt64" }, ...result.meta];
-    return { ...result, limit: adjustedQuery.limit, offset: adjustedQuery.offset };
   })
   .GET({
     description: "List all destinations that support SQL queries for a given workspace",
