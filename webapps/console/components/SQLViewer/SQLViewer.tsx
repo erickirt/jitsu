@@ -90,6 +90,7 @@ const SchemaTree: React.FC<SchemaTreeProps> = ({ onColumnSelect, onTableSelect, 
           isLeaf: true,
           checkable: false,
           title: <Tooltip title={column.name + ": " + column.type}>{trimMiddle(column.name, 28)}</Tooltip>,
+          value: column.name,
           key: `${name}_${column.name}`,
         };
       }),
@@ -104,7 +105,7 @@ const SchemaTree: React.FC<SchemaTreeProps> = ({ onColumnSelect, onTableSelect, 
       <Tree.DirectoryTree
         onSelect={(keys, e) => {
           if (e.node.isLeaf) {
-            onColumnSelect?.(e.node.key);
+            onColumnSelect?.(e.node["value"]);
           }
         }}
         selectable={false}
