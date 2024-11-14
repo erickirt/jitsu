@@ -25,19 +25,17 @@ export const getClickhouseClient = (workspaceId: string, cred: ClickhouseCredent
 export const columnType = z.object({ name: z.string(), type: z.string() });
 export type columnType = z.infer<typeof columnType>;
 
-const resultType = z.union([
-  z.object({
-    meta: z.array(columnType),
-    data: z.array(z.object({}).passthrough()),
-    rows: z.number(),
-    limit: z.number(),
-    offset: z.number(),
-    statistics: z.object({}).passthrough(),
-  }),
-  z.object({ error: z.string() }),
-]);
+const successfulResult = z.object({
+  meta: z.array(columnType),
+  data: z.array(z.object({}).passthrough()),
+  rows: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+  statistics: z.object({}).passthrough(),
+});
+const resultType = z.union([successfulResult, z.object({ error: z.string() })]);
 
-export type SQLResultType = z.infer<typeof resultType>;
+export type SQLResultType = z.infer<typeof successfulResult>;
 
 export default createRoute()
   .POST({
@@ -86,7 +84,7 @@ export default createRoute()
       });
       result.meta = [{ name: "#", type: "UInt64" }, ...result.meta];
       return { ...result, limit: adjustedQuery.limit, offset: adjustedQuery.offset };
-    } catch (e) {
+    } catch (e: any) {
       return { error: e.message };
     }
   })
