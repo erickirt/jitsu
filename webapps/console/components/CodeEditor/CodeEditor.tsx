@@ -35,23 +35,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const editorRef = useRef<any>(null);
   const [mounted, setMounted] = React.useState(false);
   const handleChange = onChange;
-  const handleChangePosition = debounce(changePosition ?? (() => {}), 100);
+  const handleChangePosition = changePosition ? debounce(changePosition, 100) : undefined;
 
   const handleEditorDidMount = useCallback(
     (editor, monaco) => {
-      if (foldLevel) {
-        editor.getAction(`editor.foldLevel${foldLevel}`)?.run();
-      }
       editorRef.current = editor;
       if (typeof value !== "undefined") {
         editor.setValue(value);
       }
+      if (foldLevel) {
+        editor.getAction(`editor.foldLevel${foldLevel}`)?.run();
+      }
       if (extraSuggestions) {
         monaco.languages.typescript.javascriptDefaults.setExtraLibs([{ content: extraSuggestions }]);
       }
-      editor.onDidChangeCursorPosition(e => {
-        handleChangePosition(editor.getModel().getOffsetAt(e.position));
-      });
+      if (handleChangePosition) {
+        editor.onDidChangeCursorPosition(e => {
+          handleChangePosition?.(editor.getModel().getOffsetAt(e.position));
+        });
+      }
       setMounted(true);
     },
     [extraSuggestions, foldLevel, handleChangePosition, value]
@@ -83,14 +85,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const editor = editorRef.current;
     if (editor && editor.getValue() !== value) {
       const positionShift = value.length - editor.getValue().length;
-      const position = editor.getPosition();
-      editor.setValue(value);
-      editor.setPosition({ ...position, column: position.column + positionShift });
-      //scroll to the end of the line
-      editor.revealPosition({ ...position, column: position.column + positionShift + 100 });
-      editor.focus();
-      if (foldLevel) {
-        editor.getAction(`editor.foldLevel${foldLevel}`)?.run();
+      if (Math.abs(positionShift) > 2) {
+        // we respect prop.value change only if it's more than 2 characters
+        // otherwise, it's probably user is typing, and we don't want to rollback what he typed due to delay in props update
+        const position = editor.getPosition();
+        editor.setValue(value);
+        editor.setPosition({ ...position, column: position.column + positionShift });
+        //scroll to the end of the line
+        editor.revealPosition({ ...position, column: position.column + positionShift + 100 });
+        editor.focus();
+        if (foldLevel) {
+          editor.getAction(`editor.foldLevel${foldLevel}`)?.run();
+        }
       }
     }
   }, [value, foldLevel]);
