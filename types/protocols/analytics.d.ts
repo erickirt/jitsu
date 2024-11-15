@@ -316,6 +316,8 @@ export type RuntimeFacade = {
   pageTitle(): string | undefined;
 };
 
+export type ErrorHandler = (error: any) => void;
+
 export type JitsuOptions = {
   /**
    * API Key. Optional. If not set, Jitsu will send event to the server without auth, and server
@@ -371,6 +373,11 @@ export type JitsuOptions = {
    * Required to overcome Safari ITP restrictions.
    */
   idEndpoint?: string;
+
+  /**
+   * What to do with errors. It can log it, rethrow or run a custom handler. Default value: "log"
+   */
+  errorPolicy?: ErrorHandler | "rethrow" | "log";
 
   privacy?: {
     dontSend?: boolean;
