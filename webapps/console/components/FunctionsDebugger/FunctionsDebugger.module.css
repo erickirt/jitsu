@@ -27,4 +27,3 @@
 .splitterFix :global(.ant-splitter-bar-dragger::before) {
   background-color: white !important;
 }
-
