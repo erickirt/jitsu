@@ -10,6 +10,7 @@ import {
   ID,
   JSONObject,
   Options,
+  ErrorHandler,
 } from "@jitsu/protocols/analytics";
 import parse from "./index";
 
@@ -35,6 +36,7 @@ const defaultConfig: Required<JitsuOptions> = {
   fetchTimeoutMs: undefined,
   s2s: undefined,
   idEndpoint: undefined,
+  errorPolicy: "log",
   privacy: {
     dontSend: false,
     disableUserIds: false,
@@ -628,6 +630,22 @@ function maskWriteKey(writeKey?: string): string | undefined {
   return writeKey;
 }
 
+function getErrorHandler(opts: JitsuOptions): ErrorHandler {
+  const configuredHandler = opts.errorPolicy || "log";
+  if (typeof configuredHandler === "function") {
+    return configuredHandler;
+  } else if (configuredHandler === "rethrow") {
+    return e => {
+      throw e;
+    };
+  } else {
+    //"log" and unsupported value
+    return e => {
+      console.error(`[JITSU ERROR] ${e?.message || e?.toString() || "unknown error"}`, e);
+    };
+  }
+}
+
 async function send(
   method,
   payload,
@@ -643,6 +661,7 @@ async function send(
   const url = s2s ? `${jitsuConfig.host}/api/s/s2s/${method}` : `${jitsuConfig.host}/api/s/${method}`;
   const fetch = jitsuConfig.fetch || globalThis.fetch;
   if (!fetch) {
+    //don't run it through error handler since error is critical and should be addressed
     throw new Error(
       "Please specify fetch function in jitsu plugin initialization, fetch isn't available in global scope"
     );
@@ -682,7 +701,8 @@ async function send(
       clearTimeout(abortTimeout);
     }
   } catch (e: any) {
-    throw new Error(`Calling ${url} failed: ${e.message}`);
+    getErrorHandler(jitsuConfig)(new Error(`Calling ${url} failed: ${e.message}`));
+    return Promise.resolve();
   }
   let responseText;
   try {
@@ -709,7 +729,8 @@ async function send(
   try {
     responseJson = JSON.parse(responseText);
   } catch (e) {
-    return Promise.reject(`Can't parse JSON: ${responseText}: ${e?.message}`);
+    getErrorHandler(jitsuConfig)(new Error(`Can't parse JSON: ${responseText}: ${e?.message}`));
+    return Promise.resolve();
   }
 
   if (responseJson.destinations && responseJson.destinations.length > 0) {
