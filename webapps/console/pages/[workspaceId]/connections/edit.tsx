@@ -14,12 +14,10 @@ type FunctionAPIResult = {
   error: any;
 };
 const Loader = () => {
-  const workspace = useWorkspace();
-  const functionsApi = useConfigApi("function");
   const links = useConfigObjectLinks({ withData: true });
   const streams = useConfigObjectList("stream");
   const destinations = useConfigObjectList("destination");
-  const functions = useConfigObjectList("function");
+  const functions = useConfigObjectList("function").filter(f => f.kind !== "profile");
   return (
     <ConnectionEditorPage
       streams={streams}
