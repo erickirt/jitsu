@@ -1,8 +1,6 @@
 import { WorkspacePageLayout } from "../../../components/PageLayout/WorkspacePageLayout";
-import { useWorkspace } from "../../../lib/context";
 import React from "react";
 import ConnectionEditorPage from "../../../components/ConnectionEditorPage/ConnectionEditorPage";
-import { useConfigApi } from "../../../lib/useApi";
 import { FunctionConfig } from "../../../lib/schema";
 import { useConfigObjectLinks, useConfigObjectList } from "../../../lib/store";
 import { z } from "zod";
