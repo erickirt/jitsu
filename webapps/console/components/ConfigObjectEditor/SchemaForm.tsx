@@ -201,10 +201,14 @@ export const SchemaForm: React.FC<{
                           />
                         );
                       }
+                      if (f.multiline) {
+                        return <TextEditor rows={4} {...editorProps} />;
+                      }
                       if (f.airbyte_secret) {
                         return <PasswordEditor {...editorProps} />;
                       }
-                      return <TextEditor rows={f.multiline ? 4 : 1} {...editorProps} />;
+
+                      return <TextEditor {...editorProps} />;
                     case "boolean":
                       return <Switch {...editorProps} />;
                     case "array":
