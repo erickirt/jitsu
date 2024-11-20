@@ -96,6 +96,7 @@ function eventStreamReducer(state: EventsBrowserState, action: any) {
   } else if (action.type === "resetAndPatch") {
     return {
       ...state,
+      error: undefined,
       events: undefined,
       beforeDate: undefined,
       refreshTime: state.initDate,
@@ -376,6 +377,7 @@ const EventsBrowser0 = ({
               if (error) {
                 patch.error = error;
               } else {
+                patch.error = undefined;
                 if (addEvents) {
                   patch.addEvents = addEvents;
                 } else if (events) {

@@ -26,7 +26,8 @@ export const api: Api = {
         limit: z.coerce.number().optional().default(50),
         start: z.coerce.date().optional(),
         end: z.coerce.date().optional(),
-        search: z.string().optional(),
+        //people can search for ISO timestamps. that we automatically convert to date
+        search: z.any().optional(),
       }),
       result: z.any(),
     },
@@ -72,7 +73,12 @@ export const api: Api = {
             levels: query.levels ? query.levels.split(",") : undefined,
             start: query.start ? dayjs(query.start).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
             end: query.end ? dayjs(query.end).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
-            search: query.search ? query.search : undefined,
+            search:
+              typeof query.search === "undefined"
+                ? undefined
+                : query.search instanceof Date
+                ? query.search.toISOString()
+                : query.search,
             limit: query.limit,
           },
           clickhouse_settings: {
