@@ -1,16 +1,17 @@
 /* global analytics */
 
 import {
-  DynamicJitsuOptions,
-  JitsuOptions,
-  PersistentStorage,
-  RuntimeFacade,
   AnalyticsClientEvent,
   Callback,
+  DynamicJitsuOptions,
+  ErrorHandler,
   ID,
+  JitsuOptions,
   JSONObject,
   Options,
-  ErrorHandler,
+  PersistentStorage,
+  RuntimeFacade,
+  Traits,
 } from "@jitsu/protocols/analytics";
 import parse from "./index";
 
@@ -635,13 +636,13 @@ function getErrorHandler(opts: JitsuOptions): ErrorHandler {
   if (typeof configuredHandler === "function") {
     return configuredHandler;
   } else if (configuredHandler === "rethrow") {
-    return e => {
-      throw e;
+    return (msg, ...args) => {
+      //ignore args, not clear what to do with them
+      throw new Error(msg);
     };
   } else {
-    //"log" and unsupported value
-    return e => {
-      console.error(`[JITSU ERROR] ${e?.message || e?.toString() || "unknown error"}`, e);
+    return (msg, ...args) => {
+      console.error(msg, ...args);
     };
   }
 }
@@ -701,7 +702,7 @@ async function send(
       clearTimeout(abortTimeout);
     }
   } catch (e: any) {
-    getErrorHandler(jitsuConfig)(new Error(`Calling ${url} failed: ${e.message}`));
+    getErrorHandler(jitsuConfig)(`Call to ${url} failed with error ${e.message}`);
     return Promise.resolve();
   }
   let responseText;
@@ -729,7 +730,7 @@ async function send(
   try {
     responseJson = JSON.parse(responseText);
   } catch (e) {
-    getErrorHandler(jitsuConfig)(new Error(`Can't parse JSON: ${responseText}: ${e?.message}`));
+    getErrorHandler(jitsuConfig)(`Can't parse JSON: ${responseText}: ${e?.message}`);
     return Promise.resolve();
   }
 
@@ -750,6 +751,23 @@ async function send(
     }
   }
   return adjustedPayload;
+}
+
+const controllingTraits = ["$doNotSend"] as const;
+/**
+ * Remove all members of traits that controls identify/group behavior (see analytics.d.ts), and should not be recorded. Returns
+ * copy of the object with these members removed.
+ *
+ * Do not modify traits object, but creates one
+ * @param traits
+ */
+function stripControllingTraits(traits: Traits): Exclude<Traits, (typeof controllingTraits)[number]> {
+  const res = { ...traits };
+  // see Traits definition in analytics.d.ts. We cannot define const here, so here's a little code duplication
+  for (const key of controllingTraits) {
+    delete res[key];
+  }
+  return res;
 }
 
 export const jitsuAnalyticsPlugin = (jitsuOptions: JitsuOptions = {}, storage: PersistentStorage): AnalyticsPlugin => {
@@ -814,8 +832,15 @@ export const jitsuAnalyticsPlugin = (jitsuOptions: JitsuOptions = {}, storage: P
       }
       // Store traits in cache to be able to use them in page and track events that run asynchronously with current identify.
       storage.setItem("__user_id", payload.userId);
+      const doNotSend = payload.traits?.$doNotSend;
       if (payload.traits && typeof payload.traits === "object") {
+        payload.traits = stripControllingTraits(payload.traits);
         storage.setItem("__user_traits", payload.traits);
+      }
+      console.log("payload", payload);
+      console.log("do not send value", payload.traits?.$doNotSend);
+      if (doNotSend) {
+        return Promise.resolve();
       }
       return send("identify", payload, config, instance, storage);
     },
@@ -860,8 +885,13 @@ export const jitsuAnalyticsPlugin = (jitsuOptions: JitsuOptions = {}, storage: P
         const userId = options?.userId || user?.userId;
         const anonymousId = options?.anonymousId || user?.anonymousId || storage.getItem("__anon_id");
         storage.setItem("__group_id", groupId);
+        const doNotSend = traits?.$doNotSend;
         if (traits && typeof traits === "object") {
+          traits = stripControllingTraits(traits);
           storage.setItem("__group_traits", traits);
+        }
+        if (doNotSend) {
+          return Promise.resolve();
         }
         return send(
           "group",

@@ -189,7 +189,7 @@ interface AnalyticsContext {
 
   locale?: string;
 
-  library?: {
+  xlibrary?: {
     name: string;
     version: string;
     //allow to add custom fields
@@ -316,7 +316,7 @@ export type RuntimeFacade = {
   pageTitle(): string | undefined;
 };
 
-export type ErrorHandler = (error: any) => void;
+export type ErrorHandler = (message: string, ...args: any[]) => void;
 
 export type JitsuOptions = {
   /**
@@ -389,6 +389,17 @@ export type JitsuOptions = {
 
 export type DynamicJitsuOptions = Pick<JitsuOptions, "privacy" | "debug" | "echoEvents">;
 
+export type Traits = {
+  [key: string]: JSONValue;
+  //some traits, all starting with $, are reserved for signalling the behavior of the event
+
+  /**
+   * Tells Jitsu to process event, but not send it to server. Used for .identify() and .group() calls
+   * that are intended to update user/group state, but not send events
+   */
+  $doNotSend?: boolean;
+};
+
 export interface AnalyticsInterface {
   track(
     eventName: string | JSONObject,
@@ -407,12 +418,12 @@ export interface AnalyticsInterface {
 
   group(
     groupId?: ID | object,
-    traits?: JSONObject | null,
+    traits?: Traits | null,
     options?: Options,
     callback?: Callback
   ): Promise<DispatchedEvent>;
 
-  identify(id?: ID | object, traits?: JSONObject | Callback | null, callback?: Callback): Promise<DispatchedEvent>;
+  identify(id?: ID | Traits, traits?: Traits | Callback | null, callback?: Callback): Promise<DispatchedEvent>;
 
   reset(callback?: (...params: any[]) => any): Promise<any>;
 
