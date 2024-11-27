@@ -39,6 +39,7 @@ const identify: AnalyticsServerEvent = {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/107.0.5304.18 Safari/537.36",
   },
   sentAt: "2022-11-14T08:56:34.387Z",
+  receivedAt: "2022-11-14T08:56:40.000Z",
   timestamp: "2022-11-14T08:56:34.387Z",
   traits: {
     caseName: "basic-identify",
@@ -51,7 +52,7 @@ const identify: AnalyticsServerEvent = {
 };
 
 const legacyIdentifyExpected: Omit<JitsuLegacyEvent, "local_tz_offset"> & { local_tz_offset?: number } = {
-  _timestamp: "2022-11-14T08:56:34.387Z",
+  _timestamp: "2022-11-14T08:56:40.000Z",
   anon_ip: "141.136.89.0",
   doc_path: "/basic.html",
   doc_search: "?utm_source=source&utm_medium=medium&utm_campaign=campaign",
@@ -137,6 +138,7 @@ const page: AnalyticsServerEvent = {
     url: "https://localhost:3088/basic.html?utm_source=source&utm_medium=medium&utm_campaign=campaign",
     width: 1280,
   },
+  receivedAt: "2022-11-14T08:56:40.000Z",
   sentAt: "2022-11-14T08:56:34.395Z",
   timestamp: "2022-11-14T08:56:34.395Z",
   type: "page",
@@ -144,7 +146,7 @@ const page: AnalyticsServerEvent = {
 };
 
 const legacyPageExpected = {
-  _timestamp: "2022-11-14T08:56:34.395Z",
+  _timestamp: "2022-11-14T08:56:40.000Z",
   api_key: "",
   click_id: {},
   doc_host: "localhost",
