@@ -10,6 +10,7 @@
       window.testOnload = async j => {
         await j.setAnonymousId("john-doe-id-1");
         await j.identify("john-nondoe", { email: "john@example.com" });
+        await j.identify("john-nondoe", { email: "john2@example.com", $doNotSend: true });
         await j.track("pageLoaded", { trackParam: "trackValue" });
         await j.reset();
         await j.track("pageLoaded", { trackParam: "trackValue" });

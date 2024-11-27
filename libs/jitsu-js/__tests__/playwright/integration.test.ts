@@ -273,6 +273,9 @@ test("reset", async ({ browser }) => {
   const newAnonymousId = cookies[0].value;
   console.log(`🍪Cookies`, cookies);
 
+  //second identify call should not reach the server, but it should change the traits
+  expect(firstTrack.body.context.traits?.email).toEqual("john2@example.com");
+
   expect(secondTrack.body.anonymousId).not.toBeNull();
   expect(secondTrack.body.anonymousId).toBeDefined();
   expect(secondTrack.body.anonymousId).toEqual(newAnonymousId);
