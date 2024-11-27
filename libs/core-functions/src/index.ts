@@ -34,7 +34,7 @@ const builtinDestinations: Record<BuiltinDestinationFunctionName, JitsuFunction>
   "builtin.destination.amplitude": AmplitudeDestination as JitsuFunction,
   "builtin.destination.facebook-conversions": FacebookConversionsApi as JitsuFunction,
   "builtin.destination.hubspot": HubspotDestination as JitsuFunction,
-  "builtin.destination.devnull": () => null,
+  "builtin.destination.devnull": () => undefined,
   "builtin.destination.tag": () => undefined,
   "builtin.destination.gtm": () => undefined,
   "builtin.destination.logrocket": () => undefined,

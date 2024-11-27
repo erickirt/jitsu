@@ -141,7 +141,7 @@ export function jitsuLegacy(event: AnalyticsServerEvent, ctx: FullContext<Bulker
       user_agent: analyticsContext.userAgent,
       user_language: analyticsContext.locale,
       utc_time: event.timestamp,
-      _timestamp: event.timestamp,
+      _timestamp: event.receivedAt,
       utm: analyticsContext.campaign,
       vp_size:
         Math.max(analyticsContext.screen?.innerWidth || 0) + "x" + Math.max(analyticsContext.screen?.innerHeight || 0),
