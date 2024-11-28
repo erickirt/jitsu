@@ -363,12 +363,21 @@ const BulkerDestination: JitsuFunction<AnalyticsServerEvent, BulkerDestinationCo
     }
     const events = dataLayouts[dataLayout](adjustedEvent, ctx);
     for (const { event, table } of Array.isArray(events) ? events : [events]) {
+      const payload = JSON.stringify(event);
+      if (payload.length > 1000000) {
+        throw new Error(
+          `Max allowed size is 1 000 000 bytes. Event size is: ${payload.length} bytes: \n${payload.substring(
+            0,
+            256
+          )}...`
+        );
+      }
       const res = await ctx.fetch(
         `${bulkerEndpoint}/post/${destinationId}?tableName=${table}`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${authToken}`, metricsMeta: JSON.stringify(metricsMeta) },
-          body: JSON.stringify(event),
+          body: payload,
         },
         { log: false }
       );
