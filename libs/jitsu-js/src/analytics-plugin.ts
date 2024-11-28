@@ -837,8 +837,6 @@ export const jitsuAnalyticsPlugin = (jitsuOptions: JitsuOptions = {}, storage: P
         payload.traits = stripControllingTraits(payload.traits);
         storage.setItem("__user_traits", payload.traits);
       }
-      console.log("payload", payload);
-      console.log("do not send value", payload.traits?.$doNotSend);
       if (doNotSend) {
         return Promise.resolve();
       }
