@@ -424,7 +424,7 @@ function adjustPayload(
     properties.path = fixPath(urlPath(targetUrl));
   }
 
-  const customContext = payload.properties?.context || {};
+  const customContext = payload.properties?.context || payload.options?.context || {};
   delete payload.properties?.context;
   const referrer = runtime.referrer();
   const context: AnalyticsClientEvent["context"] = {
