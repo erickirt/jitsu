@@ -6,13 +6,15 @@ import { ApiError } from "../../../../../lib/shared/errors";
 import { clickhouse } from "../../../../../lib/server/clickhouse";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import zlib from "zlib";
+import { pipeline } from "node:stream";
 dayjs.extend(utc);
 
 const log = getServerLog("events-log");
 const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
-//Vercel Limit:  https://vercel.com/docs/functions/runtimes#request-body-size
-const maxResponseSize = 4500000;
+//Vercel Limit:  https://vercel.com/docs/functions/streaming-functions#limitations-for-streaming-edge-functions
+const maxStreamingResponseSize = 100_000_000;
 
 export const api: Api = {
   url: inferUrl(__filename),
@@ -31,6 +33,7 @@ export const api: Api = {
       }),
       result: z.any(),
     },
+    streaming: true,
     auth: true,
     handle: async ({ user, req, res, query }) => {
       log.atDebug().log("GET", JSON.stringify(query, null, 2));
@@ -53,6 +56,10 @@ export const api: Api = {
           throw new ApiError(`connection doesn't belong to the current workspace`, {}, { status: 403 });
         }
       }
+      res.writeHead(200, {
+        "Content-Type": "application/x-ndjson",
+        "Content-Encoding": "gzip",
+      });
       const sqlQuery = `select timestamp as date, level, message as content from ${metricsSchema}.events_log 
          where 
              actorId = {actorId:String} 
@@ -62,43 +69,66 @@ export const api: Api = {
              ${query.end ? "and timestamp < {end:String}" : ""}
                 ${query.search ? "and message ilike concat('%',{search:String},'%')" : ""}
                         order by timestamp desc limit {limit:UInt32}`;
-      const result: any[] = [];
-
-      const chResult = (await (
-        await clickhouse.query({
-          query: sqlQuery,
-          query_params: {
-            actorId: query.actorId,
-            type: query.type,
-            levels: query.levels ? query.levels.split(",") : undefined,
-            start: query.start ? dayjs(query.start).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
-            end: query.end ? dayjs(query.end).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
-            search:
-              typeof query.search === "undefined"
-                ? undefined
-                : query.search instanceof Date
-                ? query.search.toISOString()
-                : query.search,
-            limit: query.limit,
-          },
-          clickhouse_settings: {
-            wait_end_of_query: 1,
-          },
-        })
-      ).json()) as any;
-      let written = 0;
-      for (const row of chResult.data) {
-        written += row.content.length + 70;
-        if (written > maxResponseSize) {
-          break;
+      const chResult = await clickhouse.query({
+        query: sqlQuery,
+        query_params: {
+          actorId: query.actorId,
+          type: query.type,
+          levels: query.levels ? query.levels.split(",") : undefined,
+          start: query.start ? dayjs(query.start).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
+          end: query.end ? dayjs(query.end).utc().format("YYYY-MM-DD HH:mm:ss.SSS") : undefined,
+          search:
+            typeof query.search === "undefined"
+              ? undefined
+              : query.search instanceof Date
+              ? query.search.toISOString()
+              : query.search,
+          limit: query.limit,
+        },
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      });
+      var responsePromiseResolve;
+      let responsePromise = new Promise<void>((resolve, reject) => {
+        responsePromiseResolve = resolve;
+      });
+      const gzip = zlib.createGzip();
+      pipeline(gzip, res, err => {
+        if (err) {
+          log.atError().withCause(err).log("Error piping data to response");
         }
-        result.push({
-          date: dayjs(row.date).utc(true).toDate(),
-          level: row.level,
-          content: JSON.parse(row.content),
-        });
-      }
-      res.json(result);
+        responsePromiseResolve();
+      });
+      const stream = chResult.stream();
+      stream.on("data", rs => {
+        for (const r of rs) {
+          const row = r.json() as any;
+          if (gzip.bytesWritten < maxStreamingResponseSize) {
+            const line = JSON.stringify({
+              date: dayjs(row.date).utc(true).toDate(),
+              level: row.level,
+              content: JSON.parse(row.content),
+            });
+            gzip.write(line + "\n");
+          } else {
+            stream.destroy();
+          }
+        }
+      });
+      stream.on("error", err => {
+        log.atError().withCause(err).log("Error streaming data");
+        gzip.end();
+      });
+      stream.on("close", () => {
+        gzip.end();
+      });
+      stream.on("end", () => {
+        gzip.end();
+      });
+      //wait for stream end
+      await responsePromise;
     },
   },
 };

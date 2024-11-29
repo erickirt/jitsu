@@ -6,9 +6,14 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 dayjs.extend(utc);
 import { getServerLog } from "../../../../lib/server/log";
+import zlib from "zlib";
+import { pipeline } from "node:stream";
 
 const log = getServerLog("sync-logs");
-const maxResponseSize = 4500000;
+//Vercel Limit:  https://vercel.com/docs/functions/streaming-functions#limitations-for-streaming-edge-functions
+const maxStreamingResponseSize = 100_000_000;
+// Too big responses may cause performance issues in the browser (that is compressed size - actual payload is much bigger)
+const browserResponseSize = 1_000_000;
 
 export default createRoute()
   .GET({
@@ -24,18 +29,32 @@ export default createRoute()
   .handler(async ({ user, query, res }) => {
     const { workspaceId } = query;
     await verifyAccess(user, workspaceId);
+    let maxResponseSize = maxStreamingResponseSize;
     if (query.download) {
       res.writeHead(200, {
         "Content-Type": "text/plain",
+        "Content-Encoding": "gzip",
         "Content-Disposition": `attachment; filename=logs_sync_${query.syncId}_task_${query.taskId}.txt`,
       });
     } else {
+      maxResponseSize = browserResponseSize;
       res.writeHead(200, {
+        "Content-Encoding": "gzip",
         "Content-Type": "text/plain",
       });
     }
     try {
-      let writtenBytes = 0;
+      var responsePromiseResolve;
+      let responsePromise = new Promise<void>((resolve, reject) => {
+        responsePromiseResolve = resolve;
+      });
+      const gzip = zlib.createGzip();
+      pipeline(gzip, res, err => {
+        if (err) {
+          log.atError().withCause(err).log("Error piping data to response");
+        }
+        responsePromiseResolve();
+      });
       db.prisma().$queryRaw;
       await db.pgHelper().streamQuery(
         `select tl.*
@@ -47,20 +66,21 @@ export default createRoute()
           const line = `${dayjs(r.timestamp).utc().format("YYYY-MM-DD HH:mm:ss.SSS")} ${r.level} [${r.logger}] ${
             r.message
           }\n`;
-          if (writtenBytes + line.length < maxResponseSize) {
-            res.write(line);
-            writtenBytes += line.length;
+          if (gzip.bytesWritten < maxResponseSize) {
+            gzip.write(line);
           }
         }
       );
-      if (writtenBytes === 0) {
+      if (gzip.bytesWritten === 0) {
         const task = await db.prisma().source_task.findFirst({ where: { task_id: query.taskId } });
         if (!task || task.status === "RUNNING") {
-          res.write("The task is starting...");
+          gzip.write("The task is starting...");
         } else {
-          res.write("No logs found for this task");
+          gzip.write("No logs found for this task");
         }
       }
+      gzip.end();
+      await responsePromise;
     } catch (e: any) {
       const errorId = randomId();
       log

@@ -108,6 +108,19 @@ export const rpc: RpcFunc = async (url, { body, ...rest } = {}) => {
   }
   if ((result.headers.get("Content-Type") ?? "").startsWith("application/json")) {
     return await parseJsonResponse(result, method, url);
+  } else if ((result.headers.get("Content-Type") ?? "").startsWith("application/x-ndjson")) {
+    const text = await result.text();
+    return text
+      .split("\n")
+      .filter(line => line.length > 0)
+      .map(line => {
+        try {
+          return JSON.parse(line);
+        } catch (e) {
+          console.error(`Error parsing JSON line from ${method} ${url}: ${getErrorMessage(e)}`);
+          return undefined;
+        }
+      });
   } else {
     return await result.text();
   }
