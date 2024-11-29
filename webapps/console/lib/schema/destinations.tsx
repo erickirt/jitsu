@@ -528,7 +528,7 @@ export const coreDestinations: DestinationType<any>[] = [
       region: z.enum(s3Regions).describe("Region::Aws Region"),
       clusterIdentifier: z.string().optional().describe("Cluster Identifier::Redshift cluster identifier"),
       workgroupName: z.string().optional().describe("Workgroup name::Redshift Serverless workgroup name"),
-      roleArn: z
+      roleARN: z
         .string()
         .optional()
         .describe(
@@ -576,7 +576,7 @@ export const coreDestinations: DestinationType<any>[] = [
       workgroupName: {
         hidden: obj => obj.authenticationMethod !== "iam" || obj.serverless === false,
       },
-      roleArn: {
+      roleARN: {
         hidden: obj => obj.authenticationMethod !== "iam",
       },
       externalID: {
@@ -639,7 +639,7 @@ export const coreDestinations: DestinationType<any>[] = [
             "Authentication Method::S3 authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>IAM Role based</a> or Access Key"
           ),
         region: z.enum(s3Regions).default(s3Regions[0]).describe("S3 Region::S3 Region"),
-        roleArn: z
+        roleARN: z
           .string()
           .optional()
           .describe(
@@ -671,7 +671,7 @@ export const coreDestinations: DestinationType<any>[] = [
       endpoint: {
         hidden: obj => obj.authenticationMethod === "iam",
       },
-      roleArn: {
+      roleARN: {
         hidden: obj => obj.authenticationMethod !== "iam",
       },
       externalID: {
