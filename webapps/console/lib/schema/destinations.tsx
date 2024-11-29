@@ -534,7 +534,7 @@ export const coreDestinations: DestinationType<any>[] = [
         .describe(
           "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>How to create</a>"
         ),
-      externalId: z.string().optional().describe("External ID::IAM external ID"),
+      externalID: z.string().optional().describe("External ID::IAM external ID"),
       host: z.string().optional().describe("Redshift host"),
       database: z.string().describe("Redshift database name"),
       defaultSchema: z.string().default("PUBLIC").describe("Schema::Redshift schema"),
@@ -579,7 +579,7 @@ export const coreDestinations: DestinationType<any>[] = [
       roleArn: {
         hidden: obj => obj.authenticationMethod !== "iam",
       },
-      externalId: {
+      externalID: {
         // constants are not yet refreshed on form state change. so it is unconditional here
         constant: obj => obj.workspaceId,
       },
@@ -645,7 +645,7 @@ export const coreDestinations: DestinationType<any>[] = [
           .describe(
             "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>How to create</a>"
           ),
-        externalId: z.string().optional().describe("External ID::IAM external ID"),
+        externalID: z.string().optional().describe("External ID::IAM external ID"),
         accessKeyId: z
           .string()
           .optional()
@@ -674,7 +674,7 @@ export const coreDestinations: DestinationType<any>[] = [
       roleArn: {
         hidden: obj => obj.authenticationMethod !== "iam",
       },
-      externalId: {
+      externalID: {
         // constants are not yet refreshed on form state change. so it is unconditional here
         constant: obj => obj.workspaceId,
       },
