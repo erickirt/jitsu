@@ -75,7 +75,16 @@ export type PropertyUI = {
   /**
    * If the field should not be displayed. That field must have a default value
    */
-  hidden?: boolean;
+  hidden?: boolean | ((obj: any) => boolean);
+  /**
+   * If the field should be a constant
+   */
+  constant?: any | ((obj: any) => any);
+  /**
+   * correction to field value. e.g: set default value for property that was missing before
+   */
+  correction?: any | ((obj: any) => any);
+
   /**
    * Documentation for the field
    */
@@ -508,26 +517,71 @@ export const coreDestinations: DestinationType<any>[] = [
     ),
     tags: "Datawarehouse",
     credentials: z.object({
-      host: z.string().describe("Redshift host"),
+      authenticationMethod: z
+        .enum(["iam", "password"])
+        .optional()
+        .default("password")
+        .describe(
+          "Authentication Method::Redshift authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>IAM Role based</a> or database username/password"
+        ),
+      serverless: z.boolean().default(false).optional().describe("Redshift Serverless::"),
+      region: z.enum(s3Regions).describe("Region::Aws Region"),
+      clusterIdentifier: z.string().optional().describe("Cluster Identifier::Redshift cluster identifier"),
+      workgroupName: z.string().optional().describe("Workgroup name::Redshift Serverless workgroup name"),
+      roleArn: z
+        .string()
+        .optional()
+        .describe(
+          "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>How to create</a>"
+        ),
+      externalId: z.string().optional().describe("External ID::IAM external ID"),
+      host: z.string().optional().describe("Redshift host"),
       database: z.string().describe("Redshift database name"),
       defaultSchema: z.string().default("PUBLIC").describe("Schema::Redshift schema"),
-      username: z.string().describe("Redshift username"),
-      password: z.string().describe("Redshift password"),
+      username: z.string().optional().describe("Redshift username"),
+      password: z.string().optional().describe("Redshift password"),
+      bucket: z.string().describe("S3 Bucket Name::S3 Bucket Name"),
       accessKeyId: z
         .string()
+        .optional()
         .describe(
           "S3 Access Key Id::S3 Access Key Id. <a target='_blank' rel='noreferrer noopener' href='https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#access-keys-and-secret-access-keys'>Create access key</a>"
         ),
-      secretAccessKey: z.string().describe("S3 Secret Access Key::S3 Secret Access Key"),
-      region: z.enum(s3Regions).describe("S3 Region::S3 Region"),
-      bucket: z.string().describe("S3 Bucket Name::S3 Bucket Name"),
+      secretAccessKey: z.string().optional().describe("S3 Secret Access Key::S3 Secret Access Key"),
     }),
     credentialsUi: {
+      authenticationMethod: {
+        correction: obj => obj.authenticationMethod || "password",
+      },
+      username: {
+        hidden: obj => obj.authenticationMethod === "iam" && obj.serverless === true,
+      },
       password: {
         password: true,
+        hidden: obj => obj.authenticationMethod === "iam",
       },
       secretAccessKey: {
+        hidden: obj => obj.authenticationMethod === "iam",
         password: true,
+      },
+      accessKeyId: {
+        hidden: obj => obj.authenticationMethod === "iam",
+      },
+      host: {
+        hidden: obj => obj.authenticationMethod === "iam",
+      },
+      clusterIdentifier: {
+        hidden: obj => obj.authenticationMethod !== "iam" || obj.serverless === true,
+      },
+      workgroupName: {
+        hidden: obj => obj.authenticationMethod !== "iam" || obj.serverless === false,
+      },
+      roleArn: {
+        hidden: obj => obj.authenticationMethod !== "iam",
+      },
+      externalId: {
+        // constants are not yet refreshed on form state change. so it is unconditional here
+        constant: obj => obj.workspaceId,
       },
     },
     description:
@@ -577,20 +631,52 @@ export const coreDestinations: DestinationType<any>[] = [
     description: "S3 is a cloud file storage service by Amazon",
     credentials: z
       .object({
+        authenticationMethod: z
+          .enum(["iam", "accessKey"])
+          .optional()
+          .default("accessKey")
+          .describe(
+            "Authentication Method::S3 authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>IAM Role based</a> or Access Key"
+          ),
+        region: z.enum(s3Regions).default(s3Regions[0]).describe("S3 Region::S3 Region"),
+        roleArn: z
+          .string()
+          .optional()
+          .describe(
+            "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>How to create</a>"
+          ),
+        externalId: z.string().optional().describe("External ID::IAM external ID"),
         accessKeyId: z
           .string()
+          .optional()
           .describe(
             "S3 Access Key Id::S3 Access Key Id. <a target='_blank' rel='noreferrer noopener' href='https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#access-keys-and-secret-access-keys'>Create access key</a>"
           ),
-        secretAccessKey: z.string().describe("S3 Secret Access Key::S3 Secret Access Key"),
+        secretAccessKey: z.string().optional().describe("S3 Secret Access Key::S3 Secret Access Key"),
         bucket: z.string().describe("S3 Bucket Name::S3 Bucket Name"),
-        region: z.enum(s3Regions).default(s3Regions[0]).describe("S3 Region::S3 Region"),
         endpoint: z.string().optional().describe("Custom endpoint of S3-compatible server"),
       })
       .merge(blockStorageSettings),
     credentialsUi: {
+      authenticationMethod: {
+        correction: obj => obj.authenticationMethod || "accessKey",
+      },
       secretAccessKey: {
+        hidden: obj => obj.authenticationMethod === "iam",
         password: true,
+      },
+      accessKeyId: {
+        hidden: obj => obj.authenticationMethod === "iam",
+      },
+      endpoint: {
+        hidden: obj => obj.authenticationMethod === "iam",
+      },
+      roleArn: {
+        hidden: obj => obj.authenticationMethod !== "iam",
+      },
+      externalId: {
+        // constants are not yet refreshed on form state change. so it is unconditional here
+        constant: obj => obj.workspaceId,
       },
     },
   },

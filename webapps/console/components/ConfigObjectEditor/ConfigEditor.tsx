@@ -51,12 +51,13 @@ const log = getLog("ConfigEditor");
 
 export type FieldDisplay = {
   isId?: boolean;
-  hidden?: boolean;
+  hidden?: boolean | ((a: any) => boolean);
   displayName?: string;
   editor?: any;
   advanced?: boolean;
   documentation?: ReactNode;
-  constant?: any;
+  constant?: any | ((a: any) => any);
+  correction?: any | ((a: any) => any);
   textarea?: boolean;
   password?: boolean;
 };
@@ -100,8 +101,13 @@ export type ConfigEditorProps<T extends { id: string } = { id: string }, M = {}>
 
 type JsonSchema = any;
 
-function getUiWidget(field: FieldDisplay) {
-  if (field?.constant || field?.hidden) {
+function getUiWidget(field: FieldDisplay, obj: any) {
+  if (
+    (typeof field?.hidden === "function" && field?.hidden(obj) === true) ||
+    (typeof field?.hidden === "boolean" && field?.hidden === true) ||
+    (typeof field?.constant === "function" && typeof field?.constant(obj) !== "undefined") ||
+    (typeof field?.constant !== "function" && typeof field?.constant !== "undefined")
+  ) {
     return "hidden";
   } else if (field?.editor) {
     return field?.editor;
@@ -114,13 +120,13 @@ function getUiWidget(field: FieldDisplay) {
   }
 }
 
-function getUiSchema(schema: JsonSchema, fields: Record<string, FieldDisplay>): UiSchema {
+function getUiSchema(schema: JsonSchema, fields: Record<string, FieldDisplay>, object: any): UiSchema {
   return {
     ...Object.entries((schema as any).properties)
       .map(([name]) => {
         const field = fields[name];
         const fieldProps = {
-          "ui:widget": getUiWidget(field),
+          "ui:widget": getUiWidget(field, object),
           "ui:disabled": field?.constant ? true : undefined,
           "ui:placeholder": field?.constant,
           "ui:title": field?.displayName || createDisplayName(name),
@@ -250,7 +256,7 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
   const [isTouched, setTouched] = useState<boolean>(!!createNew);
   const [testResult, setTestResult] = useState<any>(undefined);
 
-  const uiSchema = getUiSchema(schema, fields);
+  const uiSchema = getUiSchema(schema, fields, formState?.formData || object);
 
   const [submitCount, setSubmitCount] = useState(0);
   const modal = useAntdModal();
@@ -414,12 +420,24 @@ const SingleObjectEditor: React.FC<SingleObjectEditorProps> = props => {
   if (meta === undefined) {
     return <LoadingAnimation />;
   }
-  const object = otherProps.object || {
+  const preObject = otherProps.object || {
     id: cuid(),
     workspaceId: workspace.id,
     type: type,
     ...newObject(meta),
   };
+  const constants = Object.fromEntries(
+    Object.entries(fields)
+      .filter(([_, v]) => typeof v.constant !== "undefined")
+      .map(([k, v]) => [k, typeof v.constant === "function" ? v.constant(preObject) : v.constant])
+  );
+  const corrections = Object.fromEntries(
+    Object.entries(fields)
+      .filter(([_, v]) => typeof v.correction !== "undefined")
+      .map(([k, v]) => [k, typeof v.correction === "function" ? v.correction(preObject) : v.correction])
+  );
+
+  const object = { ...preObject, ...constants, ...corrections };
 
   const onCancel = async (confirm: boolean) => {
     if (!confirm || (await confirmOp("Are you sure you want to close this page? All unsaved changes will be lost."))) {
