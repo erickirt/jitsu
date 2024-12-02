@@ -41,6 +41,11 @@ body {
   width: 100vw;
   overflow-x: auto;
   overflow-y: auto;
+
+  .ant-select-single.ant-select-open .ant-select-selection-item {
+    opacity: 0.25;
+    color: inherit;
+  }
 }
 
 .debug-border {

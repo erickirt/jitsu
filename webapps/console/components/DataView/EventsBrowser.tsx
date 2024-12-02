@@ -29,6 +29,7 @@ import { ConnectionTitle, ProfileBuilderTitle } from "../../pages/[workspaceId]/
 import { StreamTitle } from "../../pages/[workspaceId]/streams";
 import { trimMiddle } from "../../lib/shared/strings";
 import { countries } from "../../lib/shared/countries";
+import type { RefSelectProps } from "antd/es/select";
 
 import zlib from "zlib";
 import {
@@ -247,6 +248,14 @@ const EventsBrowser0 = ({
               destination={entity[1].destination}
             />
           ),
+        search: (entity[1].type === "stream"
+          ? [entity[1].name]
+          : entity[1].type === "profile-builder"
+          ? [entity[1].name, entity[1].destination?.name]
+          : [entity[1].stream?.name, entity[1].service?.name, entity[1].destination?.name]
+        )
+          .filter(s => s !== undefined)
+          .map(s => s.toLowerCase()),
       }));
     } else {
       return [];
@@ -284,6 +293,8 @@ const EventsBrowser0 = ({
   });
 
   const eventsLogApi = useEventsLogApi();
+
+  const entitySelectRef = React.createRef<RefSelectProps>();
 
   useEffect(() => {
     if (!actorId || !entitiesMap[actorId]) {
@@ -465,6 +476,7 @@ const EventsBrowser0 = ({
             <div>
               <span>{entityType == "stream" ? "Site: " : "Connection: "}</span>
               <Select
+                ref={entitySelectRef}
                 popupMatchSelectWidth={false}
                 notFoundContent={
                   entityType === "stream" ? (
@@ -493,6 +505,9 @@ const EventsBrowser0 = ({
                 }}
                 value={actorId}
                 options={entitiesSelectOptions}
+                showSearch={true}
+                filterOption={(input, option) => option?.search.some(s => s.includes(input.toLowerCase())) || false}
+                onDropdownVisibleChange={o => !o && entitySelectRef.current?.blur()}
               />
             </div>
             <div>
