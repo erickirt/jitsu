@@ -6,7 +6,7 @@ import { getServerLog } from "./log";
 import { isReadOnly } from "./read-only-mode";
 import { isTruish } from "../shared/chores";
 
-export type Handler = (row: Record<string, any>) => Promise<void> | void;
+export type Handler = (row: Record<string, any>) => Promise<boolean | undefined | void> | (boolean | undefined | void);
 
 //we will need to support named params in future
 export type ParamValues = any[] | Record<string, any>;
@@ -40,7 +40,10 @@ const pgHelper: PgHelper = {
       let rows = await cursor.read(100);
       while (rows.length > 0) {
         for (let i = 0; i < rows.length; i++) {
-          await handler(rows[i]);
+          const abort = await handler(rows[i]);
+          if (abort) {
+            return { rows: totalRows };
+          }
           totalRows++;
         }
         rows = await cursor.read(100);

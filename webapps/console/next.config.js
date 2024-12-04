@@ -88,6 +88,10 @@ module.exports = {
     //    }
     config.externals["isolated-vm"] = "require('isolated-vm')";
     config.module.rules.push({
+      test: /\.sql$/,
+      use: "raw-loader",
+    });
+    config.module.rules.push({
       test: /\.txt$/,
       use: "raw-loader",
     });
