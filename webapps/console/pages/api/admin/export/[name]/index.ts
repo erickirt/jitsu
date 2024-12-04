@@ -181,19 +181,23 @@ const exports: Export[] = [
           60
         ).jwt;
         const url = `${getEeConnection().host}api/s3-connections`;
-        const backupConnections = await rpc(url, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${eeAuthToken}`,
-          },
-        });
-        for (const conn of backupConnections) {
-          if (needComma) {
-            writer.write(",");
+        try {
+          const backupConnections = await rpc(url, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${eeAuthToken}`,
+            },
+          });
+          for (const conn of backupConnections) {
+            if (needComma) {
+              writer.write(",");
+            }
+            writer.write(JSON.stringify(conn));
+            needComma = true;
           }
-          writer.write(JSON.stringify(conn));
-          needComma = true;
+        } catch (e) {
+          console.error("Error getting backup connections", e);
         }
       }
 
