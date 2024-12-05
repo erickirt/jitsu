@@ -24,6 +24,7 @@ const aggregatedResultType = z.object({
         started_by: z.any().optional(),
         started_at: z.date(),
         updated_at: z.date(),
+        metrics: z.any().optional(),
       })
     )
     .optional(),
@@ -32,10 +33,10 @@ const aggregatedResultType = z.object({
 type aggregatedResultType = z.infer<typeof aggregatedResultType>;
 type source_task = z.infer<typeof source_taskDbModel>;
 
-//fix the type of started_by from weird prism type to any
+//fix the type of started_by and metrics from weird prism type to any
 const adjustedSourceTaskDBModel = source_taskDbModel
   .omit({ started_by: true })
-  .merge(z.object({ started_by: z.any().optional() }));
+  .merge(z.object({ started_by: z.any().optional(), metrics: z.any().optional() }));
 
 const tasksResultType = z.object({
   ok: z.boolean(),

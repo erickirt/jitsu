@@ -272,6 +272,7 @@ model source_task {
   started_by  Json?
   status      String
   description String?
+  metrics     Json?
 
   @@index(sync_id)
   @@index(started_at)
