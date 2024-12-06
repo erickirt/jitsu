@@ -57,7 +57,7 @@ export const ProfileUDFWrapper = (
   funcCtx: FunctionContext,
   functions: UDFFunction[]
 ): UDFWrapperResult => {
-  log.atInfo().log(`[CON:${fullId}] Compiling ${functions.length} UDF functions`);
+  log.atDebug().log(`[CON:${fullId}] Compiling ${functions.length} UDF functions`);
   const sw = stopwatch();
   let isolate: Isolate;
   let context: Context;
@@ -203,7 +203,7 @@ export const ProfileUDFWrapper = (
     });
     wrapper.evaluateSync();
     const wrapperFunc = wrap(fullId, isolate, context, wrapper);
-    log.atInfo().log(`[CON:${fullId}] total UDF compile time: ${sw.elapsedPretty()}`);
+    log.atInfo().log(`[CON:${fullId}] ${functions.length} UDF functions compiled in: ${sw.elapsedPretty()}`);
     return wrapperFunc;
   } catch (e) {
     return {
@@ -221,7 +221,7 @@ export const ProfileUDFWrapper = (
             }
             context.release();
             isolate.dispose();
-            log.atInfo().log(`[${fullId}] isolate closed`);
+            log.atDebug().log(`[${fullId}] isolate closed`);
           }
         } catch (e) {
           log.atError().log(`[${fullId}] Error while closing isolate: ${e}`);
@@ -332,7 +332,7 @@ function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper:
           if (!isolate.isDisposed) {
             isolate.dispose();
           }
-          log.atInfo().log(`[${connectionId}] isolate closed.`);
+          log.atDebug().log(`[${connectionId}] isolate closed.`);
         }
       } catch (e) {
         log.atError().log(`[${connectionId}] Error while closing isolate: ${e}`);

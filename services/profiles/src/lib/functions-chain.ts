@@ -39,7 +39,7 @@ const log = getLog("functions-chain");
 const udfTTL = 60 * 10;
 const udfCache = new NodeCache({ stdTTL: udfTTL, checkperiod: 60, useClones: false });
 udfCache.on("del", (key, value) => {
-  log.atInfo().log(`UDF ${key} deleted from cache`);
+  log.atDebug().log(`UDF ${key} deleted from cache`);
   value.wrapper?.close();
 });
 
