@@ -221,13 +221,13 @@ export const blockStorageSettings = z.object({
     .enum(["ndjson", "ndjson_flat", "csv"])
     .default("ndjson")
     .describe(
-      "Format of the files stored in the block storage: <code>ndjson</code> - Newline Delimited JSON, <code>ndjson_flat</code> - Newline Delimited JSON flattened, <code>csv</code> - CSV"
+      "Format of the files stored in the block storage: <b>ndjson</b> - Newline Delimited JSON, <b>ndjson_flat</b> - Newline Delimited JSON flattened, <b>csv</b> - CSV"
     ),
   compression: z
     .enum(["gzip", "none"])
-    .default("none")
+    .default("gzip")
     .describe(
-      "Compression algorithm used for the files stored in the block storage: <code>gzip</code> - GZIP, <code>none</code> - no compression."
+      "Compression mode used for the files stored in the block storage:<br/><b>gzip</b> - files will be compressed and have <code>.gz</code> filename suffix and <code>Content-Type: application/gzip</code><br/><b>none</b> - no compression, <code>Content-Type</code> and file extension will be set according to the format"
     ),
 });
 
