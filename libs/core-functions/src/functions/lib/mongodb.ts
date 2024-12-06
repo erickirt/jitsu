@@ -12,6 +12,7 @@ export const mongodb = getSingleton<MongoClient>("mongodb", createClient, {
   cleanupFunc: async (client: MongoClient) => {
     await client.close();
   },
+  optional: true,
 });
 
 async function createClient() {
