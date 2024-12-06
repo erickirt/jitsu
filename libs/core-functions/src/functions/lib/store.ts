@@ -3,6 +3,7 @@ import type { Redis } from "ioredis";
 import parse from "parse-duration";
 import { MongoClient, ReadPreference, Collection } from "mongodb";
 import { RetryError } from "@jitsu/functions-lib";
+import { Singleton } from "juava";
 
 export const defaultTTL = 60 * 60 * 24 * 31; // 31 days
 export const maxAllowedTTL = 2147483647; // max allowed value for ttl in redis (68years)
@@ -64,7 +65,7 @@ const MongoCreatedCollections: Record<string, Collection<StoreValue>> = {};
 
 export const createMongoStore = (
   namespace: string,
-  mongo: MongoClient,
+  mongo: Singleton<MongoClient>,
   useLocalCache: boolean,
   fast: boolean
 ): TTLStore => {
@@ -87,7 +88,7 @@ export const createMongoStore = (
       return collection;
     }
     try {
-      const db = mongo.db(dbName);
+      const db = mongo().db(dbName);
 
       const col = db.collection<StoreValue>(namespace);
       const collStatus = await col

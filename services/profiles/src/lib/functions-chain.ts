@@ -62,7 +62,7 @@ export function buildFunctionChain(
   fetchTimeoutMs: number = 2000
 ): FuncChain {
   const pbLongId = `${profileBuilder.workspaceId}-${profileBuilder.id}-v${profileBuilder.version}`;
-  const store = createMongoStore(profileBuilder.workspaceId, mongodb(), false, true);
+  const store = createMongoStore(profileBuilder.workspaceId, mongodb, false, true);
 
   const chainCtx: FunctionChainContext = {
     fetch: makeFetch(profileBuilder.id, eventsLogger, "info", fetchTimeoutMs),

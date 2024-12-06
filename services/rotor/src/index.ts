@@ -56,7 +56,11 @@ async function main() {
   let redisClient: Redis | undefined;
   try {
     Prometheus.collectDefaultMetrics();
-    await mongodb.waitInit();
+    try {
+      await mongodb.waitInit();
+    } catch (e: any) {
+      log.atWarn().log("Failed to connect to mongodb. Functions Persistent Store won't work: " + e.message);
+    }
     if (process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL) {
       eventsLogger = createClickhouseLogger();
     } else {

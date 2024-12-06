@@ -137,7 +137,7 @@ export function buildFunctionChain(
   if (!store) {
     store = createMongoStore(
       connection.workspaceId,
-      mongodb(),
+      mongodb,
       false,
       fastStoreWorkspaceId.includes(connection.workspaceId)
     );
