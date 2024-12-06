@@ -635,14 +635,14 @@ export const coreDestinations: DestinationType<any>[] = [
           .optional()
           .default("accessKey")
           .describe(
-            "Authentication Method::S3 authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>IAM Role based</a> or Access Key"
+            "Authentication Method::S3 authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/block-storage/s3#advanced-iam-role-for-jitsu'>IAM Role based</a> or Access Key"
           ),
         region: z.enum(s3Regions).default(s3Regions[0]).describe("S3 Region::S3 Region"),
         roleARN: z
           .string()
           .optional()
           .describe(
-            "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/warehouse/redshift#advanced-iam-role-for-jitsu'>How to create</a>"
+            "Role ARN::IAM role ARN. <a target='_blank' rel='noopener noreferrer' href='https://docs.jitsu.com/destinations/block-storage/s3#advanced-iam-role-for-jitsu'>How to create</a>"
           ),
         externalID: z.string().optional().describe("External ID::IAM external ID"),
         accessKeyId: z
