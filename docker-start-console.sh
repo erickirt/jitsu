@@ -86,7 +86,7 @@ main() {
       echo "FORCE_UPDATE_DB is set, updating database schema..."
       prisma db push --skip-generate --schema schema.prisma --accept-data-loss
     elif [ "$UPDATE_DB" != "0" ] && [ "$UPDATE_DB" != "no" ] && [ "$UPDATE_DB" != "false" ]; then
-      echo "UPDATE_DB is set, updating database schema..."
+      echo "Updating database schema..."
       prisma db push --skip-generate --schema schema.prisma
     fi
     echo "Starting the app"
