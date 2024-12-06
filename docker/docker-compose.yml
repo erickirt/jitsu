@@ -102,7 +102,6 @@ services:
       CLICKHOUSE_DATABASE: "newjitsu_metrics"
       MONGODB_URL: "mongodb://default:${MONGO_PASSWORD:-default}@mongo/"
       MONGODB_NETWORK_COMPRESSION: "none"
-      UPDATE_DB: "true"
       FORCE_UPDATE_DB: "true"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://console:3000/api/healthcheck"]

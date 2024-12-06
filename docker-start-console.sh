@@ -85,7 +85,7 @@ main() {
     if [ "$FORCE_UPDATE_DB" = "1" ] || [ "$FORCE_UPDATE_DB" = "yes" ] || [ "$FORCE_UPDATE_DB" = "true" ]; then
       echo "FORCE_UPDATE_DB is set, updating database schema..."
       prisma db push --skip-generate --schema schema.prisma --accept-data-loss
-    elif [ "$UPDATE_DB" = "1" ] || [ "$UPDATE_DB" = "yes" ] || [ "$UPDATE_DB" = "true" ]; then
+    elif [ "$UPDATE_DB" != "0" ] && [ "$UPDATE_DB" != "no" ] && [ "$UPDATE_DB" != "false" ]; then
       echo "UPDATE_DB is set, updating database schema..."
       prisma db push --skip-generate --schema schema.prisma
     fi
