@@ -723,7 +723,10 @@ async function send(
     );
   }
   if (!fetchResult.ok) {
-    throw new Error(`Jitsu ${url} replied ${fetchResult.status} - ${fetchResult.statusText}: ${responseText}`);
+    getErrorHandler(jitsuConfig)(
+      `Call to ${url} failed with error: ${fetchResult.status} - ${fetchResult.statusText}: ${responseText}`
+    );
+    return Promise.resolve();
   }
 
   let responseJson: any;
