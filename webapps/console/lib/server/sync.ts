@@ -605,7 +605,14 @@ export async function scheduleSync({
       };
     }
     const configuredCatalog = selectStreamsFromCatalog(catalog, (sync.data as any).streams);
-
+    if (
+      serviceConfig.package === "airbyte/source-postgres" ||
+      serviceConfig.package === "airbyte/source-mssql" ||
+      serviceConfig.package === "airbyte/source-singlestore"
+    ) {
+      // default value 10000 is to low for big tables - leading to very slow syncs
+      serviceConfig.credentials.sync_checkpoint_records = 200000;
+    }
     const res = await rpc(syncURL + "/read", {
       method: "POST",
       headers: {
