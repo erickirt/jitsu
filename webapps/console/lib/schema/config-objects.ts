@@ -3,7 +3,7 @@ import { safeParseWithDate } from "../zod";
 import { ApiError } from "../shared/errors";
 import { ApiKey, ConfigObjectType, DestinationConfig, FunctionConfig, ServiceConfig, StreamConfig } from "./index";
 import { assertDefined, createHash, requireDefined } from "juava";
-import { isDomainAvailable } from "../server/custom-domains";
+import { checkOrAddToIngress, isDomainAvailable } from "../server/custom-domains";
 import { ZodType, ZodTypeDef } from "zod";
 import { getServerLog } from "../server/log";
 
@@ -130,6 +130,15 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
               `Domain ${domain} can't be added to workspace ${workspaceId}, it is already in use by other workspaces: ${domainAvailability.usedInWorkspace}`
             );
           throw new ApiError(`Domain ${domain} is already in use by other workspace`);
+        }
+        try {
+          const ingressStatus = await checkOrAddToIngress(domain);
+          log.atInfo().log(`Ingress status for ${domain}: ${JSON.stringify(ingressStatus)}`);
+          if (!ingressStatus) {
+            log.atWarn().log(`Incorrect ingress status ${domain} is not valid`);
+          }
+        } catch (e) {
+          log.atError().withCause(e).log(`Error checking ingress status for ${domain}`);
         }
       }
       return {
