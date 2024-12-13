@@ -7,6 +7,7 @@ import omit from "lodash/omit";
 import type { Producer } from "kafkajs";
 import { getCompressionType } from "./rotor";
 import { Readable } from "stream";
+import { randomUUID } from "node:crypto";
 
 const log = getLog("metrics");
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
@@ -19,6 +20,7 @@ const max_batch_size = 10000;
 const flush_interval_ms = 60000;
 
 type MetricsEvent = MetricsMeta & {
+  key: string;
   functionId: string;
   timestamp: Date;
   status: string;
@@ -45,7 +47,8 @@ export function createMetrics(producer?: Producer): Metrics {
           topic: `in.id.metrics.m.batch.t.${metricsTable}`,
           compression: getCompressionType(),
           messages: buf.map(m => ({
-            value: JSON.stringify(omit(m, "retries", "messageId")),
+            key: m.key,
+            value: JSON.stringify(omit(m, "retries", "messageId", "key")),
           })),
         }),
         producer.send({
@@ -57,6 +60,7 @@ export function createMetrics(producer?: Producer): Metrics {
               const d = new Date(m.timestamp);
               d.setMinutes(0);
               return {
+                key: m.key,
                 value: JSON.stringify({
                   timestamp: d,
                   workspaceId: m.workspaceId,
@@ -174,6 +178,7 @@ export function createMetrics(producer?: Producer): Metrics {
           return prefix + status;
         })(el);
         buffer.push({
+          key: crypto.randomUUID(),
           timestamp: d,
           ...omit(el.metricsMeta, "retries"),
           functionId: el.functionId,
