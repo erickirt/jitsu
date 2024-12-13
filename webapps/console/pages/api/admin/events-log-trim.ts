@@ -55,6 +55,10 @@ export default createRoute()
         query_params: {
           partition: oldPartition,
         },
+        clickhouse_settings: {
+          // allow to drop partitions up to 500gb in size
+          max_partition_size_to_drop: 536870912000,
+        },
       });
       log.atInfo().log(`Deleted partition ${oldPartition}`);
     } catch (e: any) {
