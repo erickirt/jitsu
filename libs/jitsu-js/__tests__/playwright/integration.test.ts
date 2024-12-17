@@ -450,6 +450,38 @@ test("disable-user-ids-then-consent", async ({ browser }) => {
   expect((p.body.anonymousId ?? "").length).toBeGreaterThan(0);
 });
 
+test("anonymous-id-bug", async ({ browser }) => {
+  clearRequestLog();
+  const anonymousId = "1724633695283.638279";
+  const browserContext = await browser.newContext();
+  await browserContext.addCookies([{ name: "__eventn_id", value: anonymousId, url: server.baseUrl }]);
+  const { page, uncaughtErrors } = await createLoggingPage(browserContext);
+  const [pageResult] = await Promise.all([page.goto(`${server.baseUrl}/anonymous-id-bug.html`)]);
+  await page.waitForFunction(() => window["jitsu"] !== undefined, undefined, {
+    timeout: 1000,
+    polling: 100,
+  });
+  expect(pageResult.status()).toBe(200);
+  const cookies = (await browserContext.cookies()).reduce(
+    (res, cookie) => ({
+      ...res,
+      [cookie.name]: cookie.value,
+    }),
+    {}
+  );
+  console.log("🍪 Jitsu Cookies", cookies);
+  //wait for some time since the server has an artificial latency of 30ms
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  expect(uncaughtErrors.length).toEqual(0);
+  console.log(
+    `📝 Request log size of ${requestLog.length}`,
+    requestLog.map(x => describeEvent(x.type, x.body))
+  );
+  const p = requestLog[0];
+  console.log(chalk.bold("📝 Checking page event"), JSON.stringify(p, null, 3));
+  expect(p.body.anonymousId).toEqual(anonymousId);
+});
+
 test("basic", async ({ browser }) => {
   clearRequestLog();
   const browserContext = await browser.newContext();

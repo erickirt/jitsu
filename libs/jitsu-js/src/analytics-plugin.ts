@@ -240,6 +240,10 @@ const cookieStorage: StorageFactory = (cookieDomain, key2cookie) => {
     getItem(key: string) {
       const cookieName = key2cookie[key] || key;
       const result = getCookie(cookieName);
+      if (key === "__anon_id") {
+        //anonymous id must always be a string, so we don't parse it to preserve its exact value
+        return result;
+      }
       if (typeof result === "undefined" && key === "__user_id") {
         //backward compatibility with old jitsu cookie. get user id if from traits
         const traits = parse(getCookie("__eventn_id_usr")) || {};
