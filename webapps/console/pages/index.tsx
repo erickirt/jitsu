@@ -47,10 +47,10 @@ function WorkspaceRedirect() {
                   //we can't use current session here, since the error can be originated
                   //from auth layer. Try to logout using all methods
                   signOut().catch(err => {
-                    log.atWarn().withCause(err).log(`Can't sign ut from next-auth`);
+                    log.atWarn().withCause(err).log(`Can't sign out from next-auth`);
                   });
                   firebaseSignOut().catch(err => {
-                    log.atWarn().withCause(err).log(`Can't sign ut from firebase`);
+                    log.atWarn().withCause(err).log(`Can't sign out from firebase`);
                   });
                 }}
               >

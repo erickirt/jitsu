@@ -16,7 +16,7 @@ const Signup = () => {
   if (!appConfig?.auth?.firebasePublic) {
     return (
       <div className="mx-12 my-12">
-        <ErrorCard title={"Current configuration do not support new user signup"} hideActions={true} />
+        <ErrorCard title="Current configuration does not support new user signup" hideActions={true} />
         <div className="pt-6">
           <Button type="primary" className="text-primary font-bold" href={"/"}>
             Back to main page
