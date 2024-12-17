@@ -339,6 +339,14 @@ export type JitsuOptions = {
    */
   cookieDomain?: string;
   /**
+   * Additional cookies to capture, where the keys are cookie names and
+   * the values are the corresponding cookie values. By default, the following cookies are captured:
+   * - Facebook: `_fbc`, `_fbp`
+   * - Google Analytics 4: GA4 client ID
+   * This property allows you to capture additional cookies beyond the defaults.
+   */
+  cookieCapture?: Record<string, string>;
+  /**
    * Provide fetch implementation. It is required if you want to use Jitsu in NodeJS
    */
   fetch?: typeof fetch;

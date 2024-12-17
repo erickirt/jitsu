@@ -453,6 +453,11 @@ test("disable-user-ids-then-consent", async ({ browser }) => {
 test("basic", async ({ browser }) => {
   clearRequestLog();
   const browserContext = await browser.newContext();
+  await browserContext.addCookies([
+    { name: "_fbc", value: "fbc-id", url: server.baseUrl },
+    { name: "_fbp", value: "fbp-id", url: server.baseUrl },
+    { name: "_ttp", value: "ttp-id", url: server.baseUrl },
+  ]);
 
   const { page: firstPage, uncaughtErrors: firstPageErrors } = await createLoggingPage(browserContext);
   const [pageResult] = await Promise.all([
@@ -498,6 +503,9 @@ test("basic", async ({ browser }) => {
   console.log(chalk.bold("📝 Checking track event"), JSON.stringify(track, null, 3));
   expect(track.properties.trackParam).toEqual("trackValue");
   expect(track.type).toEqual("track");
+  expect(track.context.clientIds).toHaveProperty("fbc", "fbc-id");
+  expect(track.context.clientIds).toHaveProperty("fbp", "fbp-id");
+  expect(track.context.clientIds).toHaveProperty("ttp", "ttp-id");
   expect(track.context.traits.email).toEqual("john.doe@gmail.com");
   expect(track.userId).toEqual("john-doe-id-1");
   expect(track.event).toEqual("pageLoaded");
@@ -509,6 +517,9 @@ test("basic", async ({ browser }) => {
 
   console.log(chalk.bold("📝 Checking page event"), JSON.stringify(page, null, 3));
   expect(page.anonymousId).toEqual(anonymousId);
+  expect(page.context.clientIds).toHaveProperty("fbc", "fbc-id");
+  expect(page.context.clientIds).toHaveProperty("fbp", "fbp-id");
+  expect(page.context.clientIds).toHaveProperty("ttp", "ttp-id");
   expect(page.context.traits.email).toEqual("john.doe@gmail.com");
   expect(page.userId).toEqual("john-doe-id-1");
 

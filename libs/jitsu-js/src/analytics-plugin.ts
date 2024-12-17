@@ -33,6 +33,7 @@ const defaultConfig: Required<JitsuOptions> = {
   fetch: null,
   echoEvents: false,
   cookieDomain: undefined,
+  cookieCapture: {},
   runtime: undefined,
   fetchTimeoutMs: undefined,
   s2s: undefined,
@@ -139,6 +140,22 @@ function getCookie(name: string) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
   return parts.length === 2 ? parts.pop().split(";").shift() : undefined;
+}
+
+function getClientIds(runtime: RuntimeFacade, customCookieCapture: Record<string, string>) {
+  const cookieCapture = {
+    fbc: "_fbc",
+    fbp: "_fbp",
+    ...customCookieCapture,
+  }
+  const clientIds = Object.entries(cookieCapture).reduce((acc, [key, cookieName]) => {
+    acc[key] = runtime.getCookie(cookieName);
+    return acc;
+  }, {});
+  return {
+    ...clientIds,
+    ...getGa4Ids(runtime),
+  }
 }
 
 function getGa4Ids(runtime: RuntimeFacade) {
@@ -452,13 +469,7 @@ function adjustPayload(
       url: properties.url || url,
       encoding: properties.encoding || runtime.documentEncoding(),
     },
-    clientIds: !config.privacy?.disableUserIds
-      ? {
-          fbc: runtime.getCookie("_fbc"),
-          fbp: runtime.getCookie("_fbp"),
-          ...getGa4Ids(runtime),
-        }
-      : undefined,
+    clientIds: !config.privacy?.disableUserIds ? getClientIds(runtime, config.cookieCapture) : undefined,
     campaign: parseUtms(query),
   };
   const withContext = {
