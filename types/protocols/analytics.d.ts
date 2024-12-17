@@ -12,12 +12,19 @@ export type WithConfidence<T> = T & {
 export type Geo = {
   continent?: {
     code: "AF" | "AN" | "AS" | "EU" | "NA" | "OC" | "SA";
+    /**
+     * Localized name of the continent
+     */
+    name: string;
   };
   country?: {
     /**
      * Two-letter country code (ISO 3166-1 alpha-2): https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
      */
     code: string;
+    /**
+     * Localized name of the country
+     */
     name: string;
     isEU: boolean;
   };
@@ -27,8 +34,15 @@ export type Geo = {
      * For USA it's two-letter capitaluzed state code (such as NY)
      */
     code: string;
+    /**
+     * Localized name of the region
+     */
+    name: string;
   }>;
   city?: WithConfidence<{
+    /**
+     * Localized name of the city
+     */
     name: string;
   }>;
 

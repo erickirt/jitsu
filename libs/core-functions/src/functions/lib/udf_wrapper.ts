@@ -373,6 +373,7 @@ export async function UDFTestRun({
         },
         region: {
           code: "NY",
+          name: "New York",
         },
         location: {
           latitude: 40.6808,

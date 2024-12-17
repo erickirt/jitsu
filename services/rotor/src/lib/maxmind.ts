@@ -1,4 +1,4 @@
-import { Reader, ReaderModel, City, Isp } from "@maxmind/geoip2-node";
+import { Reader, ReaderModel, City, Isp, Names } from "@maxmind/geoip2-node";
 import * as zlib from "zlib";
 import * as tar from "tar";
 import { Geo } from "@jitsu/protocols/analytics";
@@ -15,6 +15,8 @@ type FreeEditions = "GeoLite2-City" | "GeoLite2-Country" | "GeoLite2-ASN";
 type Edition = PaidEdition | FreeEditions | "NotRequired" | "";
 
 type LoadFunction = (edition: Edition) => Promise<Buffer>;
+
+type GetLocalizedNameFunction = (names: Names) => string;
 
 const composeURL = (licenseKeyOrURL: string, edition: Edition) => {
   if (licenseKeyOrURL.startsWith("http")) {
@@ -67,6 +69,14 @@ export async function initMaxMindClient(opts: {
     loadFunc = (edition: Edition) => loadFromS3(s3client, s3Bucket, edition);
   } else {
     loadFunc = (edition: Edition) => loadFromURL(composeURL(licenseKey || url || "", edition));
+  }
+  let getLocalizedName: GetLocalizedNameFunction;
+  if (process.env.MAXMIND_LOCALE) {
+    getLocalizedName = (names: Names) => {
+      return names[process.env.MAXMIND_LOCALE!] || names.en;
+    };
+  } else {
+    getLocalizedName = (names: Names) => names.en;
   }
 
   let cityReader: ReaderModel | undefined;
@@ -136,12 +146,13 @@ export async function initMaxMindClient(opts: {
                 continent: geo.continent
                   ? {
                       code: geo.continent.code,
+                      name: getLocalizedName(geo.continent.names),
                     }
                   : undefined,
                 country: geo.country
                   ? {
                       code: geo.country.isoCode,
-                      name: geo.country.names.en,
+                      name: getLocalizedName(geo.country.names),
                       isEU: !!geo.country.isInEuropeanUnion,
                     }
                   : undefined,
@@ -149,12 +160,13 @@ export async function initMaxMindClient(opts: {
                   ? {
                       code: geo.subdivisions[0].isoCode,
                       confidence: geo.subdivisions[0].confidence,
+                      name: getLocalizedName(geo.subdivisions[0].names),
                     }
                   : undefined,
                 city: geo.city
                   ? {
                       confidence: geo.city.confidence,
-                      name: geo.city.names.en,
+                      name: getLocalizedName(geo.city.names),
                     }
                   : undefined,
                 postalCode: geo.postal
