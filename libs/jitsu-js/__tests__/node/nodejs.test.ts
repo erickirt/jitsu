@@ -214,6 +214,33 @@ describe("Test Jitsu NodeJS client", () => {
     expect((p.body.anonymousId ?? "").length).toBeGreaterThan(0);
   });
 
+  test("test defaultPayloadContext", async () => {
+    const config = {
+      host: server.baseUrl,
+      writeKey: "key:secret",
+      debug: true,
+      defaultPayloadContext: {
+        awesomeIdentifier: "awesome-identifier",
+        awesome: {
+          nestedKey: "awesome-key",
+        },
+      },
+    };
+    const client = jitsuAnalytics(config);
+    expect(requestLog.length).toBe(0);
+    await client.identify("myUserId", { email: "myUserId@example.com" });
+    await client.group("myGroupId", { name: "myGroupId" });
+    await client.track("myEvent", { prop1: "value1" });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    expect(requestLog.length).toBe(3);
+    expect(requestLog[0].body.context.awesomeIdentifier).toBe("awesome-identifier");
+    expect(requestLog[0].body.context.awesome.nestedKey).toBe("awesome-key");
+    expect(requestLog[1].body.context.awesomeIdentifier).toBe("awesome-identifier");
+    expect(requestLog[1].body.context.awesome.nestedKey).toBe("awesome-key");
+    expect(requestLog[2].body.context.awesomeIdentifier).toBe("awesome-identifier");
+    expect(requestLog[2].body.context.awesome.nestedKey).toBe("awesome-key");
+  });
+
   test("node js", async () => {
     const jitsu: AnalyticsInterface = jitsuAnalytics({
       writeKey: "key:secret",

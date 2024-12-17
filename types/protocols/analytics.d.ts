@@ -347,6 +347,15 @@ export type JitsuOptions = {
    */
   debug?: boolean;
   /**
+   * Default payload context to be included in all requests.
+   * These attributes are merged with the request-specific payload context,
+   * allowing common or global data (e.g., browser timezone, some extra user identifier)
+   * to be automatically included to every request.
+   *
+   * The context can be a nested structure.
+   */
+  defaultPayloadContext?: Record<string, JSONValue>;
+  /**
    * Explicitly specify cookie domain. If not set, cookie domain will be set to top level
    * of the current domain. Example: if JS lives on "app.example.com", cookie domain will be
    * set to ".example.com". If it lives on "example.com", cookie domain will be set to ".example.com" too

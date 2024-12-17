@@ -39,6 +39,7 @@ const defaultConfig: Required<JitsuOptions> = {
   s2s: undefined,
   idEndpoint: undefined,
   errorPolicy: "log",
+  defaultPayloadContext: {},
   privacy: {
     dontSend: false,
     disableUserIds: false,
@@ -445,7 +446,10 @@ function adjustPayload(
     properties.path = fixPath(urlPath(targetUrl));
   }
 
-  const customContext = payload.properties?.context || payload.options?.context || {};
+  const customContext = deepMerge(
+    config.defaultPayloadContext,
+    payload.properties?.context || payload.options?.context || {}
+  );
   delete payload.properties?.context;
   const referrer = runtime.referrer();
   const context: AnalyticsClientEvent["context"] = {
