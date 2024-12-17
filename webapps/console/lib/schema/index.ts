@@ -241,6 +241,7 @@ export const SyncOptionsType = z.object({
   namespace: z.string().optional(),
   tableNamePrefix: z.string().optional(),
   toSameCase: z.boolean().optional(),
+  addMeta: z.boolean().optional(),
   schedule: z.union([z.string(), z.enum(["0 0 * * *", "0 * * * *", "*/15 * * * *", "*/5 * * * *", "* * * * *"])]),
   timezone: z.string().optional(),
 });

@@ -523,6 +523,23 @@ function SyncEditor({
           ),
         }
       : undefined,
+    destinationType.usesBulker
+      ? {
+          name: "Add meta information",
+          documentation: (
+            <>
+              Add additional fields with meta information to each record. Meta information includes:
+              <br />
+              <code>_jitsu_timestamp</code> - time when the record was updated
+            </>
+          ),
+          component: (
+            <div className={"w-80"}>
+              <SwitchComponent value={syncOptions?.addMeta} onChange={e => updateOptions({ addMeta: e })} />
+            </div>
+          ),
+        }
+      : undefined,
   ].filter(Boolean) as EditorItem[];
   if (appConfig.syncs.scheduler.enabled) {
     const disableScheduling =
