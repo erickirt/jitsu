@@ -18,7 +18,7 @@ const TotalEvents: React.FC<{ val?: number; className?: string }> = ({ val, clas
     <h3 className={classNames("text-textLight")}>Total Events</h3>
     <div className="h-10 flex items-center">
       {val || val === 0 ? (
-        <div className="text-2xl">{val.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+        <p className="text-2xl">{val.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
       ) : (
         <Skeleton paragraph={false} active />
       )}

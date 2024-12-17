@@ -145,10 +145,10 @@ const CustomPlanView: React.FC<{ token: string }> = ({ token }) => {
                   .map(w => ({ value: w.id, label: w.name }))}
               />
               <div className="flex flex-col space-y-4">
-                <div className="text-2xl">
+                <p className="text-2xl">
                   <span className="font-bold">${data.plan.monthlyPrice}</span>
                   <span className="text-textLight">/month</span>
-                </div>
+                </p>
                 <div className="text-textLight">
                   Terms:{" "}
                   <b>

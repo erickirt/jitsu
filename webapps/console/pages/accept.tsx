@@ -19,7 +19,7 @@ const AcceptInvite = () => {
                 <div className="shadow-lg px-6 py-8 rounded-lg">
                   <div className="flex items-center">
                     <FaExclamationCircle className="text-error h-12 w-12 pr-4" />
-                    <div className="text-2xl">Failed to accept invitation</div>
+                    <p className="text-2xl">Failed to accept invitation</p>
                   </div>
                   <div>{result.details}</div>
                   <div className="flex pt-5 justify-center text-lg">
@@ -34,7 +34,7 @@ const AcceptInvite = () => {
               <div className="shadow-lg px-6 py-8 rounded-lg">
                 <div className="flex items-center">
                   <FaCheckCircle className="text-success h-12 w-12 pr-4" />
-                  <div className="text-2xl">Invitation accepted</div>
+                  <p className="text-2xl">Invitation accepted</p>
                 </div>
                 <div className="pt-5 text-lg">
                   Open{" "}

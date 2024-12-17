@@ -58,8 +58,8 @@ export const ChartView: React.FC<{ data: ActiveEventsReport }> = ({ data }) => {
   return (
     <div ref={wrapperRef} className="h-full relative">
       <div className="absolute -translate-y-full pb-8">
-        <div className="text-textLight">Total Acive Events</div>
-        <div className="text-2xl">{data.totalActiveEvents.toLocaleString("en-US")}</div>
+        <p className="text-textLight">Total Acive Events</p>
+        <p className="text-2xl">{data.totalActiveEvents.toLocaleString("en-US")}</p>
       </div>
       <canvas className="w-full h-full my-12"></canvas>
     </div>
