@@ -147,7 +147,7 @@ function getClientIds(runtime: RuntimeFacade, customCookieCapture: Record<string
     fbc: "_fbc",
     fbp: "_fbp",
     ...customCookieCapture,
-  }
+  };
   const clientIds = Object.entries(cookieCapture).reduce((acc, [key, cookieName]) => {
     acc[key] = runtime.getCookie(cookieName);
     return acc;
@@ -155,7 +155,7 @@ function getClientIds(runtime: RuntimeFacade, customCookieCapture: Record<string
   return {
     ...clientIds,
     ...getGa4Ids(runtime),
-  }
+  };
 }
 
 function getGa4Ids(runtime: RuntimeFacade) {
