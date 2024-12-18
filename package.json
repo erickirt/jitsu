@@ -51,6 +51,7 @@
   "pnpm": {
     "overrides": {
       "nth-check": "2.1.1",
+      "nanoid": "3.3.8",
       "postcss": "^8.4.47",
       "elliptic" : "^6.6.0",
       "cross-spawn": "^7.0.6",

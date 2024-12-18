@@ -15,4 +15,7 @@ export const clickhouse = createClient({
   url: clickhouseHost(),
   username: process.env.CLICKHOUSE_USERNAME || "default",
   password: requireDefined(process.env.CLICKHOUSE_PASSWORD, `env CLICKHOUSE_PASSWORD is not defined`),
+  compression: {
+    response: true,
+  },
 });
