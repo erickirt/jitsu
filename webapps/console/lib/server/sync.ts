@@ -17,6 +17,8 @@ import { FunctionLogger, SetOpts, Store, SyncFunction } from "@jitsu/protocols/f
 import { mixpanelFacebookAdsSync, mixpanelGoogleAdsSync } from "./syncs/mixpanel";
 import IJob = google.cloud.scheduler.v1.IJob;
 import hash from "stable-hash";
+import { clickhouse } from "./clickhouse";
+const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
 const log = getServerLog("sync-scheduler");
 
@@ -57,9 +59,16 @@ async function dbLog({
   level: string;
 }) {
   log.at(level).log(`Task ${taskId} sync ${syncId}: ${message}`);
-  await db.prisma().task_log.create({
-    data: {
-      timestamp: new Date(),
+  await clickhouse.insert({
+    table: metricsSchema + ".task_log",
+    format: "JSON",
+    clickhouse_settings: {
+      async_insert_busy_timeout_ms: 1000,
+      async_insert: 1,
+      wait_for_async_insert: 0,
+    },
+    values: {
+      timestamp: new Date().getTime(),
       logger: "sync",
       task_id: taskId,
       sync_id: syncId,
@@ -445,19 +454,16 @@ export async function scheduleSync({
         status: "RUNNING",
       },
     });
+
     const runSynchronously = !destinationType.usesBulker && destinationType.syncs;
     if (running) {
       const msInMin = 1000 * 60;
       if (ignoreRunning || (runSynchronously && Date.now() - running.updated_at.getTime() >= 2 * msInMin)) {
-        await db.prisma().task_log.create({
-          data: {
-            timestamp: new Date(),
-            logger: "sync",
-            task_id: running.task_id,
-            sync_id: sync.id,
-            message: `Synchronous task ${running.task_id} was running due to timeout`,
-            level: "ERROR",
-          },
+        await dbLog({
+          taskId: running.task_id,
+          syncId: sync.id,
+          message: `Synchronous task ${running.task_id} was running due to timeout`,
+          level: "ERROR",
         });
         await db.prisma().source_task.update({
           where: {

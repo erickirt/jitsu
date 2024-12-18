@@ -43,7 +43,8 @@ export default createRoute()
       log.atError().withCause(e).log(`Failed to create ${metricsSchema} database.`);
       throw new Error(`Failed to create ${metricsSchema} database.`);
     }
-    const createTableQuery: string = `create table IF NOT EXISTS ${metricsSchema}.events_log ${onCluster}
+    const errors: Error[] = [];
+    const createEventsLogTableQuery: string = `create table IF NOT EXISTS ${metricsSchema}.events_log ${onCluster}
          (
            timestamp DateTime64(3),
            actorId LowCardinality(String),
@@ -61,12 +62,42 @@ export default createRoute()
 
     try {
       await clickhouse.command({
-        query: createTableQuery,
+        query: createEventsLogTableQuery,
       });
       log.atInfo().log(`Table ${metricsSchema}.events_log created or already exists`);
     } catch (e: any) {
       log.atError().withCause(e).log(`Failed to create ${metricsSchema}.events_log table.`);
-      throw new Error(`Failed to create ${metricsSchema}.events_log table.`);
+      errors.push(new Error(`Failed to create ${metricsSchema}.events_log table.`));
+    }
+    const createTaskLogTableQuery: string = `create table IF NOT EXISTS ${metricsSchema}.task_log ${onCluster}
+         (
+           task_id String,
+           sync_id LowCardinality(String),
+           timestamp DateTime64(3),
+           level LowCardinality(String),
+           logger LowCardinality(String),
+           message   String
+         )
+         engine = ${
+           metricsCluster
+             ? "ReplicatedMergeTree('/clickhouse/tables/{shard}/" + metricsSchema + "/task_log', '{replica}')"
+             : "MergeTree()"
+         } 
+        PARTITION BY toYYYYMM(timestamp)
+        ORDER BY (task_id, sync_id, timestamp)
+        TTL toDateTime(timestamp) + INTERVAL 3 MONTH DELETE`;
+
+    try {
+      await clickhouse.command({
+        query: createTaskLogTableQuery,
+      });
+      log.atInfo().log(`Table ${metricsSchema}.task_log created or already exists`);
+    } catch (e: any) {
+      log.atError().withCause(e).log(`Failed to create ${metricsSchema}.task_log table.`);
+      errors.push(new Error(`Failed to create ${metricsSchema}.task_log table.`));
+    }
+    if (errors.length > 0) {
+      throw new Error("Failed to initialize tables: " + errors.map(e => e.message).join(", "));
     }
   })
   .toNextApiHandler();
