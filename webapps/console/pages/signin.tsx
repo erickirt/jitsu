@@ -4,12 +4,12 @@ import { Button, Input } from "antd";
 import { useAppConfig } from "../lib/context";
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { GithubOutlined } from "@ant-design/icons";
+import { GithubOutlined, KeyOutlined } from "@ant-design/icons";
 import React, { useState } from "react";
 import { feedbackError } from "../lib/ui";
 import { useRouter } from "next/router";
 import { branding } from "../lib/branding";
-import { credentialsLoginEnabled, githubLoginEnabled } from "../lib/nextauth.config";
+import { credentialsLoginEnabled, githubLoginEnabled, oidcLoginConfig } from "../lib/nextauth.config";
 import { useQuery } from "@tanstack/react-query";
 
 function JitsuLogo() {
@@ -92,7 +92,34 @@ function GitHubSignIn() {
   );
 }
 
-const NextAuthSignInPage = ({ csrfToken, providers: { github, credentials } }) => {
+function OIDCSignIn() {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  return (
+    <div className="space-y-4">
+      <Button
+        className="w-full"
+        icon={<KeyOutlined />}
+        loading={loading}
+        onClick={async () => {
+          try {
+            setLoading(true);
+            await signIn("oidc");
+            await router.push("/");
+          } catch (e: any) {
+            feedbackError("Failed to sign in with SSO provider", e);
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        Sign in with SSO
+      </Button>
+    </div>
+  );
+}
+
+const NextAuthSignInPage = ({ csrfToken, providers: { github, oidc, credentials } }) => {
   const router = useRouter();
   const nextAuthSession = useSession();
   const app = useAppConfig();
@@ -117,17 +144,18 @@ const NextAuthSignInPage = ({ csrfToken, providers: { github, credentials } }) =
       <div className="space-y-2 flex justify-center h-16">
         <JitsuLogo />
       </div>
-      <div>
+      <div className={"flex flex-col gap-1.5"}>
         {credentials.enabled && <CredentialsForm />}
-        {credentials.enabled && github.enabled && <hr className="my-8" />}
+        {credentials.enabled && (github.enabled || oidc.enabled) && <hr className="my-4" />}
         {github.enabled && <GitHubSignIn />}
+        {oidc.enabled && <OIDCSignIn />}
       </div>
       {router.query.error && (
         <div className="text-error">
           Something went wrong. Please try again. Error code: <code>{router.query.error}</code>
         </div>
       )}
-      {!app.disableSignup && github.enabled && (
+      {!app.disableSignup && (github.enabled || oidc.enabled) && (
         <div className="text-center text-textLight text-xs">
           Automatic signup is enabled for this instance. Sign in with github and if you don't have an account, a new
           account will be created automatically. This account won't have any access to pre-existing project unless the
@@ -142,7 +170,7 @@ export async function getServerSideProps(context) {
   if (process.env.FIREBASE_AUTH) {
     throw new Error(`Firebase auth is enabled. This page should not be used.`);
   }
-  if (!githubLoginEnabled && !credentialsLoginEnabled) {
+  if (!githubLoginEnabled && !credentialsLoginEnabled && !oidcLoginConfig) {
     throw new Error(`No auth providers are enabled found. Available providers: github, credentials`);
   }
   return {
@@ -154,6 +182,9 @@ export async function getServerSideProps(context) {
         },
         github: {
           enabled: githubLoginEnabled,
+        },
+        oidc: {
+          enabled: !!oidcLoginConfig,
         },
       },
       publicPage: true,
