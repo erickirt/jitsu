@@ -202,7 +202,7 @@ export const ProfileUDFWrapper = (
       throw new Error(`import is not allowed: ${specifier}`);
     });
     wrapper.evaluateSync();
-    const wrapperFunc = wrap(fullId, isolate, context, wrapper);
+    const wrapperFunc = wrap(fullId, isolate, context, wrapper, refs);
     log.atInfo().log(`[CON:${fullId}] ${functions.length} UDF functions compiled in: ${sw.elapsedPretty()}`);
     return wrapperFunc;
   } catch (e) {
@@ -220,7 +220,9 @@ export const ProfileUDFWrapper = (
               r.release();
             }
             context.release();
-            isolate.dispose();
+            if (!isolate.isDisposed) {
+              isolate.dispose();
+            }
             log.atDebug().log(`[${fullId}] isolate closed`);
           }
         } catch (e) {
@@ -231,7 +233,7 @@ export const ProfileUDFWrapper = (
   }
 };
 
-function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper: Module) {
+function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper: Module, refs: Reference[]) {
   const exported = wrapper.namespace;
 
   const ref = exported.getSync("wrappedFunctionChain", {
@@ -328,6 +330,9 @@ function wrap(connectionId: string, isolate: Isolate, context: Context, wrapper:
     close: () => {
       try {
         if (isolate) {
+          for (const r of refs) {
+            r.release();
+          }
           context.release();
           if (!isolate.isDisposed) {
             isolate.dispose();
@@ -514,5 +519,7 @@ export async function ProfileUDFTestRun({
       store: !realStore && store ? memoryStoreDump(store) : {},
       logs,
     };
+  } finally {
+    wrapper?.close();
   }
 }
