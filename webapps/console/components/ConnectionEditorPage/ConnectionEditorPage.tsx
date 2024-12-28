@@ -364,7 +364,24 @@ function ConnectionEditor({
       component: (
         <DataLayoutEditor
           fileStorage={destinationType.id === "gcs" || destinationType.id === "s3"}
-          onChange={dataLayout => updateOptions({ dataLayout })}
+          onChange={dataLayout => {
+            if (existingLink) updateOptions({ dataLayout });
+            else {
+              if (dataLayout === "jitsu-legacy") {
+                updateOptions({
+                  dataLayout,
+                  primaryKey: "eventn_ctx_event_id",
+                  timestampColumn: "_timestamp",
+                });
+              } else {
+                updateOptions({
+                  dataLayout,
+                  primaryKey: connectionOptionsZodType.parse({}).primaryKey || "message_id",
+                  timestampColumn: "timestamp",
+                });
+              }
+            }
+          }}
           value={connectionOptions.dataLayout || "segment-single-table"}
         />
       ),
