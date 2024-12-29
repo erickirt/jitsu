@@ -35,7 +35,12 @@ type EditorProps<T> = {
 type EditorComponent<T, P = {}> = React.FC<EditorProps<T> & P>;
 
 const DataLayoutEditor: EditorComponent<DataLayoutType, { fileStorage?: boolean }> = props => (
-  <Radio.Group className={styles.radioGroup} value={props.value} onChange={val => props.onChange(val.target.value)}>
+  <Radio.Group
+    disabled={props.disabled}
+    className={styles.radioGroup}
+    value={props.value}
+    onChange={val => props.onChange(val.target.value)}
+  >
     <div className={"flex flex-col gap-2"}>
       {props.fileStorage && (
         <Radio value="passthrough">
@@ -362,28 +367,33 @@ function ConnectionEditor({
       documentation: <>Data layout defines how data is written to database</>,
       name: "Data Layout",
       component: (
-        <DataLayoutEditor
-          fileStorage={destinationType.id === "gcs" || destinationType.id === "s3"}
-          onChange={dataLayout => {
-            if (existingLink) updateOptions({ dataLayout });
-            else {
-              if (dataLayout === "jitsu-legacy") {
-                updateOptions({
-                  dataLayout,
-                  primaryKey: "eventn_ctx_event_id",
-                  timestampColumn: "_timestamp",
-                });
-              } else {
-                updateOptions({
-                  dataLayout,
-                  primaryKey: connectionOptionsZodType.parse({}).primaryKey || "message_id",
-                  timestampColumn: "timestamp",
-                });
+        <Tooltip title={!!existingLink ? "Can only be configured during the initial connection setup." : undefined}>
+          {" "}
+          <DataLayoutEditor
+            disabled={!!existingLink}
+            fileStorage={destinationType.id === "gcs" || destinationType.id === "s3"}
+            onChange={dataLayout => {
+              if (existingLink) updateOptions({ dataLayout });
+              else {
+                if (dataLayout === "jitsu-legacy") {
+                  updateOptions({
+                    dataLayout,
+                    primaryKey: "eventn_ctx_event_id",
+                    timestampColumn: "_timestamp",
+                    keepOriginalNames: true,
+                  });
+                } else {
+                  updateOptions({
+                    dataLayout,
+                    primaryKey: connectionOptionsZodType.parse({}).primaryKey || "message_id",
+                    timestampColumn: "timestamp",
+                  });
+                }
               }
-            }
-          }}
-          value={connectionOptions.dataLayout || "segment-single-table"}
-        />
+            }}
+            value={connectionOptions.dataLayout || "segment-single-table"}
+          />
+        </Tooltip>
       ),
     });
   }
@@ -404,6 +414,7 @@ function ConnectionEditor({
       ),
       component: (
         <Tooltip title={!!existingLink ? "Can only be configured during the initial connection setup." : undefined}>
+          {" "}
           <TextEditor
             className="max-w-xs"
             disabled={!!existingLink}
@@ -482,6 +493,7 @@ function ConnectionEditor({
       name: "Timestamp Column",
       component: (
         <Tooltip title={!!existingLink ? "Can only be configured during the initial connection setup." : undefined}>
+          {" "}
           <TextEditor
             disabled={!!existingLink}
             className="max-w-xs"
@@ -554,7 +566,7 @@ function ConnectionEditor({
       ),
     });
   }
-  if (hasZodFields(connectionOptionsZodType, "keepOriginalNames")) {
+  if (hasZodFields(connectionOptionsZodType, "keepOriginalNames") && connectionOptions.dataLayout !== "jitsu-legacy") {
     configItems.push({
       group: "Advanced",
       documentation: (
@@ -569,7 +581,7 @@ function ConnectionEditor({
         <Tooltip title={!!existingLink ? "Can only be configured during the initial connection setup." : undefined}>
           {" "}
           <SwitchComponent
-            disabled={!!existingLink}
+            disabled={!!existingLink || (connectionOptions.dataLayout as string) === "jitsu-legacy"}
             className="max-w-xs"
             value={connectionOptions.keepOriginalNames}
             onChange={sf => {
