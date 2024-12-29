@@ -1,6 +1,6 @@
 import { AnyEvent, FullContext, UserAgent } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
-import { removeUndefined, transferAsSnakeCase, transfer } from "./objects";
+import { removeUndefined, transferAsSnakeCase, transfer, transferAsClassic } from "./objects";
 
 export const TableNameParameter = "JITSU_TABLE_NAME";
 
@@ -66,6 +66,16 @@ function anonymizeIp(ip: string | undefined) {
 }
 
 export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): AnyEvent {
+  const keepOriginalNames = !!ctx.props.keepOriginalNames;
+  const fileStorage = ctx.destination.type === "s3" || ctx.destination.type === "gcs";
+  let transferFunc = transferAsSnakeCase;
+  if (keepOriginalNames) {
+    if (fileStorage) {
+      transferFunc = transfer;
+    } else {
+      transferFunc = transferAsClassic;
+    }
+  }
   let url: URL | undefined = undefined;
   const analyticsContext = event.context || {};
   const urlStr = analyticsContext.page?.url || event.properties?.url;
@@ -75,7 +85,7 @@ export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): A
     }
   } catch (e) {}
   const click_id = {};
-  transfer(click_id, analyticsContext.clientIds, ["ga4", "fbp", "fbc"]);
+  transferFunc(click_id, analyticsContext.clientIds, ["ga4", "fbp", "fbc"]);
   let ids: any = {};
   if (Object.keys(analyticsContext.clientIds || {}).length > 0) {
     ids = removeUndefined({
@@ -92,8 +102,8 @@ export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): A
     email: (analyticsContext.traits?.email || event.traits?.email || undefined) as string | undefined,
     name: (analyticsContext.traits?.name || event.traits?.name || undefined) as string | undefined,
   });
-  transferAsSnakeCase(user, analyticsContext.traits, ["email", "name"]);
-  transferAsSnakeCase(user, event.traits, ["email", "name"]);
+  transferFunc(user, analyticsContext.traits, ["email", "name"]);
+  transferFunc(user, event.traits, ["email", "name"]);
   const classic = {
     [TableNameParameter]: event[TableNameParameter],
     anon_ip: analyticsContext.ip ? anonymizeIp(analyticsContext.ip) : undefined,
@@ -120,7 +130,7 @@ export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): A
       Object.keys(geo).length > 0
         ? {
             city: geo.city?.name,
-            continent: geo.continent?.code,
+            continent: geo.continent?.name,
             country: geo.country?.code,
             country_name: geo.country?.name,
             latitude: geo.location?.latitude,
@@ -159,18 +169,9 @@ export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): A
         : undefined,
   };
   if (event.type === "track") {
-    transferAsSnakeCase(classic, event.properties);
+    transferFunc(classic, event.properties);
   } else {
-    transferAsSnakeCase(classic, event.properties, [
-      "url",
-      "title",
-      "referrer",
-      "search",
-      "host",
-      "path",
-      "width",
-      "height",
-    ]);
+    transferFunc(classic, event.properties, ["url", "title", "referrer", "search", "host", "path", "width", "height"]);
   }
 
   return removeUndefined(classic);
@@ -252,9 +253,9 @@ export function fromJitsuClassic(event: AnyEvent): AnyEvent {
         }
       : undefined;
   const traits = {};
-  transferAsSnakeCase(traits, event.user, ["id", "anonymous_id"]);
+  transfer(traits, event.user, ["id", "anonymous_id"]);
   const properties: any = {};
-  transferAsSnakeCase(properties, event, [
+  transfer(properties, event, [
     TableNameParameter,
     "anon_ip",
     "api_key",

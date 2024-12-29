@@ -10,52 +10,6 @@ class RetryError extends Error {
     }
 }
 
-const ACode = "A".charCodeAt(0);
-const ZCode = "Z".charCodeAt(0);
-const aCode = "a".charCodeAt(0);
-const zCode = "z".charCodeAt(0);
-const spaceCode = " ".charCodeAt(0);
-
-function idToSnakeCaseFast(id) {
-  let res = "";
-  let concatIndex = 0;
-  let i = 0;
-  let needUnderscore = false;
-  for (; i < id.length; i++) {
-    const c = id.charCodeAt(i);
-    if (c >= ACode && c <= ZCode) {
-      res += id.substring(concatIndex, i) + (needUnderscore ? "_" : "") + id.charAt(i).toLowerCase();
-      concatIndex = i + 1;
-    } else if (c == spaceCode) {
-      res += id.substring(concatIndex, i) + "_";
-      concatIndex = i + 1;
-    }
-    // needUnderscore is used in case next char is a capital latin letter
-    // we add underscore only between latin letters
-    needUnderscore = (c >= aCode && c <= zCode) || (c >= ACode && c <= ZCode);
-  }
-  if (concatIndex == 0) {
-    return id;
-  } else if (concatIndex < i) {
-    res += id.substring(concatIndex, i);
-  }
-  return res;
-}
-
-function toSnakeCase(param) {
-  if (Array.isArray(param)) {
-    return param.map(toSnakeCase);
-  } else if (typeof param === "object" && param !== null) {
-    const r = {};
-    for (const [key, value] of Object.entries(param)) {
-      r[idToSnakeCaseFast(key)] = toSnakeCase(value);
-    }
-    return r;
-  } else {
-    return param;
-  }
-}
-
 function removeUndefined(param) {
   if (Array.isArray(param)) {
     return param.map(removeUndefined);
@@ -76,24 +30,6 @@ function removeUndefined(param) {
   return param;
 }
 
-function transferAsSnakeCase(target, source, omit) {
-  if (typeof source !== "object") {
-    return;
-  }
-  for (const [k, v] of Object.entries(source)) {
-    if (!omit || !omit.includes(k)) {
-      target[idToSnakeCaseFast(k)] = toSnakeCase(v);
-    }
-  }
-}
-
-function transferValueAsSnakeCase(target, property, source) {
-  if (typeof source === "undefined") {
-    return;
-  }
-  target[property] = toSnakeCase(source);
-}
-
 function transfer(target, source, omit) {
   if (typeof source !== "object") {
     return;
@@ -104,14 +40,6 @@ function transfer(target, source, omit) {
     }
   }
 }
-
-function transferValue(target, property, source) {
-  if (typeof source === "undefined") {
-    return;
-  }
-  target[property] = source;
-}
-
 
 function anonymizeIp(ip) {
   if (!ip) {
@@ -145,8 +73,8 @@ function toJitsuClassic(event, ctx) {
     email: analyticsContext.traits?.email || event.traits?.email || undefined,
     name: analyticsContext.traits?.name || event.traits?.name || undefined,
   });
-  transferAsSnakeCase(user, analyticsContext.traits, ["email", "name"]);
-  transferAsSnakeCase(user, event.traits, ["email", "name"]);
+  transfer(user, analyticsContext.traits, ["email", "name"]);
+  transfer(user, event.traits, ["email", "name"]);
   const classic = {
     [TableNameParameter]: event[TableNameParameter],
     anon_ip: analyticsContext.ip ? anonymizeIp(analyticsContext.ip) : undefined,
@@ -212,9 +140,9 @@ function toJitsuClassic(event, ctx) {
         : undefined,
   };
   if (event.type === "track") {
-    transferAsSnakeCase(classic, event.properties);
+    transfer(classic, event.properties);
   } else {
-    transferAsSnakeCase(classic, event.properties, [
+    transfer(classic, event.properties, [
       "url",
       "title",
       "referrer",
@@ -305,9 +233,9 @@ function fromJitsuClassic(event) {
         }
       : undefined;
   const traits = {};
-  transferAsSnakeCase(traits, event.user, ["id", "anonymous_id"]);
+  transfer(traits, event.user, ["id", "anonymous_id"]);
   const properties = {};
-  transferAsSnakeCase(properties, event, [
+  transfer(properties, event, [
     TableNameParameter,
     "anon_ip",
     "api_key",

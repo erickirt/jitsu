@@ -1,4 +1,4 @@
-import { idToSnakeCaseFast } from "./strings";
+import { idToClassic, idToSnakeCaseFast } from "./strings";
 
 export function toSnakeCase(param: any): any {
   if (Array.isArray(param)) {
@@ -7,6 +7,20 @@ export function toSnakeCase(param: any): any {
     const r = {};
     for (const [key, value] of Object.entries(param)) {
       r[idToSnakeCaseFast(key)] = toSnakeCase(value);
+    }
+    return r;
+  } else {
+    return param;
+  }
+}
+
+export function toClassic(param: any): any {
+  if (Array.isArray(param)) {
+    return param.map(toClassic);
+  } else if (typeof param === "object" && param !== null) {
+    const r = {};
+    for (const [key, value] of Object.entries(param)) {
+      r[idToClassic(key)] = toClassic(value);
     }
     return r;
   } else {
@@ -41,6 +55,17 @@ export function transferAsSnakeCase(target: Record<string, any>, source: any, om
   for (const [k, v] of Object.entries(source)) {
     if (!omit || !omit.includes(k)) {
       target[idToSnakeCaseFast(k)] = toSnakeCase(v);
+    }
+  }
+}
+
+export function transferAsClassic(target: Record<string, any>, source: any, omit?: string[]) {
+  if (typeof source !== "object") {
+    return;
+  }
+  for (const [k, v] of Object.entries(source)) {
+    if (!omit || !omit.includes(k)) {
+      target[idToClassic(k)] = toClassic(v);
     }
   }
 }
