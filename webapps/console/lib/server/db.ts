@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { Pool, PoolClient } from "pg";
 import Cursor from "pg-cursor";
-import { getSingleton, namedParameters, newError, requireDefined, stopwatch } from "juava";
+import { getSingleton, namedParameters, newError, requireDefined, stopwatch, hideSensitiveInfo } from "juava";
 import { getServerLog } from "./log";
 import { isReadOnly } from "./read-only-mode";
 import { isTruish } from "../shared/chores";
@@ -116,8 +116,9 @@ export function createPg(): Pool {
     log
       .atInfo()
       .log(
-        `Connecting new client ${connectionUrl}. Pool stat: idle=${pool.idleCount}, waiting=${pool.waitingCount}, total=${pool.totalCount}` +
-          (schema ? `. Default schema: ${schema}` : "")
+        `Connecting new client ${hideSensitiveInfo(connectionUrl)}. Pool stat: idle=${pool.idleCount}, waiting=${
+          pool.waitingCount
+        }, total=${pool.totalCount}` + (schema ? `. Default schema: ${schema}` : "")
       );
     //this is commented on purpose, it won't work for pgbouncer in transaction mode https://www.pgbouncer.org/features.html
     //let's leave it commented for information purposes

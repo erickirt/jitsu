@@ -1,4 +1,4 @@
-import { assertDefined, getErrorMessage } from "juava";
+import { assertDefined, getErrorMessage, hideSensitiveInfo } from "juava";
 import * as PG from "pg";
 import { getServerLog } from "./log";
 
@@ -79,16 +79,6 @@ function maybeDeleteExpiredObjects(pgPool, table) {
     log.atInfo().log(`Deleting expired objects: ${query}`);
     //no need to wait. It can be executed in asynchronous manner
     pgPool.query(query);
-  }
-}
-
-function hideSensitiveInfo(url: string) {
-  try {
-    const parsedUrl = new URL(url);
-    parsedUrl.password = "****";
-    return parsedUrl.toString();
-  } catch (e) {
-    return "***";
   }
 }
 
