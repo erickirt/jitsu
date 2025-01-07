@@ -581,7 +581,7 @@ function ConnectionEditor({
         <Tooltip title={!!existingLink ? "Can only be configured during the initial connection setup." : undefined}>
           {" "}
           <SwitchComponent
-            disabled={!!existingLink || (connectionOptions.dataLayout as string) === "jitsu-legacy"}
+            disabled={!!existingLink}
             className="max-w-xs"
             value={connectionOptions.keepOriginalNames}
             onChange={sf => {

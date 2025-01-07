@@ -25,7 +25,7 @@ export type DataLayoutImpl<T> = (
 
 export function jitsuLegacy(event: AnalyticsServerEvent, ctx: FullContext<BulkerDestinationConfig>): MappedEvent {
   const flat = toJitsuClassic(event, ctx);
-  return { event: flat, table: event[TableNameParameter] ?? "events" };
+  return { event: omit(flat, TableNameParameter), table: event[TableNameParameter] ?? "events" };
 }
 
 export function segmentLayout(
