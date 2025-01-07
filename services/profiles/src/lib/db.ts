@@ -1,6 +1,6 @@
 import { Pool, PoolClient } from "pg";
 import Cursor from "pg-cursor";
-import { getSingleton, namedParameters, newError, requireDefined, stopwatch, getLog } from "juava";
+import { getSingleton, namedParameters, newError, requireDefined, stopwatch, getLog, hideSensitiveInfo } from "juava";
 
 export type Handler = (row: Record<string, any>) => Promise<void> | void;
 
@@ -197,8 +197,9 @@ export function createPg(): Pool {
     log
       .atInfo()
       .log(
-        `Connecting new client ${connectionUrl}. Pool stat: idle=${pool.idleCount}, waiting=${pool.waitingCount}, total=${pool.totalCount}` +
-          (schema ? `. Default schema: ${schema}` : "")
+        `Connecting new client ${hideSensitiveInfo(connectionUrl)}. Pool stat: idle=${pool.idleCount}, waiting=${
+          pool.waitingCount
+        }, total=${pool.totalCount}` + (schema ? `. Default schema: ${schema}` : "")
       );
     //this is commented on purpose, it won't work for pgbouncer in transaction mode https://www.pgbouncer.org/features.html
     //let's leave it commented for information purposes

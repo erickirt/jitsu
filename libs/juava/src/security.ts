@@ -76,3 +76,13 @@ export function decrypt(secret: string, iv: string, value: string): string {
   const decrypted = Buffer.concat([decipher.update(Buffer.from(value, "hex")), decipher.final()]);
   return decrypted.toString();
 }
+
+export function hideSensitiveInfo(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    parsedUrl.password = "****";
+    return parsedUrl.toString();
+  } catch (e) {
+    return "***";
+  }
+}
