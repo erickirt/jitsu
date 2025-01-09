@@ -112,6 +112,10 @@ export const SchemaForm: React.FC<{
 
           const editorProps = { value, onChange: change };
 
+          if (f.airbyte_hidden) {
+            return null;
+          }
+
           if (f.const) {
             // if (f.description) {
             //   return (
