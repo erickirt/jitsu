@@ -96,7 +96,7 @@ const statuses: Record<
     documentation: (
       <>
         Profile builder is not enabled for your account. You still can define profiles with JavaScript function, and run
-        test. To enable profile builder, please for your account please <WLink href={"/support"}>contact support</WLink>
+        test. To enable profile builder for your account please <WLink href={"/support"}>contact support</WLink>
       </>
     ),
     icon: <Lock className="full" />,
