@@ -95,7 +95,7 @@ export type ConnectionAggregate = Simplify<z.infer<typeof ConnectionAggregate>>;
 
 function getWorkspaceId(report: Report): string {
   if (report.rows.length === 0) {
-    throw new Error("Report is empty");
+    return "";
   }
   const workspaceId = report.rows[0].workspaceId;
 
