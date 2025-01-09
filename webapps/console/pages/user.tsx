@@ -23,7 +23,7 @@ function ApiKeys() {
       errorTitle={"Failed to load API keys"}
       render={keys => (
         <>
-          <div className="text-lg font-bold">API Keys</div>
+          <p className="text-lg font-bold">API Keys</p>
           <ApiKeysEditor
             value={keys}
             onChange={k => {
@@ -77,18 +77,37 @@ const ChangePassword: React.FC<{}> = () => {
 
   return (
     <div className="px-8 py-6 border border-textDisabled rounded-lg space-y-4 mt-6">
-      <div className="text-lg font-bold">Change Password</div>
+      <p className="text-lg font-bold">Change Password</p>
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Current password</label>
-        <Input required type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">New password</label>
-        <Input required type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Confirm password</label>
+        <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
+          Current password
+        </label>
         <Input
+          id="currentPassword"
+          required
+          type="password"
+          value={currentPassword}
+          onChange={e => setCurrentPassword(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">
+          New password
+        </label>
+        <Input
+          id="newPassword"
+          required
+          type="password"
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+          Confirm password
+        </label>
+        <Input
+          id="confirmPassword"
           required
           type="password"
           value={confirmNewPassword}
@@ -131,11 +150,13 @@ const UserPage = (props: any) => {
         <div className="w-full grow">
           <h1 className="flex-grow text-3xl py-6">User settings</h1>
           <div className="px-8 py-6 border border-textDisabled rounded-lg">
-            <div className="text-lg font-bold">Email</div>
-            <Input value={user.email} className="border-error" />
-            <div className="text-textDisabled">
+            <label htmlFor="email" className="text-lg font-bold">
+              Email
+            </label>
+            <Input id="email" value={user.email} className="border-error" />
+            <p className="text-textDisabled">
               You can't change email, since you logged in with an external user provider - {user.loginProvider}
-            </div>
+            </p>
           </div>
           {user.loginProvider === "credentials" && <ChangePassword />}
           <div className="px-8 py-6 border border-textDisabled rounded-lg mt-6">
