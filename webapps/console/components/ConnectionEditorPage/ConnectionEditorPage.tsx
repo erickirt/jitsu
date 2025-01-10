@@ -346,7 +346,7 @@ function ConnectionEditor({
       documentation: (
         <>
           Maximum number of events to send in one batch. If there are more events in queue than 'Batch Size', events
-          will be sent as a consequence of batches with provided size.
+          will be sent as a sequence of batches with provided size.
         </>
       ),
       component: (

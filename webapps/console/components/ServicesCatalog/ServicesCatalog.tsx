@@ -1,13 +1,13 @@
 import styles from "./ServicesCatalog.module.css";
 
-import { FaCloud, FaDatabase } from "react-icons/fa";
+import { FaDatabase, FaDocker } from "react-icons/fa";
 import { useApi } from "../../lib/useApi";
 import { SourceType } from "../../pages/api/sources";
 import capitalize from "lodash/capitalize";
 import { LoadingAnimation } from "../GlobalLoader/GlobalLoader";
 import React from "react";
 import { ErrorCard } from "../GlobalError/GlobalError";
-import { Input } from "antd";
+import { Button, Input, Popover } from "antd";
 import { useAppConfig, useWorkspace } from "../../lib/context";
 
 function groupByType(sources: SourceType[]): Record<string, SourceType[]> {
@@ -50,15 +50,19 @@ export function getServiceIcon(source: SourceType, icons: Record<string, string>
   ) : connectorSubtype === "database" ? (
     <FaDatabase className={"w-full h-full"} />
   ) : (
-    <FaCloud className={"w-full h-full"} />
+    <FaDocker className={"w-full h-full"} />
   );
 }
 
-export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: string) => void }> = ({ onClick }) => {
+export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: string, version?: string) => void }> = ({
+  onClick,
+}) => {
   const { data, isLoading, error } = useApi<{ sources: SourceType[] }>(`/api/sources?mode=meta`);
   const sourcesIconsLoader = useApi<{ sources: SourceType[] }>(`/api/sources?mode=icons-only`);
   const workspace = useWorkspace();
   const [filter, setFilter] = React.useState("");
+  const [customImage, setCustomImage] = React.useState("");
+  const [customPopupOpen, setCustomPopupOpen] = React.useState(false);
   const appconfig = useAppConfig();
   const sourcesIcons: Record<string, string> = sourcesIconsLoader.data
     ? sourcesIconsLoader.data.sources.reduce(
@@ -135,6 +139,52 @@ export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: strin
             </div>
           );
         })}
+        <div key={"custom-connector"} className="">
+          <div className="text-3xl text-textLight px-4 pb-0 pt-3">Advanced</div>
+          <div className="flex flex-wrap">
+            <Popover
+              content={
+                <div className={"flex flex-row gap-1.5"}>
+                  <Input onChange={e => setCustomImage(e.target.value)} />
+                  <Button
+                    type={"primary"}
+                    onClick={() => {
+                      const [packageId, packageVersion] = (customImage || "").trim().split(":");
+                      if (!packageId) {
+                        return;
+                      }
+                      onClick("airbyte", packageId, packageVersion);
+                      setCustomPopupOpen(false);
+                      setCustomImage("");
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+              }
+              onOpenChange={setCustomPopupOpen}
+              open={customPopupOpen}
+              title="Enter docker image name"
+              placement={"right"}
+              trigger="click"
+            >
+              <div
+                key="custom-connector"
+                className={`flex items-center cursor-pointer relative w-72 border border-textDisabled ${"hover:scale-105 hover:border-primary"} transition ease-in-out rounded-lg px-4 py-4 space-x-4 m-4`}
+              >
+                <div className={`${styles.icon} flex`}>
+                  <FaDocker />
+                </div>
+                <div>
+                  <div>
+                    <div className={`text-xl`}>Custom connector</div>
+                  </div>
+                  <div className="text-xs text-textLight">Custom docker image</div>
+                </div>
+              </div>
+            </Popover>
+          </div>
+        </div>
       </div>
     </div>
   );

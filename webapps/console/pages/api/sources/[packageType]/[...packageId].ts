@@ -3,6 +3,7 @@ import { db } from "../../../../lib/server/db";
 import pick from "lodash/pick";
 import { externalSources, jitsuSources, SourceType } from "../index";
 import { getLog } from "juava";
+import capitalize from "lodash/capitalize";
 
 export default createRoute()
   .GET({ auth: false })
@@ -26,7 +27,26 @@ export default createRoute()
     }
     const connectorPackage = await db.prisma().connectorPackage.findFirst({ where: { packageType, packageId } });
     if (!connectorPackage) {
-      throw new Error(`Source ${packageId} of ${packageType} type not found`);
+      return {
+        id: packageId,
+        versions: `/api/sources/versions?type=${encodeURIComponent(packageType)}&package=${encodeURIComponent(
+          packageId
+        )}`,
+        packageId,
+        packageType,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        meta: {
+          name: capitalize(
+            packageId
+              .split("/")
+              .pop()
+              ?.replace(/^source-/g, "")
+          ),
+          license: "unknown",
+          connectorSubtype: "unknown",
+        },
+      };
     }
     const { id, logoSvg, meta, ...rest } = connectorPackage;
     return {

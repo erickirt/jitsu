@@ -25,17 +25,14 @@ export default async function handler(req, res) {
     const data = await db
       .prisma()
       .connectorPackage.findFirst({ where: { packageId, packageType }, select: { logoSvg: true, meta: true } });
-    if (!data) {
-      const msg = `Icon for ${packageType} - ${packageId} not found`;
-      res.status(404).json({ status: 404, message: msg });
-    } else if (data.logoSvg) {
+    if (data?.logoSvg) {
       res.setHeader("Content-Type", "image/svg+xml");
       res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
       res.status(200).send(data.logoSvg.toString());
     } else {
       res.setHeader("Content-Type", "image/svg+xml");
       res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
-      if ((data.meta as any).connectorSubtype === "database") {
+      if ((data?.meta as any)?.connectorSubtype === "database") {
         res
           .status(200)
           .send(
@@ -45,7 +42,7 @@ export default async function handler(req, res) {
         res
           .status(200)
           .send(
-            '<svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 640 512" width="100%" xmlns="http://www.w3.org/2000/svg"><path d="M537.6 226.6c4.1-10.7 6.4-22.4 6.4-34.6 0-53-43-96-96-96-19.7 0-38.1 6-53.3 16.2C367 64.2 315.3 32 256 32c-88.4 0-160 71.6-160 160 0 2.7.1 5.4.2 8.1C40.2 219.8 0 273.2 0 336c0 79.5 64.5 144 144 144h368c70.7 0 128-57.3 128-128 0-61.9-44-113.6-102.4-125.4z"></path></svg>'
+            '<svg stroke="currentColor" fill="currentColor" viewBox="0 0 640 512" width="100%" xmlns="http://www.w3.org/2000/svg"><path d="M349.9 236.3h-66.1v-59.4h66.1v59.4zm0-204.3h-66.1v60.7h66.1V32zm78.2 144.8H362v59.4h66.1v-59.4zm-156.3-72.1h-66.1v60.1h66.1v-60.1zm78.1 0h-66.1v60.1h66.1v-60.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4 .4 67.6 .1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1l-13.3-8.9zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1v-59.4zm-78.1-72.1h-66.1v60.1h66.1v-60.1z"/></svg>'
           );
       }
     }

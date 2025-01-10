@@ -257,10 +257,12 @@ const ServicesList: React.FC<{}> = () => {
         footer={null}
       >
         <ServicesCatalog
-          onClick={async (packageType, packageId) => {
+          onClick={async (packageType, packageId, version) => {
             await setShowCatalog(false).then(() =>
               router.push(
-                `/${workspace.id}/services?id=new&packageType=${packageType}&packageId=${encodeURIComponent(packageId)}`
+                `/${workspace.id}/services?id=new&packageType=${packageType}&packageId=${encodeURIComponent(
+                  packageId
+                )}${version ? `&version=${version}` : ""}`
               )
             );
           }}
