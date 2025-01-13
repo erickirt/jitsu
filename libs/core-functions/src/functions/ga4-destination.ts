@@ -347,9 +347,10 @@ const Ga4Destination: JitsuFunction<AnalyticsServerEvent, Ga4Credentials> = asyn
       ctx.log.info(`Ga4: no GA4 event is mapped for event type: ${event.type} ID: ${event.messageId}`);
       return;
     }
-    const debug = "";
-    //const debug = ctx.props.validationMode ? "/debug" : "";
-    const url = `https://www.google-analytics.com${debug}/mp/collect?${query}`;
+
+    const baseUrl = ctx.props.url ?? 'https://www.google-analytics.com/mp/collect';
+
+    const url = `${baseUrl}?${query}`;
 
     gaRequest = {
       ...idPart,
