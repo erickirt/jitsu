@@ -807,7 +807,7 @@ export const coreDestinations: DestinationType<any>[] = [
   {
     id: "ga4",
     icon: ga4Icon,
-    title: "GA4 (Measurement Protocol)",
+    title: "Google Analytics 4 (GA4 Measurement Protocol)",
     tags: "Product Analytics",
     connectionOptions: CloudDestinationsConnectionOptions,
     credentials: meta.Ga4Credentials,
