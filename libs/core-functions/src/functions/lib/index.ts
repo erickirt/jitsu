@@ -16,7 +16,7 @@ import {
   FuncReturn,
   FunctionLogger,
   JitsuFunction,
-  Metrics,
+  FunctionMetrics,
   TTLStore,
 } from "@jitsu/protocols/functions";
 import {
@@ -70,6 +70,31 @@ export type MetricsMeta = {
   retries?: number;
 };
 
+export type FuncChainResult = {
+  connectionId?: string;
+  events: AnyEvent[];
+  execLog: FunctionExecLog;
+};
+
+export type FunctionExecRes = {
+  receivedAt?: any;
+  eventIndex: number;
+  event?: any;
+  metricsMeta?: MetricsMeta;
+  functionId: string;
+  error?: any;
+  dropped?: boolean;
+  ms: number;
+};
+
+export type FunctionExecLog = FunctionExecRes[];
+
+export interface RotorMetrics {
+  logMetrics: (execLog: FunctionExecLog) => void;
+  storeStatus: (namespace: string, operation: string, status: string) => void;
+  close: () => void;
+}
+
 export type FetchType = (
   url: string,
   opts?: FetchOpts,
@@ -92,7 +117,7 @@ export type FunctionChainContext = {
   fetch: InternalFetchType;
   store: TTLStore;
   anonymousEventsStore?: AnonymousEventsStore;
-  metrics?: Metrics;
+  metrics?: FunctionMetrics;
   connectionOptions?: any;
 };
 

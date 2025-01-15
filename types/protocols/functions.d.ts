@@ -21,7 +21,7 @@ export interface Store {
   ttl(key: string): Promise<number>;
 }
 
-export interface Metrics {
+export interface FunctionMetrics {
   counter(name: string): {
     //increment / decrement counter. Supports negative values
     inc: (value: number) => void;
@@ -70,7 +70,7 @@ export type FunctionContext<P extends AnyProps = AnyProps> = {
   log: FunctionLogger;
   fetch: FetchType;
   store: TTLStore;
-  metrics?: Metrics;
+  metrics?: FunctionMetrics;
   props: P;
 };
 

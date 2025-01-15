@@ -1,13 +1,19 @@
 import { getLog, requireDefined, stopwatch } from "juava";
-import { FunctionExecLog, FunctionExecRes } from "./functions-chain";
 import fetch from "node-fetch-commonjs";
-import { MetricsMeta, httpAgent, httpsAgent } from "@jitsu/core-functions";
+import {
+  FunctionExecLog,
+  FunctionExecRes,
+  MetricsMeta,
+  httpAgent,
+  httpsAgent,
+  RotorMetrics,
+} from "@jitsu/core-functions";
 
 import omit from "lodash/omit";
 import type { Producer } from "kafkajs";
 import { getCompressionType } from "./rotor";
 import { Readable } from "stream";
-import { randomUUID } from "node:crypto";
+import { Counter } from "prom-client";
 
 const log = getLog("metrics");
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
@@ -27,17 +33,16 @@ type MetricsEvent = MetricsMeta & {
   events: number;
 };
 
-export interface Metrics {
-  logMetrics: (execLog: FunctionExecLog) => void;
-  close: () => void;
-}
-
-export const DummyMetrics: Metrics = {
+export const DummyMetrics: RotorMetrics = {
   logMetrics: () => {},
+  storeStatus: () => {},
   close: () => {},
 };
 
-export function createMetrics(producer?: Producer): Metrics {
+export function createMetrics(
+  producer?: Producer,
+  storeCounter?: Counter<"namespace" | "operation" | "status">
+): RotorMetrics {
   const buffer: MetricsEvent[] = [];
 
   const flush = async (buf: MetricsEvent[]) => {
@@ -197,6 +202,11 @@ export function createMetrics(producer?: Producer): Metrics {
             })
         );
         buffer.length = 0;
+      }
+    },
+    storeStatus: (namespace: string, operation: string, status: string) => {
+      if (storeCounter) {
+        storeCounter.labels(namespace, operation, status).inc();
       }
     },
     close: () => {

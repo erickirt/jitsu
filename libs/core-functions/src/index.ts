@@ -81,6 +81,10 @@ export * as mongodbDestination from "./functions/mongodb-destination";
 export { mongodb, mongoAnonymousEventsStore } from "./functions/lib/mongodb";
 export type {
   MetricsMeta,
+  RotorMetrics,
+  FuncChainResult,
+  FunctionExecLog,
+  FunctionExecRes,
   FunctionContext,
   FunctionChainContext,
   FetchType,

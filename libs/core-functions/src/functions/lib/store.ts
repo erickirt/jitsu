@@ -4,6 +4,7 @@ import parse from "parse-duration";
 import { MongoClient, ReadPreference, Collection } from "mongodb";
 import { RetryError } from "@jitsu/functions-lib";
 import { getLog, Singleton } from "juava";
+import { RotorMetrics } from "./index";
 
 export const defaultTTL = 60 * 60 * 24 * 31; // 31 days
 export const maxAllowedTTL = 2147483647; // max allowed value for ttl in redis (68years)
@@ -69,7 +70,8 @@ export const createMongoStore = (
   namespace: string,
   mongo: Singleton<MongoClient>,
   useLocalCache: boolean,
-  fast: boolean
+  fast: boolean,
+  metrics?: RotorMetrics
 ): TTLStore => {
   const localCache: Record<string, StoreValue> = {};
   const readOptions = fast ? { readPreference: ReadPreference.NEAREST } : {};
@@ -113,12 +115,21 @@ export const createMongoStore = (
     }
   }
 
-  function storeErr(err: any, text: string) {
+  function storeErr(operation: "get" | "set" | "del" | "ttl", err: any, text: string, metrics?: RotorMetrics) {
     log.atError().log(`${text}: ${err.message}`);
+    if (metrics) {
+      metrics.storeStatus(namespace, operation, "error");
+    }
     if ((err.message ?? "").includes("timed out")) {
       return new RetryError(text + ": Timed out.");
     }
     return new RetryError(text + ": " + err.message);
+  }
+
+  function success(operation: "get" | "set" | "del" | "ttl", metrics?: RotorMetrics) {
+    if (metrics) {
+      metrics.storeStatus(namespace, operation, "success");
+    }
   }
 
   return {
@@ -126,9 +137,10 @@ export const createMongoStore = (
       try {
         const res =
           getFromLocalCache(key) || (await ensureCollection().then(c => c.findOne({ _id: key }, readOptions)));
+        success("get", metrics);
         return res ? res.value : undefined;
       } catch (err: any) {
-        throw storeErr(err, `Error getting key ${key} from mongo store ${namespace}`);
+        throw storeErr("get", err, `Error getting key ${key} from mongo store ${namespace}`);
       }
     },
     getWithTTL: async (key: string) => {
@@ -139,9 +151,10 @@ export const createMongoStore = (
           return undefined;
         }
         const ttl = res.expireAt ? Math.max(Math.floor((res.expireAt.getTime() - new Date().getTime()) / 1000), 0) : -1;
+        success("get", metrics);
         return { value: res.value, ttl };
       } catch (err: any) {
-        throw storeErr(err, `Error getting key ${key} from mongo store ${namespace}`);
+        throw storeErr("get", err, `Error getting key ${key} from mongo store ${namespace}`);
       }
     },
     set: async (key: string, obj: any, opts?: SetOpts) => {
@@ -165,9 +178,12 @@ export const createMongoStore = (
             if (useLocalCache) {
               localCache[key] = colObj;
             }
+          })
+          .then(() => {
+            success("set", metrics);
           });
       } catch (err: any) {
-        throw storeErr(err, `Error setting key ${key} in mongo store ${namespace}`);
+        throw storeErr("set", err, `Error setting key ${key} in mongo store ${namespace}`);
       }
     },
     del: async (key: string) => {
@@ -179,21 +195,23 @@ export const createMongoStore = (
               delete localCache[key];
             }
           });
+        success("del", metrics);
       } catch (err: any) {
-        throw storeErr(err, `Error deleting key ${key} from mongo store ${namespace}`);
+        throw storeErr("del", err, `Error deleting key ${key} from mongo store ${namespace}`);
       }
     },
     ttl: async (key: string) => {
       try {
         const res =
           getFromLocalCache(key) || (await ensureCollection().then(c => c.findOne({ _id: key }, readOptions)));
+        success("ttl", metrics);
         return res
           ? res.expireAt
             ? Math.max(Math.floor((res.expireAt.getTime() - new Date().getTime()) / 1000), 0)
             : -1
           : -2;
       } catch (err: any) {
-        throw storeErr(err, `Error getting key ${key} from mongo store ${namespace}`);
+        throw storeErr("ttl", err, `Error getting key ${key} from mongo store ${namespace}`);
       }
     },
   };

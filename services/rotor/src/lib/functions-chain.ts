@@ -5,9 +5,11 @@ import {
   createTtlStore,
   EnrichedConnectionConfig,
   EntityStore,
+  FuncChainResult,
   FunctionChainContext,
   FunctionConfig,
   FunctionContext,
+  FunctionExecLog,
   getBuiltinFunction,
   isDropResult,
   JitsuFunctionWrapper,
@@ -69,25 +71,6 @@ udfCache.on("del", (key, value) => {
   value.wrapper?.close();
 });
 
-export type FuncChainResult = {
-  connectionId?: string;
-  events: AnyEvent[];
-  execLog: FunctionExecLog;
-};
-
-export type FunctionExecRes = {
-  receivedAt?: any;
-  eventIndex: number;
-  event?: any;
-  metricsMeta?: MetricsMeta;
-  functionId: string;
-  error?: any;
-  dropped?: boolean;
-  ms: number;
-};
-
-export type FunctionExecLog = FunctionExecRes[];
-
 export function checkError(chainRes: FuncChainResult) {
   for (const el of chainRes.execLog) {
     if (el.error && (el.error.name === DropRetryErrorName || el.error.name === RetryErrorName)) {
@@ -139,7 +122,8 @@ export function buildFunctionChain(
       connection.workspaceId,
       mongodb,
       false,
-      fastStoreWorkspaceId.includes(connection.workspaceId)
+      fastStoreWorkspaceId.includes(connection.workspaceId),
+      rotorContext.metrics
     );
     if (rotorContext.redisClient) {
       store = createMultiStore(store, createTtlStore(connection.workspaceId, rotorContext.redisClient));

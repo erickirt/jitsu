@@ -6,12 +6,13 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 dayjs.extend(utc);
 import { getRetryPolicy, retryBackOffTime, retryLogMessage } from "./retries";
-import { createMetrics, Metrics } from "./metrics";
-import { FuncChainFilter, FuncChainResult } from "./functions-chain";
+import { createMetrics } from "./metrics";
+import { FuncChainFilter } from "./functions-chain";
 import type { Admin, Consumer, Producer, KafkaMessage } from "kafkajs";
 import { CompressionTypes } from "kafkajs";
 import { functionFilter, MessageHandlerContext } from "./message-handler";
 import { connectionsStore, functionsStore, workspaceStore } from "./repositories";
+import { RotorMetrics, FuncChainResult } from "@jitsu/core-functions";
 
 const log = getLog("kafka-rotor");
 
@@ -43,7 +44,7 @@ export type KafkaRotorConfig = {
 };
 
 export type KafkaRotor = {
-  start: () => Promise<Metrics>;
+  start: () => Promise<RotorMetrics>;
   close: () => Promise<void>;
 };
 
@@ -54,7 +55,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
   let admin: Admin;
   let closeQueue: () => Promise<void>;
   let interval: any;
-  let metrics: Metrics;
+  let metrics: RotorMetrics;
   return {
     start: async () => {
       const kafka = connectToKafka({ defaultAppId: kafkaClientId, ...cfg.credentials });
@@ -69,7 +70,12 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
 
       producer = kafka.producer({ allowAutoTopicCreation: false });
       await producer.connect();
-      metrics = createMetrics(producer);
+      const storeErrors = new Prometheus.Counter({
+        name: "rotor_store_statuses",
+        help: "rotor store statuses",
+        labelNames: ["namespace", "operation", "status"] as const,
+      });
+      metrics = createMetrics(producer, storeErrors);
       admin = kafka.admin();
 
       const topicOffsets = new Prometheus.Gauge({
@@ -87,21 +93,19 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
       const messagesProcessed = new Prometheus.Counter({
         name: "rotor_messages_processed",
         help: "messages processed",
-        // add `as const` here to enforce label names
         labelNames: ["topic", "partition"] as const,
       });
       const messagesRequeued = new Prometheus.Counter({
         name: "rotor_messages_requeued",
         help: "messages requeued",
-        // add `as const` here to enforce label names
         labelNames: ["topic"] as const,
       });
       const messagesDeadLettered = new Prometheus.Counter({
         name: "rotor_messages_dead_lettered",
         help: "messages dead lettered",
-        // add `as const` here to enforce label names
         labelNames: ["topic"] as const,
       });
+
       interval = setInterval(async () => {
         try {
           for (const topic of kafkaTopics) {

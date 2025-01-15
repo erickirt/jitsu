@@ -1,5 +1,4 @@
 import { getLog, requireDefined } from "juava";
-import { Metrics } from "./metrics";
 import { GeoResolver } from "./maxmind";
 import { IngestMessage } from "@jitsu/protocols/async-request";
 import { CONNECTION_IDS_HEADER } from "./rotor";
@@ -17,6 +16,7 @@ import {
   EnrichedConnectionConfig,
   FunctionConfig,
   WorkspaceWithProfiles,
+  RotorMetrics,
 } from "@jitsu/core-functions";
 import NodeCache from "node-cache";
 import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } from "./functions-chain";
@@ -35,7 +35,7 @@ export type MessageHandlerContext = {
   functionsStore: EntityStore<FunctionConfig>;
   workspaceStore: EntityStore<WorkspaceWithProfiles>;
   eventsLogger: EventsStore;
-  metrics?: Metrics;
+  metrics?: RotorMetrics;
   geoResolver?: GeoResolver;
   dummyPersistentStore?: TTLStore;
   redisClient?: Redis;
