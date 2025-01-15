@@ -3,10 +3,12 @@ import type { Redis } from "ioredis";
 import parse from "parse-duration";
 import { MongoClient, ReadPreference, Collection } from "mongodb";
 import { RetryError } from "@jitsu/functions-lib";
-import { Singleton } from "juava";
+import { getLog, Singleton } from "juava";
 
 export const defaultTTL = 60 * 60 * 24 * 31; // 31 days
 export const maxAllowedTTL = 2147483647; // max allowed value for ttl in redis (68years)
+
+const log = getLog("store");
 
 function getTtlSec(opts?: SetOpts): number {
   let seconds = defaultTTL;
@@ -112,10 +114,11 @@ export const createMongoStore = (
   }
 
   function storeErr(err: any, text: string) {
+    log.atError().log(`${text}: ${err.message}`);
     if ((err.message ?? "").includes("timed out")) {
-      return new RetryError(text + ". Timed out.");
+      return new RetryError(text + ": Timed out.");
     }
-    return new RetryError(text);
+    return new RetryError(text + ": " + err.message);
   }
 
   return {
