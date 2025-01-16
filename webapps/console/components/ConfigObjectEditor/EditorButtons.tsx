@@ -17,6 +17,7 @@ export type EditorButtonProps<T extends { id: string } = { id: string }> = {
   isTouched?: boolean;
   hasErrors?: boolean;
   testStatus?: string;
+  testButtonLabel?: string;
 };
 
 export const EditorButtons: React.FC<EditorButtonProps> = ({
@@ -28,6 +29,7 @@ export const EditorButtons: React.FC<EditorButtonProps> = ({
   onSave,
   isTouched,
   hasErrors,
+  testButtonLabel = "Test Connection",
 }) => {
   const buttonDivRef = useRef<HTMLDivElement>(null);
   const appConfig = useAppConfig();
@@ -93,17 +95,19 @@ export const EditorButtons: React.FC<EditorButtonProps> = ({
             (testStatus === "success" ? (
               <Popover content={"Connection test passed"} color={"lime"} trigger={"hover"}>
                 <Button type="link" disabled={loading} size="large" onClick={doTest}>
-                  <CheckOutlined /> Test Connection
+                  <CheckOutlined />
+                  {testButtonLabel}
                 </Button>
               </Popover>
             ) : (
               <Button type="link" disabled={loading} size="large" onClick={doTest}>
                 {testStatus === "pending" ? (
                   <>
-                    <LoadingOutlined /> Test Connection
+                    <LoadingOutlined />
+                    {testButtonLabel}
                   </>
                 ) : (
-                  "Test Connection"
+                  testButtonLabel
                 )}
               </Button>
             ))}

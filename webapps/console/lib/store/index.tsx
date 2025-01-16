@@ -1,4 +1,4 @@
-import type { DestinationConfig, FunctionConfig, ServiceConfig, StreamConfig } from "../schema";
+import type { ConnectorImageConfig, DestinationConfig, FunctionConfig, ServiceConfig, StreamConfig } from "../schema";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getLog, requireDefined, rpc } from "juava";
 import { useWorkspace } from "../context";
@@ -7,7 +7,7 @@ import { z } from "zod";
 import { ConfigurationObjectLinkDbModel, ProfileBuilderDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { UseMutationResult } from "@tanstack/react-query/src/types";
 
-export const allConfigTypes = ["stream", "service", "function", "destination"] as const;
+export const allConfigTypes = ["stream", "service", "function", "destination", "custom-image"] as const;
 
 export type ConfigType = (typeof allConfigTypes)[number];
 
@@ -16,6 +16,7 @@ export type ConfigTypes = {
   service: ServiceConfig;
   function: FunctionConfig;
   destination: DestinationConfig;
+  "custom-image": ConnectorImageConfig;
 };
 
 export function asConfigType(type: string): ConfigType {

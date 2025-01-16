@@ -7,13 +7,14 @@ import capitalize from "lodash/capitalize";
 import { LoadingAnimation } from "../GlobalLoader/GlobalLoader";
 import React from "react";
 import { ErrorCard } from "../GlobalError/GlobalError";
-import { Button, Input, Popover } from "antd";
+import { Input } from "antd";
 import { useAppConfig, useWorkspace } from "../../lib/context";
+import { useConfigObjectList } from "../../lib/store";
 
 function groupByType(sources: SourceType[]): Record<string, SourceType[]> {
   const groups: Record<string, SourceType[]> = {};
   const otherGroup = "other";
-  const sortOrder = ["Datawarehouse", "Product Analytics", "CRM", "Block Storage"];
+  const sortOrder = ["api", "database", "file", "custom image"];
 
   sources.forEach(s => {
     if (s.packageId.endsWith("strict-encrypt") || s.packageId === "airbyte/source-file-secure") {
@@ -58,11 +59,10 @@ export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: strin
   onClick,
 }) => {
   const { data, isLoading, error } = useApi<{ sources: SourceType[] }>(`/api/sources?mode=meta`);
+  const customImages = useConfigObjectList("custom-image");
   const sourcesIconsLoader = useApi<{ sources: SourceType[] }>(`/api/sources?mode=icons-only`);
   const workspace = useWorkspace();
   const [filter, setFilter] = React.useState("");
-  const [customImage, setCustomImage] = React.useState("");
-  const [customPopupOpen, setCustomPopupOpen] = React.useState(false);
   const appconfig = useAppConfig();
   const sourcesIcons: Record<string, string> = sourcesIconsLoader.data
     ? sourcesIconsLoader.data.sources.reduce(
@@ -79,7 +79,17 @@ export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: strin
   } else if (error) {
     return <ErrorCard error={error} />;
   }
-  const groups = groupByType(data.sources);
+  const sources = [
+    ...data.sources,
+    ...customImages.map(c => ({
+      id: c.package,
+      packageId: c.package,
+      packageType: "airbyte",
+      meta: { name: c.name, connectorSubtype: "custom image", dockerImageTag: c.version },
+    })),
+  ] as SourceType[];
+
+  const groups = groupByType(sources);
   return (
     <div className="p-6 flex flex-col flex-shrink w-full h-full overflow-y-auto">
       <div key={"filter"} className={"m-4"}>
@@ -123,14 +133,23 @@ export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: strin
                       <div
                         key={source.id}
                         className={`flex items-center cursor-pointer relative w-72 border border-textDisabled ${"hover:scale-105 hover:border-primary"} transition ease-in-out rounded-lg px-4 py-4 space-x-4 m-4`}
-                        onClick={() => onClick(source.packageType, source.packageId)}
+                        onClick={() =>
+                          onClick(
+                            source.packageType,
+                            source.packageId,
+                            source.meta?.connectorSubtype === "custom image" ? source.meta?.dockerImageTag : undefined
+                          )
+                        }
                       >
                         <div className={`${styles.icon} flex`}>{getServiceIcon(source, sourcesIcons)}</div>
                         <div>
                           <div>
                             <div className={`text-xl`}>{source.meta.name}</div>
                           </div>
-                          <div className="text-xs text-textLight">{source.packageId}</div>
+                          <div className="text-xs text-textLight">
+                            {source.packageId}
+                            {source.meta?.connectorSubtype === "custom image" ? ":" + source.meta?.dockerImageTag : ""}
+                          </div>
                         </div>
                       </div>
                     );
@@ -139,52 +158,6 @@ export const ServicesCatalog: React.FC<{ onClick: (packageType, packageId: strin
             </div>
           );
         })}
-        <div key={"custom-connector"} className="">
-          <div className="text-3xl text-textLight px-4 pb-0 pt-3">Advanced</div>
-          <div className="flex flex-wrap">
-            <Popover
-              content={
-                <div className={"flex flex-row gap-1.5"}>
-                  <Input onChange={e => setCustomImage(e.target.value)} />
-                  <Button
-                    type={"primary"}
-                    onClick={() => {
-                      const [packageId, packageVersion] = (customImage || "").trim().split(":");
-                      if (!packageId) {
-                        return;
-                      }
-                      onClick("airbyte", packageId, packageVersion);
-                      setCustomPopupOpen(false);
-                      setCustomImage("");
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-              }
-              onOpenChange={setCustomPopupOpen}
-              open={customPopupOpen}
-              title="Enter docker image name"
-              placement={"right"}
-              trigger="click"
-            >
-              <div
-                key="custom-connector"
-                className={`flex items-center cursor-pointer relative w-72 border border-textDisabled ${"hover:scale-105 hover:border-primary"} transition ease-in-out rounded-lg px-4 py-4 space-x-4 m-4`}
-              >
-                <div className={`${styles.icon} flex`}>
-                  <FaDocker />
-                </div>
-                <div>
-                  <div>
-                    <div className={`text-xl`}>Custom connector</div>
-                  </div>
-                  <div className="text-xs text-textLight">Custom docker image</div>
-                </div>
-              </div>
-            </Popover>
-          </div>
-        </div>
       </div>
     </div>
   );

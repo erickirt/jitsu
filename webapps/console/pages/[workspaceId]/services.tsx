@@ -151,10 +151,16 @@ const ServicesList: React.FC<{}> = () => {
         packageType = router.query["packageType"] as string;
         packageId = router.query["packageId"] as string;
       }
-      const rawVersions = await rpc(
-        `/api/sources/versions?type=${packageType}&package=${encodeURIComponent(packageId)}`
-      );
-      const versions = rawVersions.versions
+      let rawVersions: any[] = [];
+      try {
+        const rv = await rpc(`/api/sources/versions?type=${packageType}&package=${encodeURIComponent(packageId)}`);
+        rawVersions = rv.versions;
+      } catch (error: any) {
+        console.warn(
+          `Couldn't load package versions from docker repository. Probably ${packageId} is not a docker repository package.`
+        );
+      }
+      const versions = rawVersions
         .filter(
           (v: any) =>
             v.isRelease &&

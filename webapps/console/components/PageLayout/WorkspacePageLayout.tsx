@@ -1,7 +1,7 @@
 import React, { PropsWithChildren, ReactNode, useEffect, useState } from "react";
 import { branding } from "../../lib/branding";
 import { HiSelector } from "react-icons/hi";
-import { FaSignOutAlt, FaUserCircle } from "react-icons/fa";
+import { FaDocker, FaSignOutAlt, FaUserCircle } from "react-icons/fa";
 import { FiSettings } from "react-icons/fi";
 import { Button, Drawer, Dropdown, Menu, MenuProps } from "antd";
 import MenuItem from "antd/lib/menu/MenuItem";
@@ -582,6 +582,7 @@ function PageHeader() {
         { title: "Service Connections", path: "/services", icon: <ServerCog className="w-full h-full" /> },
         { title: "Syncs", path: "/syncs", icon: <Share2 className="w-full h-full" /> },
         { title: "All Logs", path: "/syncs/tasks", icon: <ScrollText className="w-full h-full" /> },
+        { title: "Custom Images", path: "/custom-images", icon: <FaDocker className="w-full h-full" /> },
       ],
     },
     appConfig.ee?.available && {

@@ -170,6 +170,15 @@ export const ServiceConfig = ConfigEntityBase.merge(
 );
 export type ServiceConfig = z.infer<typeof ServiceConfig>;
 
+export const ConnectorImageConfig = ConfigEntityBase.merge(
+  z.object({
+    name: z.string(),
+    package: z.string(),
+    version: z.string(),
+  })
+);
+export type ConnectorImageConfig = z.infer<typeof ConnectorImageConfig>;
+
 /**
  * What happens to an object before it is saved to DB.
  *

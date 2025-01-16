@@ -95,6 +95,7 @@ export type ConfigEditorProps<T extends { id: string } = { id: string }, M = {}>
   //for providing custom editor component
   editorComponent?: EditorComponentFactory;
   testConnectionEnabled?: (o: any) => boolean;
+  testButtonLabel?: string;
   onTest?: (o: T) => Promise<ConfigTestResult>;
   backTo?: string;
 };
@@ -326,6 +327,7 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
             isNew={isNew}
             isTouched={isTouched}
             hasErrors={hasErrors}
+            testButtonLabel={props.testButtonLabel}
             onTest={
               onTest && testConnectionEnabled && testConnectionEnabled(formState?.formData || object)
                 ? async () => {
