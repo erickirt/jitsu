@@ -22,24 +22,25 @@ export default createRoute()
       throw new Error(`CUSTOM_DOMAIN_CNAMES is not set`);
     }
     await verifyAccess(user, workspaceId);
-    const domainAvailability = await isDomainAvailable(domain, workspaceId);
+    let domainToCheck = domain.trim().toLowerCase();
+
+    const domainAvailability = await isDomainAvailable(domainToCheck, workspaceId);
     if (!domainAvailability.available) {
       log
         .atWarn()
         .log(
-          `Domain '${domain}' can't be added to workspace ${workspaceId}. It is used by ${domainAvailability.usedInWorkspace}`
+          `Domain '${domainToCheck}' can't be added to workspace ${workspaceId}. It is used by ${domainAvailability.usedInWorkspace}`
         );
       return { ok: false, reason: "used_by_other_workspace" };
     }
-    let domainToCheck = domain;
-    if (!domain.startsWith("*")) {
+    if (!domainToCheck.startsWith("*")) {
       const wildcardDomains = await getWildcardDomains(workspaceId);
       for (const wildcardDomain of wildcardDomains) {
         if (
-          domain.toLowerCase().endsWith(wildcardDomain.toLowerCase().replace("*", "")) &&
-          domain.toLowerCase() !== wildcardDomain.toLowerCase()
+          domainToCheck.endsWith(wildcardDomain.toLowerCase().replace("*", "")) &&
+          domainToCheck !== wildcardDomain.toLowerCase()
         ) {
-          domainToCheck = wildcardDomain;
+          domainToCheck = wildcardDomain.trim().toLowerCase();
           break;
         }
       }

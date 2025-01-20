@@ -132,38 +132,40 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
     inputFilter: async obj => {
       const workspaceId = obj.workspaceId;
       outer: for (const domain of obj.domains || []) {
-        const domainAvailability = await isDomainAvailable(domain, workspaceId);
+        const domainToCheck = domain.trim().toLowerCase();
+        const domainAvailability = await isDomainAvailable(domainToCheck, workspaceId);
         if (!domainAvailability.available) {
           log
             .atWarn()
             .log(
-              `Domain ${domain} can't be added to workspace ${workspaceId}, it is already in use by other workspaces: ${domainAvailability.usedInWorkspace}`
+              `Domain ${domainToCheck} can't be added to workspace ${workspaceId}, it is already in use by other workspaces: ${domainAvailability.usedInWorkspace}`
             );
-          throw new ApiError(`Domain ${domain} is already in use by other workspace`);
+          throw new ApiError(`Domain ${domainToCheck} is already in use by other workspace`);
         }
         const wildcardDomains = await getWildcardDomains(workspaceId);
         for (const wildcardDomain of wildcardDomains) {
-          if (domain.toLowerCase().endsWith(wildcardDomain.toLowerCase().replace("*", ""))) {
+          if (domainToCheck.endsWith(wildcardDomain.toLowerCase().replace("*", ""))) {
             log
               .atInfo()
               .log(
-                `No need to check ingress status for ${domain} since it is under wildcard domain: ${wildcardDomain}`
+                `No need to check ingress status for ${domainToCheck} since it is under wildcard domain: ${wildcardDomain}`
               );
             continue outer;
           }
         }
         try {
-          const ingressStatus = await checkOrAddToIngress(domain);
-          log.atInfo().log(`Ingress status for ${domain}: ${JSON.stringify(ingressStatus)}`);
+          const ingressStatus = await checkOrAddToIngress(domainToCheck);
+          log.atInfo().log(`Ingress status for ${domainToCheck}: ${JSON.stringify(ingressStatus)}`);
           if (!ingressStatus) {
-            log.atWarn().log(`Incorrect ingress status ${domain} is not valid`);
+            log.atWarn().log(`Incorrect ingress status ${domainToCheck} is not valid`);
           }
         } catch (e) {
-          log.atError().withCause(e).log(`Error checking ingress status for ${domain}`);
+          log.atError().withCause(e).log(`Error checking ingress status for ${domainToCheck}`);
         }
       }
       return {
         ...obj,
+        domains: obj.domains?.map(d => d.trim().toLowerCase()) || [],
         privateKeys: hashKeys(obj.privateKeys || [], []),
         publicKeys: hashKeys(obj.publicKeys || [], []),
       };
@@ -171,7 +173,7 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
     outputFilter: (original: StreamConfig) => {
       return {
         ...original,
-        domains: original.domains?.map(d => d.toLowerCase()),
+        domains: original.domains?.map(d => d.trim().toLowerCase()),
         privateKeys: (original.privateKeys || []).map(k => ({ ...k, plaintext: undefined, hash: undefined })),
         publicKeys: (original.publicKeys || []).map(k => ({ ...k, plaintext: undefined, hash: undefined })),
       };
@@ -188,5 +190,17 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
   },
   domain: {
     schema: WorkspaceDomain,
+    inputFilter: async obj => {
+      return {
+        ...obj,
+        name: obj.name.trim().toLowerCase(),
+      };
+    },
+    outputFilter: (original: WorkspaceDomain) => {
+      return {
+        ...original,
+        name: original.name.trim().toLowerCase(),
+      };
+    },
   },
 } as const;
