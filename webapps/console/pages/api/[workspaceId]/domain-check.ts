@@ -1,7 +1,12 @@
 import { getServerLog } from "../../../lib/server/log";
 
 import { z } from "zod";
-import { customDomainCnames, isDomainAvailable, checkOrAddToIngress } from "../../../lib/server/custom-domains";
+import {
+  customDomainCnames,
+  isDomainAvailable,
+  checkOrAddToIngress,
+  checkDomain,
+} from "../../../lib/server/custom-domains";
 import { DomainCheckResponse } from "../../../lib/shared/domain-check-response";
 import { createRoute, verifyAccess } from "../../../lib/api";
 import { db } from "../../../lib/server/db";
@@ -23,6 +28,10 @@ export default createRoute()
     }
     await verifyAccess(user, workspaceId);
     let domainToCheck = domain.trim().toLowerCase();
+    if (!checkDomain(domainToCheck)) {
+      log.atWarn().log(`Domain '${domainToCheck}' is not a valid domain name`);
+      return { ok: false, reason: "invalid_domain_name" };
+    }
 
     const domainAvailability = await isDomainAvailable(domainToCheck, workspaceId);
     if (!domainAvailability.available) {

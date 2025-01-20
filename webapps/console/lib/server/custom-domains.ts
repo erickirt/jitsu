@@ -8,6 +8,9 @@ type DomainAvailability = { available: true; usedInWorkspaces?: never } | { avai
 
 export const customDomainCnames = process.env.CUSTOM_DOMAIN_CNAMES?.split(",");
 
+export function checkDomain(domain: string): boolean {
+  return !!domain.match(/^(?:[*][.])?(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/);
+}
 /**
  * Tells if the given domain is used in other workspaces.
  */

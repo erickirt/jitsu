@@ -299,15 +299,15 @@ export const DomainsEditor: React.FC<
         } else if (available.reason === "invalid_domain_name") {
           feedbackError(
             <>
-              Invalid domain name <code>{addValue}</code>
+              Invalid domain name: <code>{addValue}</code>
             </>
           );
           return;
         }
       }
       const newVal = [...(domains ?? []), addValue as string];
-      setAddValue(undefined);
       await onChange(newVal);
+      setAddValue(undefined);
     } catch (e) {
       feedbackError(`Can't add domain ${addValue}`, { error: e });
     } finally {

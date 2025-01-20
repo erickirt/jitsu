@@ -12,7 +12,7 @@ import {
   WorkspaceDomain,
 } from "./index";
 import { assertDefined, createHash, requireDefined } from "juava";
-import { checkOrAddToIngress, isDomainAvailable } from "../server/custom-domains";
+import { checkDomain, checkOrAddToIngress, isDomainAvailable } from "../server/custom-domains";
 import { ZodType, ZodTypeDef } from "zod";
 import { getServerLog } from "../server/log";
 import { getWildcardDomains } from "../../pages/api/[workspaceId]/domain-check";
@@ -133,6 +133,10 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
       const workspaceId = obj.workspaceId;
       outer: for (const domain of obj.domains || []) {
         const domainToCheck = domain.trim().toLowerCase();
+        if (!checkDomain(domainToCheck)) {
+          log.atWarn().log(`Domain '${domainToCheck}' is not a valid domain name`);
+          throw new ApiError(`Domain ${domainToCheck} is not a valid domain name`);
+        }
         const domainAvailability = await isDomainAvailable(domainToCheck, workspaceId);
         if (!domainAvailability.available) {
           log
@@ -191,9 +195,14 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
   domain: {
     schema: WorkspaceDomain,
     inputFilter: async obj => {
+      const domainToCheck = obj.name.trim().toLowerCase();
+      if (!checkDomain(domainToCheck)) {
+        log.atWarn().log(`Domain '${domainToCheck}' is not a valid domain name`);
+        throw new ApiError(`Domain ${domainToCheck} is not a valid domain name`);
+      }
       return {
         ...obj,
-        name: obj.name.trim().toLowerCase(),
+        name: domainToCheck,
       };
     },
     outputFilter: (original: WorkspaceDomain) => {
