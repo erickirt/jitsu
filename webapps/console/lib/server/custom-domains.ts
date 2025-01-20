@@ -23,7 +23,7 @@ export async function isDomainAvailable(domain: string, workspaceId: string): Pr
         and "workspaceId" <> ${workspaceId}
         and deleted = false
       union
-      select id,type, "workspaceId", json_array(config->'name') as domains
+      select id,type, "workspaceId", jsonb_build_array(config->'name') as domains
       from newjitsu."ConfigurationObject"
       where type = 'domain'
         and (config->>'name' ilike ${pattern} or ${domain.toLowerCase()} ilike REPLACE(config->>'name','*','%') )
