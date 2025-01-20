@@ -117,7 +117,6 @@ export const SocialLogin: React.FC<{ onSocialLogin: (type: string) => Promise<vo
               await onSocialLogin("github.com");
               redirectIfNeeded(router);
             } catch (error: any) {
-              console.log(JSON.stringify(error, null, 2));
               setError(handleFirebaseError(error));
             } finally {
               setLoading(undefined);

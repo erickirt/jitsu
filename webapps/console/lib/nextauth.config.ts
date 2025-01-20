@@ -46,7 +46,6 @@ const credentialsProvider =
       if (!username) {
         throw new ApiError("Username is not defined");
       }
-      console.log(JSON.stringify(credentials, null, 2));
       const user = await db.prisma().userProfile.findFirst({ where: { email: username }, include: { password: true } });
       if (!user) {
         log.atDebug().log(`Attempt to login with unknown user: ${username}`);
