@@ -271,6 +271,12 @@ export const ClickhouseCredentials = z.object({
     .describe(
       "Additional parameters for ClickHouse driver. See <a href='https://clickhouse.com/docs/en/integrations/go#connection-settings-1' rel='noreferrer noopener' target='_blank'>Clickhouse documentation</a>"
     ),
+  loadAsJson: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Load data in JSONEachRow. May offer better performance. May not work properly on old ClickHouse versions."
+    ),
 });
 
 export type ClickhouseCredentials = z.infer<typeof ClickhouseCredentials>;
@@ -402,6 +408,9 @@ export const coreDestinations: DestinationType<any>[] = [
       },
       password: {
         password: true,
+      },
+      loadAsJson: {
+        hidden: true,
       },
     },
   },

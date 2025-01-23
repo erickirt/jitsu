@@ -275,7 +275,6 @@ DomainConfigurationInstructions.show = p => {
 export const DomainsEditor: React.FC<
   { context: "site" | "workspace"; workspaceDomains?: string[] } & CustomWidgetProps<string[]>
 > = ({ onChange, value: domains, workspaceDomains, context }) => {
-  console.log("DomainsEditor", domains, workspaceDomains);
   const [addValue, setAddValue] = useState<string | undefined>();
   const [addPending, setAddPending] = useState(false);
   const workspace = useWorkspace();
