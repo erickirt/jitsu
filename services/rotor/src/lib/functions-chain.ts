@@ -288,10 +288,10 @@ export async function runChain(
       const event = events[i];
       let result: FuncReturn = undefined;
       const sw = stopwatch();
-      const rat = new Date(event.receivedAt) as any;
+      const rat = new Date(event.receivedAt);
       const execLogMeta = {
         eventIndex: i,
-        receivedAt: rat && rat != "Invalid Date" ? rat : new Date(),
+        receivedAt: !isNaN(rat.getTime()) ? rat : new Date(),
         functionId: f.id,
         metricsMeta: metricsMeta,
       };

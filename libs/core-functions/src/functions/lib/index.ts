@@ -77,7 +77,7 @@ export type FuncChainResult = {
 };
 
 export type FunctionExecRes = {
-  receivedAt?: any;
+  receivedAt?: Date;
   eventIndex: number;
   event?: any;
   metricsMeta?: MetricsMeta;

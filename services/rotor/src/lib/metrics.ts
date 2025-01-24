@@ -69,7 +69,8 @@ export function createMetrics(
                 value: JSON.stringify({
                   timestamp: d,
                   workspaceId: m.workspaceId,
-                  messageId: m.messageId,
+                  // to count active events use composed key: messageId_eventIndex_receivedAt
+                  messageId: m.key,
                 }),
               };
             }),
@@ -183,7 +184,7 @@ export function createMetrics(
           return prefix + status;
         })(el);
         buffer.push({
-          key: crypto.randomUUID(),
+          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + d.getTime(),
           timestamp: d,
           ...omit(el.metricsMeta, "retries"),
           functionId: el.functionId,
