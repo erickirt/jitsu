@@ -95,7 +95,7 @@ const EventsUsageSection: React.FC<{}> = () => {
           <br />
           {billing?.settings?.overagePricePer100k && (
             <div className="text-textLight text-xs">
-              Overage fee: ${billing.settings.overagePricePer100k * 1000} per 1,000,000 events
+              Overage fee: ${billing.settings.overagePricePer100k * 10} per 1,000,000 events
             </div>
           )}
         </div>
@@ -262,9 +262,9 @@ const ConnectorUsageSection: React.FC<{}> = () => {
           <i>{dayjs(periodStart).utc().format("MMM DD, YYYY")}</i> to{" "}
           <i>{dayjs(periodEnd).utc().format("MMM DD, YYYY")}</i>. The quota will be reset on{" "}
           <i>{dayjs(periodEnd).add(1, "day").utc().format("MMM DD")}</i>.
-          {billing?.settings?.overagePricePer100k && (
+          {billing?.settings?.dailyActiveSyncsOverage && (
             <div className="text-textLight text-xs">
-              Overage fee: ${billing.settings.overagePricePer100k * 10} per extra daily active sync`
+              Overage fee: ${billing?.settings?.dailyActiveSyncsOverage} per extra daily active sync
             </div>
           )}
         </div>
