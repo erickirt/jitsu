@@ -36,6 +36,7 @@ import hash from "object-hash";
 import { useConfigObjectLinks, useConfigObjectList } from "../../../lib/store";
 import { Spinner } from "../../../components/GlobalLoader/GlobalLoader";
 import { MdOutlineCancel } from "react-icons/md";
+import escape from "lodash/escape";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -105,7 +106,9 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
   }
 
   const SyncStatus: React.FC<
-    PropsWithChildren<{ status: "PARTIAL" | "CANCELLED" | "FAILED" | "SUCCESS" | "RUNNING" | "SKIPPED" }>
+    PropsWithChildren<{
+      status: "PARTIAL" | "CANCELLED" | "TIME_EXCEEDED" | "FAILED" | "SUCCESS" | "RUNNING" | "SKIPPED";
+    }>
   > = props => {
     const [showPopover, setShowPopover] = useState(false);
     const handleOpenChange = (newOpen: boolean) => {
@@ -122,6 +125,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
         <div className={"overflow-y-auto"} style={{ maxHeight: "60vh" }}>
           {task.stats ? (
             <TaskStatusResultTable
+              error={task.error ?? ""}
               stats={Object.entries(task.stats).reduce((arr, v) => {
                 const o = { key: v[0], stream: v[0], ...(v[1] as any) };
                 arr.push(o);
@@ -129,7 +133,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
               }, [] as any[])}
             />
           ) : (
-            <div className={"whitespace-pre-wrap font-mono text-xs"}>{task.description}</div>
+            <div className={"whitespace-pre-wrap font-mono text-xs"}>{task.error || task.description}</div>
           )}
         </div>
         <div className={"flex flex-row w-full gap-2 justify-end pt-2"}>
@@ -162,7 +166,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
         <PlayCircle style={{ color: "blue" }} />
       ) : props.status === "SKIPPED" ? (
         <XCircle style={{ color: "orange" }} />
-      ) : props.status === "CANCELLED" ? (
+      ) : props.status === "CANCELLED" || props.status === "TIME_EXCEEDED" ? (
         <XCircle style={{ color: "gray" }} />
       ) : (
         <XCircle style={{ color: "red" }} />
@@ -217,10 +221,11 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
         </SyncStatus>
       );
     case "CANCELLED":
+    case "TIME_EXCEEDED":
       return (
         <SyncStatus status={task.status}>
           <Tag style={{ marginRight: 0 }}>
-            CANCELLED <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
+            {task.status} <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
           </Tag>
           <span className={"text-xxs text-gray-500"}>show stats</span>
         </SyncStatus>
@@ -240,7 +245,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
           <Tag color={"red"} style={{ marginRight: 0 }}>
             FAILED <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
           </Tag>
-          <span className={"text-xxs text-gray-500"}>show error</span>
+          <span className={"text-xxs text-gray-500"}>show details</span>
         </SyncStatus>
       );
     case "RUNNING":
@@ -259,7 +264,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
 
 export const TaskStatus = React.memo(TaskStatus0, (p, n) => hash(p) === hash(n));
 
-function TaskStatusResultTable({ stats }: { stats: any[] }) {
+function TaskStatusResultTable({ stats, error }: { stats: any[]; error?: string }) {
   const columns: ColumnType<any>[] = [
     {
       title: "Stream",
@@ -277,8 +282,8 @@ function TaskStatusResultTable({ stats }: { stats: any[] }) {
           return <Tag color="green">SUCCESS</Tag>;
         } else if (record.status === "PARTIAL") {
           return <Tag color="orange">PARTIAL</Tag>;
-        } else if (record.status === "CANCELLED") {
-          return <Tag>CANCELLED</Tag>;
+        } else if (record.status === "CANCELLED" || record.status === "TIME_EXCEEDED") {
+          return <Tag>{record.status}</Tag>;
         } else if (record.status === "PENDING") {
           return <Tag>PENDING</Tag>;
         } else if (record.status === "RUNNING") {
@@ -308,18 +313,31 @@ function TaskStatusResultTable({ stats }: { stats: any[] }) {
     },
   ];
   return (
-    <Table
-      size={"small"}
-      columns={columns}
-      dataSource={stats}
-      pagination={false}
-      expandable={{
-        rowExpandable: record => record.status === "FAILED" || record.status === "PARTIAL",
-        expandedRowRender: record => {
-          return <pre className={"text-xs text-red-600 break-all whitespace-pre-wrap"}>{record.error}</pre>;
-        },
-      }}
-    />
+    <div className={"flex flex-col gap-1"}>
+      {error && (
+        <div className={"p-2 max-w-5xl"}>
+          <b>Abort Reason</b>:<br />
+          <span
+            className="text-red-600 whitespace-pre-wrap"
+            dangerouslySetInnerHTML={{
+              __html: escape(error),
+            }}
+          />
+        </div>
+      )}
+      <Table
+        size={"small"}
+        columns={columns}
+        dataSource={stats}
+        pagination={false}
+        expandable={{
+          rowExpandable: record => record.status === "FAILED" || record.status === "PARTIAL",
+          expandedRowRender: record => {
+            return <pre className={"text-xs text-red-600 break-all whitespace-pre-wrap"}>{record.error}</pre>;
+          },
+        }}
+      />
+    </div>
   );
 }
 

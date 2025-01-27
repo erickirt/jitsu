@@ -446,16 +446,21 @@ const WorkspaceLoader: React.FC<
   const workspace = useLoadedWorkspace(workspaceIdOrSlug);
 
   useEffect(() => {
-    if (workspace?.id) {
-      analytics.page("Workspace Page", {
-        context: { workspaceId: workspace.id, groupId: workspace.id },
-      });
+    if (workspace?.name) {
       const newTitle = `Jitsu - ${workspace.name}`;
       if (document.title !== newTitle) {
         document.title = newTitle;
       }
     }
-  }, [analytics, router.asPath, workspace?.id, workspace?.name]);
+  });
+
+  useEffect(() => {
+    if (workspace?.id) {
+      analytics.page("Workspace Page", {
+        context: { workspaceId: workspace.id, groupId: workspace.id },
+      });
+    }
+  }, [analytics, router.asPath, workspace?.id]);
 
   /* eslint-disable react-hooks/exhaustive-deps  */
   //user may be a new object on each render while being the same user
