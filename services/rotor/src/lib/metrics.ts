@@ -184,7 +184,7 @@ export function createMetrics(
           return prefix + status;
         })(el);
         buffer.push({
-          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + d.getTime(),
+          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + (el.receivedAt || new Date()).getTime(),
           timestamp: d,
           ...omit(el.metricsMeta, "retries"),
           functionId: el.functionId,
