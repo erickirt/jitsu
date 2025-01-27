@@ -11,7 +11,7 @@ import escape from "lodash/escape";
 function colorLogs(data: string[]): ReactNode {
   return data.map((line, i) => {
     line = escape(line);
-    if (line.includes(" ERROR [") || line.includes(" FATAL [")) {
+    if (line.includes(" ERROR [") || line.includes(" FATAL [") || line.includes(" ERRSTD [")) {
       return (
         <span
           key={i}
