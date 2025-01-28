@@ -98,12 +98,12 @@ export function createMetrics(
             JSON.stringify({
               timestamp: e.timestamp,
               workspaceId: e.workspaceId,
-              messageId: e.messageId,
+              messageId: e.key,
             })
           );
           streamOld.push("\n");
         }
-        stream.push(JSON.stringify(omit(e, "retries", "messageId")));
+        stream.push(JSON.stringify(omit(e, "retries", "messageId", "key")));
         stream.push("\n");
       });
       //close stream

@@ -60,6 +60,7 @@ export function isDropResult(result: FuncReturn): boolean {
 }
 
 export * as bulkerDestination from "./functions/bulker-destination";
+export { UserRecognitionParameter } from "./functions/user-recognition";
 export { UDFWrapper, UDFTestRun } from "./functions/lib/udf_wrapper";
 export type { UDFTestRequest, UDFTestResponse, logType } from "./functions/lib/udf_wrapper";
 export { ProfileUDFWrapper, ProfileUDFTestRun, mergeUserTraits } from "./functions/lib/profiles-udf-wrapper";

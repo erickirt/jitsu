@@ -18,6 +18,7 @@ import {
   MetricsMeta,
   mongodb,
   UDFWrapper,
+  UserRecognitionParameter,
   wrapperFunction,
 } from "@jitsu/core-functions";
 import Prometheus from "prom-client";
@@ -290,7 +291,8 @@ export async function runChain(
       const sw = stopwatch();
       const rat = new Date(event.receivedAt);
       const execLogMeta = {
-        eventIndex: i,
+        // we don't multiply active incoming metrics for events produced by user recognition
+        eventIndex: event[UserRecognitionParameter] ? 0 : i,
         receivedAt: !isNaN(rat.getTime()) ? rat : new Date(),
         functionId: f.id,
         metricsMeta: metricsMeta,

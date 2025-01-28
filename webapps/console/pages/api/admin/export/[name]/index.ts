@@ -249,6 +249,7 @@ const exports: Export[] = [
               type: destinationType,
               workspaceId: workspace.id,
               streamId: from.id,
+              streamName: from.config?.name,
               destinationId: to.id,
               usesBulker: !!coreDestinationType?.usesBulker,
               options: {
