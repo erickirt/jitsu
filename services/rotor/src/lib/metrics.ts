@@ -158,6 +158,7 @@ export function createMetrics(
           continue;
         }
         const d = el.receivedAt || new Date();
+        const epochTime = d.getTime();
         d.setMilliseconds(0);
         d.setSeconds(0);
         // console.log(
@@ -184,7 +185,7 @@ export function createMetrics(
           return prefix + status;
         })(el);
         buffer.push({
-          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + (el.receivedAt || new Date()).getTime(),
+          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + epochTime,
           timestamp: d,
           ...omit(el.metricsMeta, "retries"),
           functionId: el.functionId,
