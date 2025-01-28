@@ -5,6 +5,8 @@ import get from "lodash/get";
 import set from "lodash/set";
 import merge from "lodash/merge";
 
+export const UserRecognitionParameter = "_JITSU_UR_MESSAGE_ID";
+
 export const UserRecognitionConfig = z.object({
   /**
    * Where to look for anonymous id, an array of JSON paths
@@ -61,7 +63,9 @@ const UserRecognitionFunction: JitsuFunction<AnalyticsServerEvent, UserRecogniti
   const res = await anonEvStore.evictEvents(collectionName, anonId).then(evs => {
     return evs.map(anonEvent => {
       //merge anonymous event with identified fields
-      return merge(anonEvent, identifiedFields);
+      const merged = merge(anonEvent, identifiedFields);
+      merged[UserRecognitionParameter] = event.messageId;
+      return merged;
     });
   });
   if (res.length === 0) {

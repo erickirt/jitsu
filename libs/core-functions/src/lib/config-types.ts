@@ -42,6 +42,7 @@ export type EnrichedConnectionConfig = {
   updatedAt?: Date;
   destinationId: string;
   streamId: string;
+  streamName?: string;
   metricsKeyPrefix: string;
   usesBulker: boolean;
   //destinationType

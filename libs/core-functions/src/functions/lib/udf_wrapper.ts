@@ -396,6 +396,7 @@ export async function UDFTestRun({
       headers: {},
       source: {
         id: "functionsDebugger-streamId",
+        name: "Functions Debugger Stream",
         type: "browser",
       },
       destination: {
