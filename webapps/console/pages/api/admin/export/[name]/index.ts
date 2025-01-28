@@ -53,7 +53,13 @@ const exports: Export[] = [
       let needComma = false;
       while (true) {
         const objects = await db.prisma().configurationObjectLink.findMany({
-          where: { deleted: false, workspace: { deleted: false }, from: { deleted: false }, to: { deleted: false } },
+          where: {
+            deleted: false,
+            OR: [{ type: "push" }, { type: null }],
+            workspace: { deleted: false },
+            from: { deleted: false },
+            to: { deleted: false },
+          },
           include: { from: true, to: true, workspace: true },
           take: batchSize,
           cursor: lastId ? { id: lastId } : undefined,
@@ -82,6 +88,11 @@ const exports: Export[] = [
               );
               credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
             }
+            // if (data.timestampColumn) {
+            //   // use timestampColumn field as discriminator field when doing local deduplication
+            //   // inside batch of two rows having the same messageId(pk) will be chosen the one with the highest timestampColumn value
+            //   data.discriminatorField = [data.timestampColumn];
+            // }
             writer.write(
               JSON.stringify({
                 __debug: {
