@@ -19,6 +19,11 @@ import IJob = google.cloud.scheduler.v1.IJob;
 import hash from "stable-hash";
 import { clickhouse } from "./clickhouse";
 const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
+const clickhouseUploadS3Bucket = process.env.CLICKHOUSE_UPLOAD_S3_BUCKET;
+const s3Region = process.env.S3_REGION;
+const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID;
+const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+const clickhouseS3Configured = clickhouseUploadS3Bucket && s3Region && s3AccessKeyId && s3SecretAccessKey;
 
 const log = getServerLog("sync-scheduler");
 
@@ -598,6 +603,18 @@ export async function scheduleSync({
         status: `${appBase}/api/${workspaceId}/sources/tasks?taskId=${taskId}&syncId=${syncIdOrModel}`,
         logs: `${appBase}/api/${workspaceId}/sources/logs?taskId=${taskId}&syncId=${syncIdOrModel}`,
       };
+    }
+    if (
+      destinationType.id === "clickhouse" &&
+      destinationConfig.loadAsJson &&
+      !destinationConfig.provisioned &&
+      clickhouseS3Configured
+    ) {
+      destinationConfig.s3Region = s3Region;
+      destinationConfig.s3AccessKeyId = s3AccessKeyId;
+      destinationConfig.s3SecretAccessKey = s3SecretAccessKey;
+      destinationConfig.s3Bucket = clickhouseUploadS3Bucket;
+      destinationConfig.s3UsePresignedURL = true;
     }
 
     const h = juavaHash("md5", hash(serviceConfig.credentials));
