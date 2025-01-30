@@ -164,7 +164,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
       ) : props.status === "PARTIAL" ? (
         <AlertCircle style={{ color: "orange" }} />
       ) : props.status === "TIME_EXCEEDED" ? (
-        <ClockAlert style={{ color: "orange" }} />
+        <ClockAlert style={{ color: "volcano" }} />
       ) : props.status === "RUNNING" ? (
         <PlayCircle style={{ color: "blue" }} />
       ) : props.status === "SKIPPED" ? (
@@ -223,21 +223,21 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
           <span className={"text-xxs text-gray-500"}>show stats</span>
         </SyncStatus>
       );
-    case "CANCELLED":
     case "TIME_EXCEEDED":
       return (
         <SyncStatus status={task.status}>
-          <Tag color={"orange"} style={{ marginRight: 0 }}>
+          <Tag color={"volcano"} style={{ marginRight: 0 }}>
             {task.status} <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
           </Tag>
           <span className={"text-xxs text-gray-500"}>show stats</span>
         </SyncStatus>
       );
+    case "CANCELLED":
     case "SKIPPED":
       return (
         <SyncStatus status={task.status}>
           <Tag style={{ marginRight: 0 }}>
-            SKIPPED <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
+            {task.status} <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
           </Tag>
           <span className={"text-xxs text-gray-500"}>show reason</span>
         </SyncStatus>
@@ -283,8 +283,10 @@ function TaskStatusResultTable({ stats, error }: { stats: any[]; error?: string 
       render: (text, record) => {
         if (record.status === "SUCCESS") {
           return <Tag color="green">SUCCESS</Tag>;
-        } else if (record.status === "PARTIAL" || record.status === "TIME_EXCEEDED") {
+        } else if (record.status === "PARTIAL") {
           return <Tag color="orange">{record.status}</Tag>;
+        } else if (record.status === "TIME_EXCEEDED") {
+          return <Tag color="volcano">{record.status}</Tag>;
         } else if (record.status === "CANCELLED") {
           return <Tag>{record.status}</Tag>;
         } else if (record.status === "PENDING") {
