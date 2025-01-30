@@ -19,6 +19,7 @@ import {
   CalendarIcon,
   CheckCircle2,
   ChevronLeft,
+  ClockAlert,
   Edit3,
   ListMinusIcon,
   PlayCircle,
@@ -162,11 +163,13 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
         <CheckCircle2 style={{ color: "green" }} />
       ) : props.status === "PARTIAL" ? (
         <AlertCircle style={{ color: "orange" }} />
+      ) : props.status === "TIME_EXCEEDED" ? (
+        <ClockAlert style={{ color: "orange" }} />
       ) : props.status === "RUNNING" ? (
         <PlayCircle style={{ color: "blue" }} />
       ) : props.status === "SKIPPED" ? (
-        <XCircle style={{ color: "orange" }} />
-      ) : props.status === "CANCELLED" || props.status === "TIME_EXCEEDED" ? (
+        <XCircle style={{ color: "gray" }} />
+      ) : props.status === "CANCELLED" ? (
         <XCircle style={{ color: "gray" }} />
       ) : (
         <XCircle style={{ color: "red" }} />
@@ -224,7 +227,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
     case "TIME_EXCEEDED":
       return (
         <SyncStatus status={task.status}>
-          <Tag style={{ marginRight: 0 }}>
+          <Tag color={"orange"} style={{ marginRight: 0 }}>
             {task.status} <FaExternalLinkAlt className={"inline ml-0.5 w-2.5 h-2.5"} />
           </Tag>
           <span className={"text-xxs text-gray-500"}>show stats</span>
@@ -280,9 +283,9 @@ function TaskStatusResultTable({ stats, error }: { stats: any[]; error?: string 
       render: (text, record) => {
         if (record.status === "SUCCESS") {
           return <Tag color="green">SUCCESS</Tag>;
-        } else if (record.status === "PARTIAL") {
-          return <Tag color="orange">PARTIAL</Tag>;
-        } else if (record.status === "CANCELLED" || record.status === "TIME_EXCEEDED") {
+        } else if (record.status === "PARTIAL" || record.status === "TIME_EXCEEDED") {
+          return <Tag color="orange">{record.status}</Tag>;
+        } else if (record.status === "CANCELLED") {
           return <Tag>{record.status}</Tag>;
         } else if (record.status === "PENDING") {
           return <Tag>PENDING</Tag>;
@@ -504,7 +507,10 @@ function TasksTable({ tasks, loading, linksMap, servicesMap, destinationsMap, re
         if (task.status === "SUCCESS") {
           return <div className={"whitespace-nowrap"}>{task.successStreams}</div>;
         } else if (
-          (task.status === "PARTIAL" || task.status === "RUNNING" || task.status === "CANCELLED") &&
+          (task.status === "PARTIAL" ||
+            task.status === "TIME_EXCEEDED" ||
+            task.status === "RUNNING" ||
+            task.status === "CANCELLED") &&
           task.totalStreams
         ) {
           return (
