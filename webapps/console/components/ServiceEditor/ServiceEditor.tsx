@@ -19,7 +19,6 @@ import { CheckCircleTwoTone, InfoCircleTwoTone } from "@ant-design/icons";
 import set from "lodash/set";
 import get from "lodash/get";
 import Ajv from "ajv";
-import draft7MetaSchema from "ajv/dist/refs/json-schema-draft-07.json";
 import unset from "lodash/unset";
 import { SchemaForm } from "../ConfigObjectEditor/SchemaForm";
 import { TextEditor } from "../ConfigObjectEditor/Editors";
