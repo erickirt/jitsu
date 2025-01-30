@@ -273,9 +273,9 @@ export const ClickhouseCredentials = z.object({
     ),
   loadAsJson: z
     .boolean()
-    .default(false)
+    .default(true)
     .describe(
-      "Load data in JSONEachRow. May offer better performance. May not work properly on old ClickHouse versions."
+      "Use JSONEachRow format::Load data in the <a href='https://clickhouse.com/docs/en/interfaces/formats' rel='noreferrer noopener' target='_blank'>JSONEachRow</a> format. This method offers better performance but may not work correctly on older ClickHouse versions."
     ),
 });
 
@@ -408,9 +408,6 @@ export const coreDestinations: DestinationType<any>[] = [
       },
       password: {
         password: true,
-      },
-      loadAsJson: {
-        hidden: true,
       },
     },
   },
