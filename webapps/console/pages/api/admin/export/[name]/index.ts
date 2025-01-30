@@ -22,6 +22,11 @@ export type Export = {
 };
 
 const batchSize = 1000;
+const clickhouseUploadS3Bucket = process.env.CLICKHOUSE_UPLOAD_S3_BUCKET;
+const s3Region = process.env.S3_REGION;
+const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID;
+const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+const clickhouseS3Configured = clickhouseUploadS3Bucket && s3Region && s3AccessKeyId && s3SecretAccessKey;
 
 const safeLastModified = new Date(2024, 0, 1, 0, 0, 0, 0);
 
@@ -78,15 +83,24 @@ const exports: Export[] = [
               writer.write(",");
             }
             const credentials = omit(to.config, "destinationType", "type", "name");
-            if (destinationType === "clickhouse" && data.clickhouseSettings) {
-              const extraParams = Object.fromEntries(
-                (data.clickhouseSettings as string)
-                  .split("\n")
-                  .filter(s => s.includes("="))
-                  .map(s => s.split("="))
-                  .map(([k, v]) => [k.trim(), v.trim()])
-              );
-              credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
+            if (destinationType === "clickhouse") {
+              if (data.clickhouseSettings) {
+                const extraParams = Object.fromEntries(
+                  (data.clickhouseSettings as string)
+                    .split("\n")
+                    .filter(s => s.includes("="))
+                    .map(s => s.split("="))
+                    .map(([k, v]) => [k.trim(), v.trim()])
+                );
+                credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
+              }
+              if (credentials.loadAsJson && !credentials.provisioned && clickhouseS3Configured) {
+                credentials.s3Region = s3Region;
+                credentials.s3AccessKeyId = s3AccessKeyId;
+                credentials.s3SecretAccessKey = s3SecretAccessKey;
+                credentials.s3Bucket = clickhouseUploadS3Bucket;
+                credentials.s3UsePresignedURL = true;
+              }
             }
             // if (data.timestampColumn) {
             //   // use timestampColumn field as discriminator field when doing local deduplication
