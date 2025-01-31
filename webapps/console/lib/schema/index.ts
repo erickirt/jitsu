@@ -188,6 +188,7 @@ export type WorkspaceDomain = z.infer<typeof WorkspaceDomain>;
 
 export const MiscEntity = ConfigEntityBase.merge(
   z.object({
+    name: z.string(),
     type: z.string(),
     value: z.object({}).passthrough(),
   })
