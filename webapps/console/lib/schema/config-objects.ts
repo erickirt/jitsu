@@ -7,6 +7,7 @@ import {
   ConnectorImageConfig,
   DestinationConfig,
   FunctionConfig,
+  MiscEntity,
   ServiceConfig,
   StreamConfig,
   WorkspaceDomain,
@@ -129,15 +130,15 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
       return merged;
     },
 
-    inputFilter: async obj => {
-      const workspaceId = obj.workspaceId;
+    inputFilter: async (obj, _, workspace) => {
+      const workspaceId = workspace.id;
       outer: for (const domain of obj.domains || []) {
         const domainToCheck = domain.trim().toLowerCase();
         if (!checkDomain(domainToCheck)) {
           log.atWarn().log(`Domain '${domainToCheck}' is not a valid domain name`);
           throw new ApiError(`Domain ${domainToCheck} is not a valid domain name`);
         }
-        const domainAvailability = await isDomainAvailable(domainToCheck, workspaceId);
+        const domainAvailability = await isDomainAvailable(domainToCheck, workspace);
         if (!domainAvailability.available) {
           log
             .atWarn()
@@ -211,5 +212,8 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
         name: original.name.trim().toLowerCase(),
       };
     },
+  },
+  misc: {
+    schema: MiscEntity,
   },
 } as const;

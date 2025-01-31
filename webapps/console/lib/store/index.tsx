@@ -1,5 +1,6 @@
 import type {
   ConnectorImageConfig,
+  MiscEntity,
   DestinationConfig,
   FunctionConfig,
   ServiceConfig,
@@ -14,7 +15,15 @@ import { z } from "zod";
 import { ConfigurationObjectLinkDbModel, ProfileBuilderDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { UseMutationResult } from "@tanstack/react-query/src/types";
 
-export const allConfigTypes = ["stream", "service", "function", "destination", "custom-image", "domain"] as const;
+export const allConfigTypes = [
+  "stream",
+  "service",
+  "function",
+  "destination",
+  "custom-image",
+  "domain",
+  "misc",
+] as const;
 
 export type ConfigType = (typeof allConfigTypes)[number];
 
@@ -25,6 +34,7 @@ export type ConfigTypes = {
   destination: DestinationConfig;
   "custom-image": ConnectorImageConfig;
   domain: WorkspaceDomain;
+  misc: MiscEntity;
 };
 
 export function asConfigType(type: string): ConfigType {
