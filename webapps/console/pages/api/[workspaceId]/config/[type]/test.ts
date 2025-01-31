@@ -6,6 +6,7 @@ import { getConfigObjectType, parseObject } from "../../../../../lib/schema/conf
 import { httpAgent, httpsAgent } from "../../../../../lib/server/http-agent";
 import { getErrorMessage, requireDefined } from "juava";
 import nodeFetch from "node-fetch-commonjs";
+import { db } from "../../../../../lib/server/db";
 
 const log = getServerLog("test-connection");
 
@@ -33,9 +34,12 @@ export const api: Api = {
       const isHttps = bulkerURLEnv.startsWith("https://");
       const { workspaceId, type } = query;
       await verifyAccess(user, workspaceId);
-
+      const workspace = requireDefined(
+        await db.prisma().workspace.findFirst({ where: { id: workspaceId } }),
+        `Workspace ${workspaceId} not found`
+      );
       const configObjectTypes = getConfigObjectType(type);
-      const object = await configObjectTypes.inputFilter(parseObject(type, body), "create");
+      const object = await configObjectTypes.inputFilter(parseObject(type, body), "create", workspace);
       const payload = JSON.stringify(object);
       log.atDebug().log("payload", payload);
       // Options object

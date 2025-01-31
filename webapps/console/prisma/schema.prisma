@@ -84,7 +84,6 @@ model Workspace {
 
   slug                    String?
   workspaceAccess         WorkspaceAccess[]
-  workspaceOptions        WorkspaceOptions[]
   configurationObject     ConfigurationObject[]
   configurationObjectLink ConfigurationObjectLink[]
   preferences             UserPreferences[]
@@ -97,18 +96,6 @@ model Workspace {
   @@index(updatedAt(sort: Desc))
 }
 
-//additional properties for workspace
-model WorkspaceOptions {
-  id          String    @id @default(cuid())
-  createdAt   DateTime  @default(now()) /// @zod.custom(z.coerce.date())
-  updatedAt   DateTime  @default(now()) @updatedAt /// @zod.custom(z.coerce.date())
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  namespace   String
-  value       Json
-
-  @@index([workspaceId, namespace])
-}
 
 model WorkspaceAccess {
   workspaceId String
