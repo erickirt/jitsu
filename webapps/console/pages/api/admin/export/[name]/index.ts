@@ -21,6 +21,11 @@ export type Export = {
   data: (writer: Writer) => Promise<void>;
 };
 
+type ClassicKeys = {
+  publicKeys: { plaintext: string }[];
+  privateKeys: { plaintext: string }[];
+};
+
 const batchSize = 1000;
 const clickhouseUploadS3Bucket = process.env.CLICKHOUSE_UPLOAD_S3_BUCKET;
 const s3Region = process.env.S3_REGION;
@@ -376,6 +381,31 @@ const exports: Export[] = [
           domainsMap.set(domain.workspaceId, [...d, (domain.config as any).name]);
         }
       }
+      const classicMappings = await db.prisma().configurationObject.findMany({
+        where: {
+          deleted: false,
+          type: "misc",
+          config: { path: ["objectType"], equals: "classic-mapping" },
+          workspace: { deleted: false },
+        },
+      });
+      const classicKeysMap: Record<string, ClassicKeys> = {};
+      classicMappings
+        .filter(c => c.config && c.config["value"])
+        .flatMap(c => c.config!["value"].split("\n"))
+        .forEach(line => {
+          const [source, apikey] = line.split(/=(.*)/s).map((s: string) => s.trim());
+          if (source && apikey) {
+            const keys = classicKeysMap[source] || { publicKeys: [], privateKeys: [] };
+            if (apikey.startsWith("s2s.")) {
+              keys.privateKeys.push({ plaintext: apikey });
+            } else {
+              keys.publicKeys.push({ plaintext: apikey });
+            }
+            classicKeysMap[source] = keys;
+          }
+        });
+
       writer.write("[");
       let lastId: string | undefined = undefined;
       let needComma = false;
@@ -400,6 +430,7 @@ const exports: Export[] = [
             ? getNumericOption("throttle", obj.workspace)
             : undefined;
           const shardNumber = getNumericOption("shard", obj.workspace);
+          const classicKeys = classicKeysMap[obj.id] || ({} as ClassicKeys);
           writer.write(
             JSON.stringify({
               __debug: {
@@ -420,6 +451,8 @@ const exports: Export[] = [
                 ),
                 ...{
                   ...obj.config,
+                  publicKeys: [classicKeys.publicKeys ?? [], obj.config.publicKeys ?? []].flat(),
+                  privateKeys: [classicKeys.privateKeys ?? [], obj.config.privateKeys ?? []].flat(),
                   domains: [...new Set([...(domainsMap.get(obj.workspace.id) ?? []), ...(obj.config.domains ?? [])])],
                 },
                 workspaceId: obj.workspace.id,
