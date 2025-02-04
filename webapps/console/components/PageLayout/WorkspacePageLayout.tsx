@@ -63,6 +63,7 @@ import omit from "lodash/omit";
 import { useBilling, UseBillingResult } from "../Billing/BillingProvider";
 import { useEventsUsage, UseUsageRes } from "../Billing/use-events-usage";
 import { MenuItemType } from "antd/lib/menu/interface";
+import { FaGear } from "react-icons/fa6";
 
 export type PageLayoutProps = {
   fullscreen?: boolean;
@@ -623,6 +624,13 @@ function PageHeader() {
               title: "Data Retention",
               path: "/settings/data-retention",
               icon: <PackageOpen className="w-full h-full" />,
+            }
+          : undefined,
+        workspace.featuresEnabled?.includes("misc")
+          ? {
+              title: "Miscellaneous Settings",
+              path: "/miscs",
+              icon: <FaGear className="w-full h-full" />,
             }
           : undefined,
       ],
