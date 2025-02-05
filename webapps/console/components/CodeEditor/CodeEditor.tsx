@@ -61,7 +61,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       if (autoFit) {
         editor.layout({
           width: 200,
-          height: Math.max(editor.getContentHeight() + 2, 50),
+          height: Math.max(editor.getContentHeight(), 50),
         });
       }
       setMounted(true);
