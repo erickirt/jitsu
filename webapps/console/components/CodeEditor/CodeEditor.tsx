@@ -59,7 +59,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         });
       }
       if (autoFit) {
-        editor.layout({ width: editor.layout.width, height: editor.getContentHeight() + 2 });
+        editor.layout({
+          width: 200,
+          height: Math.max(editor.getContentHeight() + 2, 50),
+        });
       }
       setMounted(true);
     },

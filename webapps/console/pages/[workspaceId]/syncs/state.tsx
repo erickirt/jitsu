@@ -157,11 +157,7 @@ function StateEditor() {
               const name = stream.namespace ? `${stream.namespace}.${stream.name}` : stream.name;
               const stateCode = (
                 <div
-                  className={`flex-auto border border-textDisabled font-mono whitespace-pre-wrap rounded p-1.5 pt-2 break-all text-xs text-textLight`}
-                  onClick={() => {
-                    setEditedState({ ...editedState, [name]: state[name] });
-                    setStateShown({ [name]: !stateShown[name] });
-                  }}
+                  className={`w-full font-mono whitespace-pre-wrap break-all p-1.5 pt-2 text-xs text-textLight`}
                   style={{ overflow: "scroll", lineHeight: "1.5", maxHeight: "220px" }}
                 >
                   {state[name] ?? "{}"}
@@ -169,25 +165,25 @@ function StateEditor() {
               );
               return (
                 <div key={name} className={"flex flex-row gap-3 border-collapse border-b border-textDisabled p-3"}>
-                  <div className={"w-96 h-full overflow-hidden text-ellipsis text flex flex-col gap-2"}>
+                  <div className={"w-60 flex-shrink-0 h-full overflow-hidden text-ellipsis text flex flex-col gap-2"}>
                     <div className={""}>{stream.name}</div>
 
-                    <div className={"grid grid-cols-2 gap-2 py-2 text-xs text-textLight"}>
+                    <div className={"grid grid-cols-3 auto-cols-auto gap-2 gap-x-3 py-2 text-xs text-textLight"}>
                       {stream.namespace && (
                         <>
                           <div>Namespace:</div>
-                          <div>{stream.namespace}</div>
+                          <div className={"col-span-2"}>{stream.namespace}</div>
                         </>
                       )}
                       <div>Mode:</div>
-                      <div>{syncOptions?.streams?.[name]?.sync_mode ?? "disabled"}</div>
+                      <div className={"col-span-2"}>{syncOptions?.streams?.[name]?.sync_mode ?? "disabled"}</div>
 
                       {stream.supported_sync_modes.includes("incremental") &&
                         syncOptions?.streams?.[name]?.sync_mode === "incremental" &&
                         !stream.source_defined_cursor && (
                           <>
-                            <div>Cursor field:</div>
-                            <div>
+                            <div>Cursor&nbsp;field:</div>
+                            <div className={"col-span-2"}>
                               {!stream.source_defined_cursor
                                 ? syncOptions?.streams?.[name]?.cursor_field?.[0]
                                 : undefined}
@@ -196,10 +192,10 @@ function StateEditor() {
                         )}
                     </div>
                   </div>
-                  <div className={"flex flex-row w-full"}>
+                  <div className={"flex flex-auto flex-row w-full"}>
                     {stateShown[name] ? (
                       <div
-                        className={"flex-auto max-h-2xs border border-textDisabled w-full rounded px-1"}
+                        className={"flex-auto max-h-2xs border border-textDisabled w-full rounded"}
                         style={{ maxHeight: "220px" }}
                       >
                         <CodeEditor
@@ -215,7 +211,7 @@ function StateEditor() {
                             lineNumbers: "off",
                             glyphMargin: false,
                             folding: false,
-                            lineDecorationsWidth: 2,
+                            lineDecorationsWidth: 6,
                             lineNumbersMinChars: 0,
                             guides: {
                               indentation: false,
@@ -224,7 +220,16 @@ function StateEditor() {
                         />
                       </div>
                     ) : (
-                      stateCode
+                      <div
+                        className={"flex-auto max-h-2xs border overflow-scroll border-textDisabled rounded"}
+                        style={{ maxHeight: "220px" }}
+                        onClick={() => {
+                          setEditedState({ ...editedState, [name]: state[name] });
+                          setStateShown({ [name]: !stateShown[name] });
+                        }}
+                      >
+                        {stateCode}
+                      </div>
                     )}
                   </div>
                   <div className={"flex flex-col justify-between gap-2"}>
