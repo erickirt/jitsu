@@ -60,7 +60,7 @@ export const ConnectionTitle: React.FC<{
       {service && <ServiceTitle size={"small"} service={service} />}
       {stream && <StreamTitle size={"small"} stream={stream} />}
       {!stream && !service && "DELETED "}
-      {"→"}
+      {"➞"}
       <DestinationTitle size={"small"} destination={destination} />
       {showLink && (
         <WJitsuButton

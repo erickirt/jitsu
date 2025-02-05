@@ -1,5 +1,5 @@
 import Editor from "@monaco-editor/react";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { ReactNode, useCallback, useEffect, useRef } from "react";
 import { LoadingAnimation } from "../GlobalLoader/GlobalLoader";
 import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
@@ -16,6 +16,8 @@ type CodeEditorProps = {
   ctrlSCallback?: (value: string) => void;
   foldLevel?: number;
   extraSuggestions?: string;
+  loaderNode?: ReactNode;
+  autoFit?: boolean;
   monacoOptions?: Partial<monaco.editor.IStandaloneEditorConstructionOptions>;
 };
 
@@ -31,6 +33,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   monacoOptions,
   extraSuggestions,
   foldLevel,
+  loaderNode,
+  autoFit,
 }) => {
   const editorRef = useRef<any>(null);
   const [mounted, setMounted] = React.useState(false);
@@ -54,9 +58,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           handleChangePosition?.(editor.getModel().getOffsetAt(e.position));
         });
       }
+      if (autoFit) {
+        editor.layout({ width: editor.layout.width, height: editor.getContentHeight() + 2 });
+      }
       setMounted(true);
     },
-    [extraSuggestions, foldLevel, handleChangePosition, value]
+    [autoFit, extraSuggestions, foldLevel, handleChangePosition, value]
   );
 
   useEffect(() => {
@@ -107,7 +114,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         onChange={v => {
           handleChange(v || "");
         }}
-        loading={<LoadingAnimation />}
+        loading={loaderNode || <LoadingAnimation />}
         language={language}
         height={height}
         width={width}
