@@ -42,6 +42,7 @@ import omit from "lodash/omit";
 import { toURL } from "../../../lib/shared/url";
 import { useConfigObjectLinks, useConfigObjectList, useStoreReload } from "../../../lib/store";
 import { getCoreDestinationTypeNonStrict } from "../../../lib/schema/destinations";
+import { FaFloppyDisk } from "react-icons/fa6";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
@@ -328,7 +329,7 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
           },
           {
             disabled: t?.status === "RUNNING" || !!runPressed,
-            tooltip: t?.status === "RUNNING" ? "Sync is already runPressed" : undefined,
+            tooltip: t?.status === "RUNNING" ? "Sync is already running" : undefined,
             icon:
               runPressed == link.id ? (
                 <Loader2 className="animate-spin w-3.5 h-3.5" />
@@ -373,6 +374,12 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
             collapsed: true,
           },
           {
+            icon: <FaFloppyDisk className={"w-4 h-4"} />,
+            label: "Saved State",
+            href: `/syncs/state?id=${link.id}`,
+            collapsed: true,
+          },
+          {
             icon: <FaTrash />,
             onClick: async () => {
               deleteSync(link);
@@ -395,6 +402,28 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
         columns={columns}
         className="border border-backgroundDark rounded-lg"
         pagination={false}
+        // expandable={{
+        //   expandedRowRender: link => {
+        //     console.log("link", link);
+        //     const task = processTaskStatus(tasks.data.tasks?.[link.id]);
+        //     console.log("task", task);
+        //     return (
+        //       <TaskStatusResultTable
+        //         error={task.error ?? ""}
+        //         stats={Object.entries(task.stats).reduce((arr, v) => {
+        //           const o = { key: v[0], stream: v[0], ...(v[1] as any) };
+        //           arr.push(o);
+        //           return arr;
+        //         }, [] as any[])}
+        //       />
+        //     );
+        //   },
+        //   rowExpandable: link => {
+        //     const t = tasks.data.tasks?.[link.id];
+        //     return !!t && t.status !== "SKIPPED";
+        //   },
+        //   // expandIcon: () => undefined,
+        // }}
         loading={loading}
         onChange={onChange}
       />

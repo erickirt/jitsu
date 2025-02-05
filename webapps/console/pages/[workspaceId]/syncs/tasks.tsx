@@ -124,7 +124,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
     const popoverContent = (
       <div>
         <div className={"overflow-y-auto"} style={{ maxHeight: "60vh" }}>
-          {task.stats ? (
+          {task.stats && task.status != "SKIPPED" ? (
             <TaskStatusResultTable
               error={task.error ?? ""}
               stats={Object.entries(task.stats).reduce((arr, v) => {
@@ -267,7 +267,7 @@ function TaskStatus0({ task, loading }: { task: TasksDbModel & TaskStats; loadin
 
 export const TaskStatus = React.memo(TaskStatus0, (p, n) => hash(p) === hash(n));
 
-function TaskStatusResultTable({ stats, error }: { stats: any[]; error?: string }) {
+export function TaskStatusResultTable({ stats, error }: { stats: any[]; error?: string }) {
   const columns: ColumnType<any>[] = [
     {
       title: "Stream",
