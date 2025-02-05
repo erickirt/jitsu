@@ -40,6 +40,8 @@ function StateEditor() {
   const [stateSaving, setStateSaving] = useState<Record<string, boolean>>({});
   const [catalogError, setCatalogError] = useState<any>(undefined);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [loadingState, setLoadingState] = useState(true);
+
   const [refreshCatalog, setRefreshCatalog] = useState(0);
 
   const saveState = useCallback(
@@ -73,10 +75,19 @@ function StateEditor() {
 
   useEffect(() => {
     (async () => {
-      const state = await rpc(`/api/${workspace.id}/sources/state?syncId=${router.query.id}`);
-      if (state.ok) {
-        setState(state.state);
-        setEditedState({});
+      try {
+        setLoadingState(true);
+        const state = await rpc(`/api/${workspace.id}/sources/state?syncId=${router.query.id}`);
+        if (state.ok) {
+          setState(state.state);
+          setEditedState({});
+        } else {
+          feedbackError("Failed to load state: " + state.error, { placement: "top" });
+        }
+      } catch (error: any) {
+        feedbackError("Failed to load state: " + error.message, { placement: "top" });
+      } finally {
+        setLoadingState(false);
       }
     })();
   }, [router.query.id, workspace.id]);
@@ -145,7 +156,7 @@ function StateEditor() {
           <div className={"text-lg"}>Saved states</div>
         </div>
         <div className={`w-full h-full flex flex-col border rounded`}>
-          {loadingCatalog ? (
+          {loadingCatalog || loadingState ? (
             <LoadingAnimation
               className={"h-96"}
               title={"Loading connector catalog..."}
