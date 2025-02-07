@@ -51,6 +51,7 @@ export const noRestrictions: BillingSettings = {
   dailyActiveSyncs: 100,
   dailyActiveSyncsOverage: 100,
   destinationEvensPerMonth: 100_000_000_000,
+  profileBuilderEnabled: true,
 };
 
 export const AppConfig = z.object({
