@@ -129,7 +129,9 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
       return;
     }
     // ajv doesn't expect schema identifiers to use https:// prefix. But such identifiers started to appear in connectors specs
-    specs.connectionSpecification.$schema = specs.connectionSpecification.$schema.replace("https://", "http://");
+    if (specs.connectionSpecification.$schema) {
+      specs.connectionSpecification.$schema = specs.connectionSpecification.$schema.replace("https://", "http://");
+    }
     const validate = ajv.compile(specs.connectionSpecification);
     const valid = validate(credentials);
     if (!obj.name) {
