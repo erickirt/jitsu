@@ -164,7 +164,7 @@ export async function runChain(
   try {
     result = await f.exec(eventsProvider, userProvider, f.context);
     return {
-      profile_id: profileId,
+      profile_id: result?.profile_id || profileId,
       traits: { ...(await userProvider()).traits, ...result?.traits },
       version: profileBuilder.version,
       updated_at: new Date(),

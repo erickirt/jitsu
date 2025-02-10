@@ -493,7 +493,7 @@ export async function ProfileUDFTestRun({
     }
     const result = await wrapper?.userFunction(eventsProvider, userProvider, funcCtx);
     const profile = {
-      profile_id: user.id,
+      profile_id: result?.profile_id || user.id,
       traits: { ...user.traits, ...result?.traits },
       version: version,
       updated_at: new Date(),

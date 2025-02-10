@@ -2,6 +2,7 @@ import { FunctionContext } from "./functions";
 import { AnalyticsServerEvent } from "./analytics";
 
 export type ProfileResult = {
+  profile_id?: string;
   traits: Record<string, any>;
 };
 
