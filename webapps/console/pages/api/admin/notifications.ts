@@ -206,7 +206,7 @@ async function loadSyncStatusesChanges(
         data: newBatch,
       });
       changeId = Number(r.id);
-      batches[key(newBatch.actorId)] = newBatch;
+      batches[key(newBatch.actorId)] = { ...batches[key(newBatch.actorId)], ...newBatch };
       statusChanges++;
       log.atInfo().log(`Sync ${batch.actorId} status changed from ${batch.status} to ${status}`);
     }
@@ -355,7 +355,7 @@ async function sendSlackNotification(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${
+          text: `Last status: *${lastStatus.status}*\n${
             lastStatus.tableName ? "Batch Table: *" + lastStatus.tableName + "*\n" : ""
           }<${url}|Open in Jitsu...>`,
         },
