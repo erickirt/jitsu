@@ -19,3 +19,7 @@ export const clickhouse = createClient({
     response: true,
   },
 });
+
+export function dateToClickhouse(date: Date): string {
+  return date.toISOString().replace("T", " ").replace("Z", "").split(".")[0];
+}
