@@ -11,7 +11,7 @@ import { getAppEndpoint } from "../../../lib/domains";
 
 dayjs.extend(utc);
 
-const log = getServerLog("events-log-init");
+const log = getServerLog("notifications");
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
@@ -355,7 +355,9 @@ async function sendSlackNotification(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `<${url}|Open in Jitsu...>`,
+          text: `${
+            lastStatus.tableName ? "Batch Table: *" + lastStatus.tableName + "*\n" : ""
+          }<${url}|Open in Jitsu...>`,
         },
       },
       {
@@ -385,16 +387,28 @@ async function sendSlackNotification(
       log
         .atError()
         .log(
-          `Failed to send Slack notification: ${status} ${jobName} [${entity.workspaceName}]: ${res.status} ${res.statusText}`
+          `Failed to send Slack notification: ${status} ${jobName}${
+            lastStatus.tableName ? " t:" + lastStatus.tableName : ""
+          } [${entity.workspaceName}]: ${res.status} ${res.statusText}`
         );
       return false;
     }
-    log.atInfo().log(`Slack notification sent: ${status} ${jobName} [${entity.workspaceName}]`);
+    log
+      .atInfo()
+      .log(
+        `Slack notification sent: ${status} ${jobName}${lastStatus.tableName ? " t:" + lastStatus.tableName : ""} [${
+          entity.workspaceName
+        }]`
+      );
     return true;
   } catch (error: any) {
     log
       .atError()
-      .log(`Failed to send Slack notification: ${status} ${jobName} [${entity.workspaceName}]: ${error.message}`);
+      .log(
+        `Failed to send Slack notification: ${status} ${jobName}${
+          lastStatus.tableName ? " t:" + lastStatus.tableName : ""
+        } [${entity.workspaceName}]: ${error.message}`
+      );
     return false;
   }
 }
