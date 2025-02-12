@@ -60,7 +60,7 @@ export default createRoute()
       .atInfo()
       .log(`Previous run time: ${previousRunTime.toISOString()} Last processed change id: ${previousChangeId}`);
     // add some overlap to avoid missing status changes
-    previousRunTime.setMinutes(previousRunTime.getMinutes() - 1440);
+    previousRunTime.setMinutes(previousRunTime.getMinutes() - 10);
 
     const batches: Record<string, StatusChangeEntity> = {};
     const batchesByTableName: Record<string, StatusChangeEntity> = {};
