@@ -157,6 +157,20 @@ export const ArrayTextareaEditor: React.FC<CustomWidgetProps<string[]>> = props 
   );
 };
 
+export const TextareaEditor: React.FC<CustomWidgetProps<string>> = props => {
+  const [value, setValue] = useState<string>(props.value || "");
+  return (
+    <TextArea
+      rows={10}
+      value={value}
+      onChange={e => {
+        props.onChange(e.target.value);
+        setValue(e.target.value);
+      }}
+    />
+  );
+};
+
 type KeyValueArray = [string, string][];
 
 export const KeyValueArrayEditor: React.FC<CustomWidgetProps<KeyValueArray>> = props => {

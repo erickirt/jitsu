@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UserProfileDbModel } from "../../prisma/schema";
+import { UserProfileDbModel, WorkspaceDbModel } from "../../prisma/schema";
 
 export const SessionUser = z.object({
   name: z.string(),
@@ -51,6 +51,7 @@ export const noRestrictions: BillingSettings = {
   dailyActiveSyncs: 100,
   dailyActiveSyncsOverage: 100,
   destinationEvensPerMonth: 100_000_000_000,
+  profileBuilderEnabled: true,
 };
 
 export const AppConfig = z.object({
@@ -186,13 +187,26 @@ export const WorkspaceDomain = ConfigEntityBase.merge(
 );
 export type WorkspaceDomain = z.infer<typeof WorkspaceDomain>;
 
+export const MiscEntity = ConfigEntityBase.merge(
+  z.object({
+    name: z.string(),
+    objectType: z.enum(["classic-mapping"]).default("classic-mapping"),
+    value: z.string(),
+  })
+);
+export type MiscEntity = z.infer<typeof MiscEntity>;
+
 /**
  * What happens to an object before it is saved to DB.
  *
  * opts.original — original of the object, if object is being updated
  * opts.patch — patch of the object, if object is being updated. Or full object, if object is being created
  */
-export type InputFilter<T = any> = (val: T, context: "create" | "update") => Promise<T>;
+export type InputFilter<T = any> = (
+  val: T,
+  context: "create" | "update",
+  workspace: z.infer<typeof WorkspaceDbModel>
+) => Promise<T>;
 export type OutputFilter<T = any> = (original: T) => T;
 
 /**

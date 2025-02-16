@@ -1,7 +1,7 @@
 import { Api, inferUrl, nextJsApiHandler, verifyAccess } from "../../../../../lib/api";
 import { z } from "zod";
 import { db } from "../../../../../lib/server/db";
-import { assertDefined } from "juava";
+import { assertDefined, requireDefined } from "juava";
 import { getConfigObjectType, parseObject } from "../../../../../lib/schema/config-objects";
 import { ApiError } from "../../../../../lib/shared/errors";
 import { isReadOnly } from "../../../../../lib/server/read-only-mode";
@@ -54,8 +54,12 @@ export const api: Api = {
       if (isReadOnly) {
         throw new ApiError("Console is in read-only mode. Modifications of objects are not allowed");
       }
+      const workspace = requireDefined(
+        await db.prisma().workspace.findFirst({ where: { id: workspaceId } }),
+        `Workspace ${workspaceId} not found`
+      );
       const configObjectTypes = getConfigObjectType(type);
-      const object = await configObjectTypes.inputFilter(parseObject(type, body), "create");
+      const object = await configObjectTypes.inputFilter(parseObject(type, body), "create", workspace);
       const id = object.id;
       delete object.id;
       delete object.workspaceId;

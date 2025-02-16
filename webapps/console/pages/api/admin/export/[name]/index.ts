@@ -21,7 +21,17 @@ export type Export = {
   data: (writer: Writer) => Promise<void>;
 };
 
+type ClassicKeys = {
+  publicKeys: { plaintext: string }[];
+  privateKeys: { plaintext: string }[];
+};
+
 const batchSize = 1000;
+const clickhouseUploadS3Bucket = process.env.CLICKHOUSE_UPLOAD_S3_BUCKET;
+const s3Region = process.env.S3_REGION;
+const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID;
+const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+const clickhouseS3Configured = clickhouseUploadS3Bucket && s3Region && s3AccessKeyId && s3SecretAccessKey;
 
 const safeLastModified = new Date(2024, 0, 1, 0, 0, 0, 0);
 
@@ -53,7 +63,13 @@ const exports: Export[] = [
       let needComma = false;
       while (true) {
         const objects = await db.prisma().configurationObjectLink.findMany({
-          where: { deleted: false, workspace: { deleted: false }, from: { deleted: false }, to: { deleted: false } },
+          where: {
+            deleted: false,
+            OR: [{ type: "push" }, { type: null }],
+            workspace: { deleted: false },
+            from: { deleted: false },
+            to: { deleted: false },
+          },
           include: { from: true, to: true, workspace: true },
           take: batchSize,
           cursor: lastId ? { id: lastId } : undefined,
@@ -72,16 +88,30 @@ const exports: Export[] = [
               writer.write(",");
             }
             const credentials = omit(to.config, "destinationType", "type", "name");
-            if (destinationType === "clickhouse" && data.clickhouseSettings) {
-              const extraParams = Object.fromEntries(
-                (data.clickhouseSettings as string)
-                  .split("\n")
-                  .filter(s => s.includes("="))
-                  .map(s => s.split("="))
-                  .map(([k, v]) => [k.trim(), v.trim()])
-              );
-              credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
+            if (destinationType === "clickhouse") {
+              if (data.clickhouseSettings) {
+                const extraParams = Object.fromEntries(
+                  (data.clickhouseSettings as string)
+                    .split("\n")
+                    .filter(s => s.includes("="))
+                    .map(s => s.split("="))
+                    .map(([k, v]) => [k.trim(), v.trim()])
+                );
+                credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
+              }
+              if (credentials.loadAsJson && !credentials.provisioned && clickhouseS3Configured) {
+                credentials.s3Region = s3Region;
+                credentials.s3AccessKeyId = s3AccessKeyId;
+                credentials.s3SecretAccessKey = s3SecretAccessKey;
+                credentials.s3Bucket = clickhouseUploadS3Bucket;
+                credentials.s3UsePresignedURL = true;
+              }
             }
+            // if (data.timestampColumn) {
+            //   // use timestampColumn field as discriminator field when doing local deduplication
+            //   // inside batch of two rows having the same messageId(pk) will be chosen the one with the highest timestampColumn value
+            //   data.discriminatorField = [data.timestampColumn];
+            // }
             writer.write(
               JSON.stringify({
                 __debug: {
@@ -249,6 +279,7 @@ const exports: Export[] = [
               type: destinationType,
               workspaceId: workspace.id,
               streamId: from.id,
+              streamName: from.config?.name,
               destinationId: to.id,
               usesBulker: !!coreDestinationType?.usesBulker,
               options: {
@@ -350,6 +381,31 @@ const exports: Export[] = [
           domainsMap.set(domain.workspaceId, [...d, (domain.config as any).name]);
         }
       }
+      const classicMappings = await db.prisma().configurationObject.findMany({
+        where: {
+          deleted: false,
+          type: "misc",
+          config: { path: ["objectType"], equals: "classic-mapping" },
+          workspace: { deleted: false },
+        },
+      });
+      const classicKeysMap: Record<string, ClassicKeys> = {};
+      classicMappings
+        .filter(c => c.config && c.config["value"])
+        .flatMap(c => c.config!["value"].split("\n"))
+        .forEach(line => {
+          const [source, apikey] = line.split(/=(.*)/s).map((s: string) => s.trim());
+          if (source && apikey) {
+            const keys = classicKeysMap[source] || { publicKeys: [], privateKeys: [] };
+            if (apikey.startsWith("s2s.")) {
+              keys.privateKeys.push({ plaintext: apikey });
+            } else {
+              keys.publicKeys.push({ plaintext: apikey });
+            }
+            classicKeysMap[source] = keys;
+          }
+        });
+
       writer.write("[");
       let lastId: string | undefined = undefined;
       let needComma = false;
@@ -374,6 +430,7 @@ const exports: Export[] = [
             ? getNumericOption("throttle", obj.workspace)
             : undefined;
           const shardNumber = getNumericOption("shard", obj.workspace);
+          const classicKeys = classicKeysMap[obj.id] || ({} as ClassicKeys);
           writer.write(
             JSON.stringify({
               __debug: {
@@ -394,6 +451,8 @@ const exports: Export[] = [
                 ),
                 ...{
                   ...obj.config,
+                  publicKeys: [classicKeys.publicKeys ?? [], obj.config.publicKeys ?? []].flat(),
+                  privateKeys: [classicKeys.privateKeys ?? [], obj.config.privateKeys ?? []].flat(),
                   domains: [...new Set([...(domainsMap.get(obj.workspace.id) ?? []), ...(obj.config.domains ?? [])])],
                 },
                 workspaceId: obj.workspace.id,

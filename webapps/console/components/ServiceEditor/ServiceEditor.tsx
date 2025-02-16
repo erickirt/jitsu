@@ -56,10 +56,11 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
   const [specs, setSpecs] = useState<any>(undefined);
   const oauthConnector = appConfig.nango ? oauthDecorators.find(d => d.packageId === obj.package) : "";
   const [manualAuth, setManualAuth] = useState(typeof oauthConnector === "undefined");
-  const ajv = useMemo(
-    () => new Ajv({ allErrors: true, strictSchema: false, useDefaults: true, allowUnionTypes: true }),
-    []
-  );
+  const ajv = useMemo(() => {
+    const ajv = new Ajv({ allErrors: true, strictSchema: false, useDefaults: true, allowUnionTypes: true });
+    ///ajv.addMetaSchema(draft7MetaSchema);
+    return ajv;
+  }, []);
   const modal = useAntdModal();
   const reloadStore = useStoreReload();
 
@@ -126,6 +127,10 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
     if (!specs || !specs.connectionSpecification) {
       errors.push("Source specification was not loaded");
       return;
+    }
+    // ajv doesn't expect schema identifiers to use https:// prefix. But such identifiers started to appear in connectors specs
+    if (specs.connectionSpecification.$schema) {
+      specs.connectionSpecification.$schema = specs.connectionSpecification.$schema.replace("https://", "http://");
     }
     const validate = ajv.compile(specs.connectionSpecification);
     const valid = validate(credentials);
