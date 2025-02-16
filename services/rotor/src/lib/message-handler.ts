@@ -102,6 +102,7 @@ export async function rotorMessageHandler(
     source: {
       type: message.ingestType,
       id: connection.streamId,
+      name: connection.streamName,
       domain: message.origin?.domain,
     },
     destination: {

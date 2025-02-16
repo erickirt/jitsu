@@ -13,6 +13,9 @@ import { AnalyticsServerEvent, DataLayoutType } from "@jitsu/protocols/analytics
 
 import omit from "lodash/omit";
 import { MetricsMeta } from "./lib";
+import { UserRecognitionParameter } from "./user-recognition";
+
+const JitsuInternalProperties = [TableNameParameter, UserRecognitionParameter];
 
 export type MappedEvent = {
   event: any;
@@ -25,7 +28,7 @@ export type DataLayoutImpl<T> = (
 
 export function jitsuLegacy(event: AnalyticsServerEvent, ctx: FullContext<BulkerDestinationConfig>): MappedEvent {
   const flat = toJitsuClassic(event, ctx);
-  return { event: omit(flat, TableNameParameter), table: event[TableNameParameter] ?? "events" };
+  return { event: omit(flat, JitsuInternalProperties), table: event[TableNameParameter] ?? "events" };
 }
 
 export function segmentLayout(
@@ -56,7 +59,7 @@ export function segmentLayout(
           event.context?.groupId || event.traits?.groupId || event.context?.traits?.groupId
         );
         transferFunc(transformed, event.properties);
-        transferFunc(transformed, event, ["context", "properties", "traits", "type", TableNameParameter]);
+        transferFunc(transformed, event, ["context", "properties", "traits", "type", ...JitsuInternalProperties]);
       } else {
         transformed = {
           context: {},
@@ -65,7 +68,7 @@ export function segmentLayout(
         transferFunc(transformed, event.properties);
         transferFunc(transformed, event.context?.traits);
         transferFunc(transformed, event.traits);
-        transferFunc(transformed, event, ["context", "properties", "traits", "type", TableNameParameter]);
+        transferFunc(transformed, event, ["context", "properties", "traits", "type", ...JitsuInternalProperties]);
       }
       break;
     case "group":
@@ -79,7 +82,14 @@ export function segmentLayout(
         transferFunc(transformed.context.group, event.traits);
         transferValueFunc(transformed.context, "group_id", event.groupId);
         transferFunc(transformed, event.properties);
-        transferFunc(transformed, event, ["context", "properties", "traits", "type", "groupId", TableNameParameter]);
+        transferFunc(transformed, event, [
+          "context",
+          "properties",
+          "traits",
+          "type",
+          "groupId",
+          ...JitsuInternalProperties,
+        ]);
       } else {
         transformed = {
           context: {},
@@ -87,7 +97,7 @@ export function segmentLayout(
         transferFunc(transformed.context, event.context, ["traits"]);
         transferFunc(transformed, event.properties);
         transferFunc(transformed, event.traits);
-        transferFunc(transformed, event, ["context", "properties", "traits", "type", TableNameParameter]);
+        transferFunc(transformed, event, ["context", "properties", "traits", "type", ...JitsuInternalProperties]);
       }
       break;
     case "track":
@@ -102,13 +112,13 @@ export function segmentLayout(
         transferFunc(transformed.context.traits, event.properties?.traits, ["groupId"]);
         transferValueFunc(transformed.context, "group_id", event.context?.groupId || event.context?.traits?.groupId);
         transferFunc(transformed, event.properties, ["traits"]);
-        transferFunc(transformed, event, ["context", "properties", "type", TableNameParameter]);
+        transferFunc(transformed, event, ["context", "properties", "type", ...JitsuInternalProperties]);
       } else {
         baseTrackFlat = {};
-        transferFunc(baseTrackFlat, event, ["properties", "type", TableNameParameter]);
+        transferFunc(baseTrackFlat, event, ["properties", "type", ...JitsuInternalProperties]);
         transformed = {};
         transferFunc(transformed, event.properties);
-        transferFunc(transformed, event, ["properties", "type", TableNameParameter]);
+        transferFunc(transformed, event, ["properties", "type", ...JitsuInternalProperties]);
       }
       break;
     default:
@@ -122,11 +132,11 @@ export function segmentLayout(
         transferFunc(transformed.context.traits, event.context?.traits, ["groupId"]);
         transferValueFunc(transformed.context, "group_id", event.context?.groupId || event.context?.traits?.groupId);
         transferFunc(transformed, event.properties);
-        transferFunc(transformed, event, ["context", "properties", TableNameParameter]);
+        transferFunc(transformed, event, ["context", "properties", ...JitsuInternalProperties]);
       } else {
         transformed = {};
         transferFunc(transformed, event.properties);
-        transferFunc(transformed, event, ["properties", TableNameParameter]);
+        transferFunc(transformed, event, ["properties", ...JitsuInternalProperties]);
       }
   }
   if (event[TableNameParameter]) {
@@ -167,7 +177,7 @@ export const dataLayouts: Record<DataLayoutType, DataLayoutImpl<any>> = {
   segment: (event, ctx) => segmentLayout(event, false, ctx),
   "segment-single-table": (event, ctx) => segmentLayout(event, true, ctx),
   "jitsu-legacy": jitsuLegacy,
-  passthrough: event => ({ event: omit(event, TableNameParameter), table: event[TableNameParameter] ?? "events" }),
+  passthrough: event => ({ event: omit(event, JitsuInternalProperties), table: event[TableNameParameter] ?? "events" }),
 };
 
 export type BulkerDestinationConfig = {

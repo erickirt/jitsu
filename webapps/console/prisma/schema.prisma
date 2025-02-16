@@ -335,6 +335,34 @@ model ProfileBuilderState {
   @@id([profileBuilderId, profileBuilderVersion, totalInstances, instanceIndex])
 }
 
+model StatusChange {
+  id                BigInt    @id @default(autoincrement()) @db.BigInt
+  workspaceId       String
+  actorId           String
+  tableName         String
+  timestamp         DateTime  @default(now()) @db.Timestamptz(3) /// @zod.custom(z.coerce.date())
+  status            String
+  previousStatus    String?
+  previousTimestamp DateTime? @default(now()) @db.Timestamptz(3) /// @zod.custom(z.coerce.date())
+  description       String?
+
+  @@index([actorId, tableName])
+  @@index(timestamp)
+}
+
+//model Notification {
+//  actor_id     String
+//  table_name   String
+//  status  DateTime @default(now()) @db.Timestamptz(3) /// @zod.custom(z.coerce.date())
+//  timestamp    DateTime @default(now()) @db.Timestamptz(3) /// @zod.custom(z.coerce.date())
+//  message      String
+//  channels      String[]
+//
+//  @@index(actor_id, table_name)
+//  @@index(timestamp)
+//
+//}
+
 //model OauthSecrets {
 //  id        String   @id @default(cuid())
 //  createdAt DateTime @default(now()) /// @zod.custom(z.coerce.date())

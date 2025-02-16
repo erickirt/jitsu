@@ -55,6 +55,7 @@ const expectedEvents: AnalyticsServerEvent[] = [
   },
   {
     messageId: "1",
+    _JITSU_UR_MESSAGE_ID: "4",
     type: "page",
     anonymousId: "anon1",
     userId: "user1",
@@ -67,6 +68,7 @@ const expectedEvents: AnalyticsServerEvent[] = [
   },
   {
     messageId: "2",
+    _JITSU_UR_MESSAGE_ID: "4",
     type: "page",
     anonymousId: "anon1",
     userId: "user1",
@@ -79,6 +81,7 @@ const expectedEvents: AnalyticsServerEvent[] = [
   },
   {
     messageId: "3",
+    _JITSU_UR_MESSAGE_ID: "4",
     type: "page",
     anonymousId: "anon1",
     userId: "user1",
