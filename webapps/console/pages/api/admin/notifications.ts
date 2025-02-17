@@ -154,6 +154,8 @@ export default createRoute()
           and w.deleted = false
     `);
     for (const row of r.rows) {
+      row.changesPerHours = parseInt(row.changesPerHours);
+      row.changesPerDay = parseInt(row.changesPerDay);
       entities[key(row.actorId)] = row;
       if (row.tableName) {
         entities[key(row.actorId, row.tableName)] = row;
