@@ -349,7 +349,7 @@ async function processNotifications(
   const state = channelStates[chKey(channel.id, entity.actorId, entity.tableName)];
   const lastStatus = statusChanges[statusChanges.length - 1];
   let flappingSince: Date | undefined =
-    lastStatus.status === "FLAPPING" ? state.flappingSince || lastStatus.timestamp : undefined;
+    lastStatus.status === "FLAPPING" ? state?.flappingSince || lastStatus.timestamp : undefined;
   const status = lastStatus.status === "SUCCESS" ? "SUCCESS" : lastStatus.status === "FLAPPING" ? "FLAPPING" : "FAILED";
   try {
     if (channel.channel === "slack") {
