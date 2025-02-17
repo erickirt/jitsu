@@ -469,6 +469,7 @@ async function loadBatchStatusesChanges(
         let entityWithTable = entities[key(row.actorId, tableName)];
         if (!entityWithTable) {
           entityWithTable = { ...entity, tableName, type: "batch" };
+          entities[key(row.actorId, tableName)] = entityWithTable;
         }
         entity = entityWithTable;
       }
