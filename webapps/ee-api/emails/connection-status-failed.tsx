@@ -17,7 +17,7 @@ export type ConnectionStatusFailedEmailProps = {
   tableName?: string;
   lastStatus: string;
   details: string;
-  recurringAlertsPeriodHours;
+  recurringAlertsPeriodHours: number;
 } & UnsubscribeLinkProps;
 
 const ConnectionStatusFailedEmail: EmailComponent<ConnectionStatusFailedEmailProps> = ({
@@ -103,8 +103,8 @@ const ConnectionStatusFailedEmail: EmailComponent<ConnectionStatusFailedEmailPro
 
           {recurringAlertsPeriodHours && (
             <Text>
-              No additional reports will be sent for this entity in {recurringAlertsPeriodHours} hours unless the status
-              changes.
+              No additional reports will be sent for this connection in {recurringAlertsPeriodHours} hours unless the
+              status changes.
             </Text>
           )}
 

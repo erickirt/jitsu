@@ -16,6 +16,7 @@ export type ConnectionStatusSuccessEmailProps = {
   entityName: string;
   tableName?: string;
   details: string;
+  recurringAlertsPeriodHours: number;
 } & UnsubscribeLinkProps;
 
 const ConnectionStatusSuccessEmail: EmailComponent<ConnectionStatusSuccessEmailProps> = ({
@@ -27,6 +28,7 @@ const ConnectionStatusSuccessEmail: EmailComponent<ConnectionStatusSuccessEmailP
   entityName,
   tableName,
   details,
+  recurringAlertsPeriodHours,
   unsubscribeLink,
 }: ConnectionStatusSuccessEmailProps) => {
   const url =
@@ -88,6 +90,10 @@ const ConnectionStatusSuccessEmail: EmailComponent<ConnectionStatusSuccessEmailP
             <span dangerouslySetInnerHTML={{ __html: details }}></span>
           </Text>
 
+          {recurringAlertsPeriodHours && (
+            <Text>No additional reports will be sent for this connection unless the status changes.</Text>
+          )}
+
           <Text>
             Best Regards,
             <br />
@@ -114,6 +120,7 @@ ConnectionStatusSuccessEmail.defaultValues = {
   details: "",
   workspaceSlug: "workspace-slug",
   workspaceName: "Workspace Name",
+  recurringAlertsPeriodHours: 24,
   unsubscribeLink: "https://example.com/unsubscribe",
 };
 
@@ -138,6 +145,7 @@ ConnectionStatusSuccessEmail.plaintext = ({
   entityName,
   tableName,
   details,
+  recurringAlertsPeriodHours,
   entityType,
   unsubscribeLink,
 }: ConnectionStatusSuccessEmailProps) => {
@@ -157,7 +165,7 @@ ConnectionStatusSuccessEmail.plaintext = ({
 ${tableName ? "Table Name: " + tableName : ""}
 ${details ? "Details:\n" + details : ""}
 
-No additional reports will be sent for this connection unless the status changes.
+${recurringAlertsPeriodHours ? "No additional reports will be sent for this connection unless the status changes." : ""}
 
 Thanks,  
 Jitsu Team

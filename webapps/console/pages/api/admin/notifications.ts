@@ -611,7 +611,10 @@ async function sendSlackNotification(
       elements: [
         {
           type: "mrkdwn",
-          text: `No additional reports will be sent for this connection in ${channel.recurringAlertsPeriodHours} hours unless the status changes.`,
+          text:
+            status === "SUCCESS"
+              ? `No additional reports will be sent for this connection unless the status changes.`
+              : `No additional reports will be sent for this connection in ${channel.recurringAlertsPeriodHours} hours unless the status changes.`,
         },
       ],
     });
