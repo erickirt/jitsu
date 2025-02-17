@@ -237,7 +237,7 @@ async function processStatusChanges(
 
   for (const [k, statuses] of Object.entries(aggrStatues)) {
     const lastStatus = statuses[statuses.length - 1];
-    const entity = entities[key(lastStatus.actorId)];
+    const entity = entities[key(lastStatus.actorId, lastStatus.tableName)];
     for (const channel of [...(channels[entity.workspaceId] || []), ...(channels["admin"] || [])]) {
       if (!channel.events.includes(entity.type) && !channel.events.includes("all")) {
         continue;
