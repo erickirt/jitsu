@@ -181,7 +181,9 @@ async function processStatusChanges(
   entities: Record<string, StatusChangeEntity>,
   publicEndpoints: any
 ): Promise<Date> {
-  const channels: Record<string, NotificationChannel[]> = {};
+  const channels: Record<string, NotificationChannel[]> = {
+    admin: [adminChannel],
+  };
   const channelStates: Record<string, NotificationState> = {};
   await db
     .prisma()
@@ -671,6 +673,6 @@ async function sendEmailNotification(
   });
 }
 
-function maxDate(a: Date, b: Date): Date {
-  return a.getTime() > b.getTime() ? a : b;
-}
+export const config = {
+  maxDuration: 120,
+};
