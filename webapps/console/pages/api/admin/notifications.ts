@@ -372,7 +372,7 @@ async function processNotifications(
       data: {
         workspaceId: entity.workspaceId,
         actorId: entity.actorId,
-        tableName: entity.tableName,
+        tableName: entity.tableName || "",
         channelId: channel.id,
         statusChangeId: lastStatus.id!,
         status: error ? "error" : "ok",
