@@ -535,6 +535,13 @@ async function updateStatusChange(
 
   if (!entity.timestamp || timestamp.getTime() > entity.timestamp.getTime()) {
     if (status != entity.status) {
+      if (status === "SUCCESS") {
+        if (!entity.timestamp) {
+          description = "First run.";
+        } else {
+          description = `Recovered from ${entity.status} of ${entity.timestamp}.`;
+        }
+      }
       newEntity = {
         workspaceId: entity.workspaceId!,
         actorId: entity.actorId!,
