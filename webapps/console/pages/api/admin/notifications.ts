@@ -62,7 +62,7 @@ export default createRoute()
   .GET({
     auth: true,
   })
-  .handler(async ({ req, res, query, user }) => {
+  .handler(async ({ req, user }) => {
     const sw = stopwatch();
     await verifyAdmin(user);
     const publicEndpoints = getAppEndpoint(req);
@@ -91,7 +91,9 @@ export default createRoute()
     }
     log
       .atInfo()
-      .log(`Previous run time: ${previousRunTime.toISOString()} Last processed timestamp: ${processedTimestamp}`);
+      .log(
+        `Previous run time: ${previousRunTime.toISOString()} Last processed timestamp: ${processedTimestamp.toISOString()}`
+      );
     // add some overlap to avoid missing status changes
     previousRunTime.setMinutes(previousRunTime.getMinutes() - 10);
 
@@ -165,15 +167,16 @@ export default createRoute()
 
     const increments = await loadBatchStatusesChanges(previousRunTime, entities);
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
-    for (const [id, increment] of increments) {
-      await db.prisma().statusChange.update({
-        where: { id },
-        data: {
-          counts: { increment: increment.counts },
-          timestamp: increment.timestamp,
-        },
-      });
-    }
+    const values = increments
+      .entries()
+      .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}')`)
+      .toArray()
+      .join(",");
+    const query = `UPDATE newjitsu."StatusChange" as s SET counts = s.counts + data.counts, timestamp = data.timestamp::TIMESTAMPTZ(3)
+                       FROM (VALUES ${values}) AS data(id, counts, timestamp)
+                       WHERE s.id = data.id`;
+    const res = await db.pgPool().query(query);
+    log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
 
     await loadSyncStatusesChanges(previousRunTime, entities);
 
