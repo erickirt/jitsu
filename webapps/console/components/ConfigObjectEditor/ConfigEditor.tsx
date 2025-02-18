@@ -306,17 +306,21 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
               (typeof testConnectionEnabled === "undefined" || testConnectionEnabled(formData || object) === true)
             ) {
               setTesting(true);
-              const testRes = testResult || (await onTest(formState?.formData || object));
-              setTesting(false);
-              if (!testRes.ok) {
+              let testRes: any;
+              try {
+                testRes = testResult || (await onTest(formState?.formData || object));
+              } finally {
+                setTesting(false);
+              }
+              if (!testRes?.ok) {
                 modal.confirm({
                   title: "Check failed",
-                  content: testRes.error,
+                  content: testRes?.error,
                   okText: "Save anyway",
                   okType: "danger",
                   cancelText: "Cancel",
                   onOk: () => {
-                    withLoading(() => onSave({ ...formData, testConnectionError: testRes.error }))();
+                    withLoading(() => onSave({ ...formData, testConnectionError: testRes?.error }))();
                   },
                 });
                 return;

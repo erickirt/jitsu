@@ -50,6 +50,7 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
   const [testResult, setTestResult] = useState<any>(undefined);
   const [showErrors, setShowErrors] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [testing, setTesting] = useState<boolean>(false);
   const [nangoLoading, setNangoLoading] = useState<boolean>(false);
   const [nangoError, setNangoError] = useState<string | undefined>(undefined);
   const [loadingSpecs, setLoadingSpecs] = useState<boolean>(true);
@@ -192,7 +193,9 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
       if (!validate()) {
         return;
       }
+      setTesting(true);
       const testRes = testResult || (await onTest!({ ...obj, credentials: credentials }));
+      setTesting(false);
       if (!testRes.ok) {
         modal.confirm({
           title: "Connection test failed",
@@ -212,6 +215,7 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
     } catch (error) {
       feedbackError(`Can't save service`, { error });
     } finally {
+      setTesting(false);
       setLoading(false);
     }
   }, [obj, credentials, workspace.id, props.isNew, push, validate, testResult, onTest, modal]);
@@ -357,6 +361,7 @@ export const ServiceEditor: React.FC<ServiceEditorProps> = props => {
         <EditorButtons
           isNew={isNew}
           loading={loading}
+          testing={testing}
           onDelete={onDelete}
           onCancel={() => onCancel(isTouched)}
           onSave={save}
