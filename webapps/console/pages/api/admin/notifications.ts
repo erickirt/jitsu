@@ -168,9 +168,7 @@ export default createRoute()
     const increments = await loadBatchStatusesChanges(previousRunTime, entities);
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
     if (increments.size > 0) {
-      const values = increments
-        .entries()
-        .toArray()
+      const values = Array.from(increments.entries())
         .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}')`)
         .join(",");
       const query = `UPDATE newjitsu."StatusChange" as s
