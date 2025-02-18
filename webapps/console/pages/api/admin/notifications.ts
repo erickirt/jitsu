@@ -18,11 +18,11 @@ const log = getServerLog("notifications");
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
-type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { id?: bigint };
+export type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { id?: bigint };
 
 type NotificationState = z.infer<typeof NotificationStateDbModel>;
 
-type Status = "SUCCESS" | "FAILED" | "FLAPPING";
+export type JobStatus = "FAILED" | "SUCCESS" | "FLAPPING";
 
 const flappingWindowHours = 2;
 
@@ -39,7 +39,7 @@ const adminChannel: NotificationChannel = {
   recurringAlertsPeriodHours: 24,
 };
 
-type StatusChangeEntity = StatusChange & {
+export type StatusChangeEntity = StatusChange & {
   id: number | bigint;
   type: "batch" | "sync";
   workspaceName: string;
@@ -63,6 +63,7 @@ export default createRoute()
     auth: true,
   })
   .handler(async ({ req, res, query, user }) => {
+    const sw = stopwatch();
     await verifyAdmin(user);
     const publicEndpoints = getAppEndpoint(req);
 
@@ -162,7 +163,17 @@ export default createRoute()
       }
     }
 
-    await loadBatchStatusesChanges(previousRunTime, entities);
+    const increments = await loadBatchStatusesChanges(previousRunTime, entities);
+    // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
+    for (const [id, increment] of increments) {
+      await db.prisma().statusChange.update({
+        where: { id },
+        data: {
+          counts: { increment: increment.counts },
+          timestamp: increment.timestamp,
+        },
+      });
+    }
 
     await loadSyncStatusesChanges(previousRunTime, entities);
 
@@ -175,6 +186,10 @@ export default createRoute()
         value: { timestamp: currentRunTime, lastProcessedTimestamp: processedTimestamp },
       },
     });
+
+    log
+      .atInfo()
+      .log(`Done. Last processed timestamp: ${processedTimestamp.toISOString()} Elapsed: ${sw.elapsedPretty()}`);
   })
   .toNextApiHandler();
 
@@ -239,7 +254,7 @@ async function processStatusChanges(
 
   for (const [k, statuses] of Object.entries(aggrStatues)) {
     const lastStatus = statuses[statuses.length - 1];
-    const entity = entities[key(lastStatus.actorId, lastStatus.tableName)];
+    const entity = entities[k];
     for (const channel of [...(channels[entity.workspaceId] || []), ...(channels["admin"] || [])]) {
       if (!channel.events.includes(entity.type) && !channel.events.includes("all")) {
         continue;
@@ -247,6 +262,11 @@ async function processStatusChanges(
       const cStatuses = [...statuses];
       const chkey = chKey(channel.id, lastStatus.actorId, lastStatus.tableName);
       let state = channelStates[chkey];
+      const sendRecurringTime =
+        (state?.lastNotification?.getTime() || 0) + channel.recurringAlertsPeriodHours * 60 * 60 * 1000;
+      let doNotify = false;
+
+      // no flapping state or no saved state for this entity at all
       if (!state?.flappingSince) {
         if (entity.changesPerHours > flappingThreshold && lastStatus.status !== "SUCCESS") {
           log
@@ -257,25 +277,28 @@ async function processStatusChanges(
             status: "FLAPPING",
             description: `FLAPPING: ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
           });
+          doNotify = true;
         } else {
-          if (
-            lastStatus.id === state?.statusChangeId &&
-            (lastStatus.status === "SUCCESS" ||
-              lastStatus.timestamp.getTime() <=
-                state.lastNotification.getTime() + channel.recurringAlertsPeriodHours * 60 * 60 * 1000)
-          ) {
-            log.atInfo().log(`[${chkey}] No new status changes`);
-            continue;
+          if (!state) {
+            if (lastStatus.status !== "SUCCESS" || lastStatus.counts === 0) {
+              log.atInfo().log(`[${chkey}] First SUCCESS for ${entity.actorId} ${entity.tableName}`);
+              // first status change. report SUCCESS only if it is the first observed run of this entity
+              doNotify = true;
+            }
+          } else if (lastStatus.id !== state?.statusChangeId) {
+            // status change since last notification
+            doNotify = true;
+          } else if (lastStatus.status !== "SUCCESS" && lastStatus.timestamp.getTime() > sendRecurringTime) {
+            // recurring alert
+            doNotify = true;
           }
         }
       } else if (entity.changesPerHours === 0) {
         log
           .atInfo()
           .log(`[${chkey}] Flapping ended ${lastStatus.timestamp} Changes per hour: ${entity.changesPerHours}`);
-      } else if (
-        lastStatus.timestamp.getTime() >
-        state.lastNotification.getTime() + channel.recurringAlertsPeriodHours * 60 * 60 * 1000
-      ) {
+        doNotify = true;
+      } else if (lastStatus.timestamp.getTime() > sendRecurringTime) {
         log
           .atInfo()
           .log(`[${chkey}] Flapping recurring ${state.flappingSince} Changes per hour: ${entity.changesPerHours}`);
@@ -284,14 +307,15 @@ async function processStatusChanges(
           status: "FLAPPING",
           description: `FLAPPING RECURRING: ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
         });
+        doNotify = true;
       } else {
         log
           .atInfo()
           .log(`[${chkey}] Flapping ongoing since ${state.flappingSince} Changes per hour: ${entity.changesPerHours}`);
-        continue;
       }
-
-      await processNotifications(channel, channelStates, cStatuses, entity, publicEndpoints);
+      if (doNotify) {
+        await processNotifications(channel, channelStates, cStatuses, entity, publicEndpoints);
+      }
     }
   }
 
@@ -355,20 +379,16 @@ async function processNotifications(
   const status = lastStatus.status === "SUCCESS" ? "SUCCESS" : lastStatus.status === "FLAPPING" ? "FLAPPING" : "FAILED";
   try {
     if (channel.channel === "slack") {
-      await sendSlackNotification(channel, entity, status, lastStatus, statusChanges, publicEndpoints.baseUrl);
+      await sendSlackNotification(channel, entity, status, statusChanges, publicEndpoints.baseUrl);
     } else if (channel.channel === "email") {
-      await sendEmailNotification(channel, entity, status, lastStatus, statusChanges, publicEndpoints.baseUrl);
+      await sendEmailNotification(channel, entity, status, statusChanges, publicEndpoints.baseUrl);
     }
-    log
-      .atInfo()
-      .log(
-        `[${chkey}] ${channel.channel} notification sent. Job status: ${status} id: ${entity.id} ts: ${entity.timestamp}`
-      );
+    log.atInfo().log(`[${chkey}] ${channel.channel} notification sent. Id: ${entity.id} ts: ${entity.timestamp}`);
   } catch (e: any) {
     log
       .atError()
       .log(
-        `[${chkey}] Failed to process ${channel.channel} notification. Job status: ${status} id: ${entity.id} ts: ${entity.timestamp}: ${e.message}`
+        `[${chkey}] Failed to process ${channel.channel} notification. Id: ${entity.id} ts: ${entity.timestamp}: ${e.message}`
       );
     error = e.message;
   } finally {
@@ -422,10 +442,15 @@ async function loadSyncStatusesChanges(
   log.atInfo().log(`Sync tasks processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
 }
 
+// StatusRepeats - optimization. we have batches that runs way too often.
+// to avoid multiple db updates we can accumulate changes and write them in a single query
+type StatusRepeats = { counts: number; timestamp: Date };
+
 async function loadBatchStatusesChanges(
   fromTimestamp: Date,
   entities: Record<string, StatusChangeEntity>
-): Promise<void> {
+): Promise<Map<bigint, StatusRepeats>> {
+  const increments: Map<bigint, StatusRepeats> = new Map();
   const sw = stopwatch();
   const actorIds = Object.entries(entities)
     .filter(([_, b]) => b.type === "batch")
@@ -482,28 +507,30 @@ async function loadBatchStatusesChanges(
       }
       const rowTimestamp = dayjs(row.timestamp, { utc: true }).toDate();
 
-      const chId = await updateStatusChange(entities, entity, rowTimestamp, status, message.error);
+      const chId = await updateStatusChange(entities, entity, rowTimestamp, status, message.error, increments);
       if (chId) {
         statusChanges++;
       }
     }
     log.atInfo().log(`Events log processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
   }
+  return increments;
 }
 
 async function updateStatusChange(
   entities: Record<string, StatusChangeEntity>,
   entity: StatusChangeEntity,
   timestamp: Date,
-  status: Status,
-  description?: string
+  status: string,
+  description?: string,
+  increments?: Map<bigint, StatusRepeats>
 ): Promise<boolean> {
   let changed = false;
-  let newBatch: StatusChange & { id?: bigint | number };
+  let newEntity: StatusChange & { id?: bigint | number };
 
   if (!entity.timestamp || timestamp.getTime() > entity.timestamp.getTime()) {
     if (status != entity.status) {
-      newBatch = {
+      newEntity = {
         workspaceId: entity.workspaceId!,
         actorId: entity.actorId!,
         tableName: entity.tableName ?? "",
@@ -511,29 +538,47 @@ async function updateStatusChange(
         startedAt: timestamp,
         status: status,
         description: description,
-        counts: 1,
+        // 0 - means that this is the first status of connection
+        counts: entity.timestamp ? 1 : 0,
       };
       const b = await db.prisma().statusChange.create({
-        data: newBatch,
+        data: newEntity,
       });
-      newBatch.id = b.id;
+      newEntity.id = b.id;
       changed = true;
       log.atInfo().log(`${entity.actorId} ${entity.tableName} status changed from ${entity.status} to ${status}`);
     } else {
-      newBatch = await db.prisma().statusChange.update({
-        where: { id: entity.id },
-        data: {
-          counts: { increment: 1 },
+      if (increments) {
+        // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
+        let increment = increments.get(entity.id);
+        if (!increment) {
+          increment = { counts: 1, timestamp: timestamp };
+          increments.set(entity.id, increment);
+        } else {
+          increment.counts++;
+          increment.timestamp = timestamp;
+        }
+        newEntity = {
+          ...entity,
+          counts: entity.counts + 1,
           timestamp: timestamp,
-        },
-      });
+        };
+      } else {
+        newEntity = await db.prisma().statusChange.update({
+          where: { id: entity.id },
+          data: {
+            counts: { increment: 1 },
+            timestamp: timestamp,
+          },
+        });
+      }
     }
     entity = {
       ...entity,
-      ...newBatch,
+      ...newEntity,
       changesPerHours: entity.changesPerHours + (changed ? 1 : 0),
       changesPerDay: entity.changesPerDay + (changed ? 1 : 0),
-      id: newBatch.id!,
+      id: newEntity.id!,
     };
     entities[key(entity.actorId, entity.tableName)] = entity;
     return changed;
@@ -541,22 +586,20 @@ async function updateStatusChange(
   return false;
 }
 
-type JobStatus = "FAILED" | "SUCCESS" | "FLAPPING";
-
 type SlackPayload = {
   text: string;
   blocks?: any[];
   attachments?: any[];
 };
 
-async function sendSlackNotification(
+export async function sendSlackNotification(
   channel: NotificationChannel,
   entity: StatusChangeEntity,
   status: JobStatus,
-  lastStatus: StatusChange,
   statusChanges: StatusChange[],
   baseUrl: string
 ): Promise<void> {
+  const lastStatus = statusChanges[statusChanges.length - 1];
   const url =
     entity.type == "sync"
       ? `${baseUrl}/${entity.slug}/syncs/tasks?query={syncId:'${entity.actorId}'}`
@@ -634,14 +677,14 @@ async function sendSlackNotification(
   }
 }
 
-async function sendEmailNotification(
+export async function sendEmailNotification(
   channel: NotificationChannel,
   entity: StatusChangeEntity,
   status: JobStatus,
-  lastStatus: StatusChange,
   statusChanges: StatusChange[],
   baseUrl: string
 ): Promise<void> {
+  const lastStatus = statusChanges[statusChanges.length - 1];
   const name = `${entity.fromName} → ${entity.toName}`;
   const details = [...statusChanges]
     .reverse()

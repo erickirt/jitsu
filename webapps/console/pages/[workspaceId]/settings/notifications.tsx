@@ -5,7 +5,8 @@ import React from "react";
 import { NotificationChannel } from "../../../lib/schema";
 import { CustomWidgetProps } from "../../../components/ConfigObjectEditor/Editors";
 import { Select } from "antd";
-import { BellIcon } from "lucide-react";
+import { BellIcon, MailIcon, Slack } from "lucide-react";
+import { rpc } from "juava";
 
 const Misc: React.FC<any> = () => {
   return (
@@ -15,8 +16,13 @@ const Misc: React.FC<any> = () => {
   );
 };
 
+export const FakeEditor: React.FC<{ schema: any } & CustomWidgetProps<string[]>> = props => {
+  return (
+    <div className={"rounded-md border border-gray-300 bg-gray-50 text-text p-1.5 px-2.5"}>All Workspace Users</div>
+  );
+};
+
 export const StringArrayEditor: React.FC<{ schema: any } & CustomWidgetProps<string[]>> = props => {
-  console.log("StringArray", props);
   return (
     <Select
       mode={!props.schema.items?.enum ? "tags" : "multiple"}
@@ -40,7 +46,24 @@ const NotificationChannelList: React.FC<{}> = () => {
     listColumns: [
       {
         title: "Channel",
-        render: (s: NotificationChannel) => <span className={"font-semibold"}>{`${s.channel}`}</span>,
+        render: (s: NotificationChannel) => {
+          switch (s.channel) {
+            case "slack":
+              return (
+                <div className={"flex flex-row gap-1.5 items-center"}>
+                  <Slack className={"w-4 h-4"} /> {s.channel}
+                </div>
+              );
+            case "email":
+              return (
+                <div className={"flex flex-row gap-1.5 items-center"}>
+                  <MailIcon className={"w-4 h-4"} /> {s.channel}
+                </div>
+              );
+            default:
+              return <span>{s.channel}</span>;
+          }
+        },
       },
     ],
     pathPrefix: "/settings",
@@ -57,10 +80,18 @@ const NotificationChannelList: React.FC<{}> = () => {
       // allWorkspaceEmails: {
       //   hidden: a => a.channel !== "email",
       // },
-      // emails: {
-      //   editor: StringArrayEditor,
-      //   hidden: a => a.channel !== "email" || a.allWorkspaceEmails,
-      // },
+      emails: {
+        displayName: "Recipients",
+        editor: FakeEditor,
+        hidden: a => a.channel !== "email",
+        documentation: (
+          <>
+            Email notifications are sent to all workspace users.
+            <br />
+            Individual users can unsubscribe from these notifications using the link provided in the email.
+          </>
+        ),
+      },
       recurringAlertsPeriodHours: {
         displayName: "Recurring Alerts Period (hours)",
         documentation: (
@@ -73,6 +104,17 @@ const NotificationChannelList: React.FC<{}> = () => {
     noun: "Notification Channel",
     type: "notification",
     explanation: "Notification Channel settings",
+    testConnectionEnabled: obj => (obj.channel === "slack" && !!obj.slackWebhookUrl ? "manual" : false),
+    testButtonLabel: "Send test notification",
+    onTest: async obj => {
+      try {
+        return await rpc(`/api/${workspace.id}/notification-test`, {
+          body: obj,
+        });
+      } catch (error: any) {
+        return { ok: false, error: `Cannot perform check` };
+      }
+    },
     icon: () => <BellIcon className="w-full h-full" />,
     editorTitle: (_: NotificationChannel, isNew: boolean) => {
       const verb = isNew ? "New" : "Edit";
