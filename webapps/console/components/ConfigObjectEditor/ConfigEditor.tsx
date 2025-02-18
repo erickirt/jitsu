@@ -94,7 +94,7 @@ export type ConfigEditorProps<T extends { id: string } = { id: string }, M = {}>
   newObject?: (meta?: M) => Partial<T>;
   //for providing custom editor component
   editorComponent?: EditorComponentFactory;
-  testConnectionEnabled?: (o: any) => boolean;
+  testConnectionEnabled?: (o: any) => boolean | "manual";
   testButtonLabel?: string;
   onTest?: (o: T) => Promise<ConfigTestResult>;
   backTo?: string;
@@ -251,6 +251,7 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
   } = props;
   useTitle(`${branding.productName} : ${createNew ? `Create new ${noun}` : `Edit ${noun}`}`);
   const [loading, setLoading] = useState<boolean>(false);
+  const [testing, setTesting] = useState<boolean>(false);
   const objectTypeFactory = asFunction<ZodType, any>(objectType);
   const schema = zodToJsonSchema(objectTypeFactory(object));
   const [formState, setFormState] = useState<any | undefined>(undefined);
@@ -300,8 +301,13 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
           liveValidate={true}
           validator={validator}
           onSubmit={async ({ formData }) => {
-            if (onTest && (typeof testConnectionEnabled === "undefined" || testConnectionEnabled(formData || object))) {
+            if (
+              onTest &&
+              (typeof testConnectionEnabled === "undefined" || testConnectionEnabled(formData || object) === true)
+            ) {
+              setTesting(true);
               const testRes = testResult || (await onTest(formState?.formData || object));
+              setTesting(false);
               if (!testRes.ok) {
                 modal.confirm({
                   title: "Check failed",
@@ -325,6 +331,7 @@ const EditorComponent: React.FC<EditorComponentProps> = props => {
         >
           <EditorButtons
             loading={loading}
+            testing={testing}
             isNew={isNew}
             isTouched={isTouched}
             hasErrors={hasErrors}
@@ -382,10 +389,10 @@ const SingleObjectEditor: React.FC<SingleObjectEditorProps> = props => {
     loadMeta,
     onTest,
     backTo,
-    pathPrefix,
+    pathPrefix = "",
     ...otherProps
   } = props;
-  const pref = pathPrefix ? `/${pathPrefix}` : "";
+  const pref = pathPrefix;
   const [meta, setMeta] = useState<any>(undefined);
   const isNew = !!(!otherProps.object || createNew);
   const workspace = useWorkspace();
@@ -686,7 +693,7 @@ const ObjectsList: React.FC<{ objects: any[]; onDelete: (id: string) => Promise<
   name = (o: any) => o.name,
   pathPrefix = "",
 }) => {
-  const pref = pathPrefix ? `/${pathPrefix}` : "";
+  const pref = pathPrefix;
   const modal = useAntdModal();
   const nameRender = listColumns.find(c => c.title === "name")?.render;
   useTitle(`${branding.productName} : ${plural(noun)}`);

@@ -10,6 +10,7 @@ const log = getLog("ConfigEditor");
 export type EditorButtonProps<T extends { id: string } = { id: string }> = {
   isNew: boolean;
   loading: boolean;
+  testing: boolean;
   onDelete: () => void;
   onTest?: () => Promise<ConfigTestResult>;
   onCancel: () => void;
@@ -23,6 +24,7 @@ export type EditorButtonProps<T extends { id: string } = { id: string }> = {
 export const EditorButtons: React.FC<EditorButtonProps> = ({
   isNew,
   loading,
+  testing,
   onCancel,
   onDelete,
   onTest,
@@ -81,7 +83,7 @@ export const EditorButtons: React.FC<EditorButtonProps> = ({
           closable
         />
       )}
-      {loading && onTest && <Alert message="Testing connection..." type="info" />}
+      {testing && <Alert message="Testing connection..." type="info" />}
       <div className="flex justify-between mt-4">
         <div>
           {!isNew && (
@@ -93,8 +95,8 @@ export const EditorButtons: React.FC<EditorButtonProps> = ({
         <div className="flex justify-end space-x-5" ref={buttonDivRef}>
           {onTest &&
             (testStatus === "success" ? (
-              <Popover content={"Connection test passed"} color={"lime"} trigger={"hover"}>
-                <Button type="link" disabled={loading} size="large" onClick={doTest}>
+              <Popover content={"Connection test passed"} color={"lime"} trigger={"click"} defaultOpen={true}>
+                <Button type="link" disabled={loading || testing} size="large" onClick={doTest}>
                   <CheckOutlined />
                   {testButtonLabel}
                 </Button>

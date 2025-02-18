@@ -193,7 +193,7 @@ export const NotificationChannel = ConfigEntityBase.merge(
     channel: z.enum(["email", "slack"]).default("email"),
     slackWebhookUrl: z.string().optional(),
     // allWorkspaceEmails: z.boolean().default(true).optional(),
-    // emails: z.array(z.string()).optional(),
+    emails: z.array(z.string()).optional(),
     recurringAlertsPeriodHours: z.number().max(720).min(0).default(24),
   })
 );
