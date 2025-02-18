@@ -124,10 +124,10 @@ export default createRoute()
                                ORDER BY "actorId", "tableName", id DESC),
              status_changes as (SELECT "actorId",
                                        "tableName",
-                                       coalesce(SUM(CASE WHEN "startedAt" >= CURRENT_DATE - INTERVAL '2 hours' THEN 1 END), 0) AS "changesPerHours",
-                                       coalesce(SUM(CASE WHEN "startedAt" >= CURRENT_DATE - INTERVAL '1 days' THEN 1 END), 0) AS "changesPerDay"
+                                       coalesce(SUM(CASE WHEN "startedAt" >= CURRENT_TIMESTAMP - INTERVAL '2 hours' THEN 1 END), 0) AS "changesPerHours",
+                                       coalesce(SUM(CASE WHEN "startedAt" >= CURRENT_TIMESTAMP - INTERVAL '1 days' THEN 1 END), 0) AS "changesPerDay"
                                 FROM newjitsu."StatusChange"
-                                where "startedAt" >= CURRENT_DATE - INTERVAL '7 days'
+                                where "startedAt" >= CURRENT_TIMESTAMP - INTERVAL '1 days'
                                 group by "actorId", "tableName")
 
         select w.id                          as "workspaceId",
