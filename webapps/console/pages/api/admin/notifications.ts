@@ -167,16 +167,20 @@ export default createRoute()
 
     const increments = await loadBatchStatusesChanges(previousRunTime, entities);
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
-    const values = increments
-      .entries()
-      .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}')`)
-      .toArray()
-      .join(",");
-    const query = `UPDATE newjitsu."StatusChange" as s SET counts = s.counts + data.counts, timestamp = data.timestamp::TIMESTAMPTZ(3)
-                       FROM (VALUES ${values}) AS data(id, counts, timestamp)
-                       WHERE s.id = data.id`;
-    const res = await db.pgPool().query(query);
-    log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
+    if (increments.size > 0) {
+      const values = increments
+        .entries()
+        .toArray()
+        .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}')`)
+        .join(",");
+      const query = `UPDATE newjitsu."StatusChange" as s
+                     SET counts    = s.counts + data.counts,
+                         timestamp = data.timestamp::TIMESTAMPTZ(3)
+                     FROM (VALUES ${values}) AS data(id, counts, timestamp)
+                     WHERE s.id = data.id`;
+      const res = await db.pgPool().query(query);
+      log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
+    }
 
     await loadSyncStatusesChanges(previousRunTime, entities);
 
