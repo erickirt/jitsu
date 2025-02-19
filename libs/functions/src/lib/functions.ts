@@ -146,7 +146,7 @@ export function toJitsuClassic(event: AnalyticsServerEvent, ctx: FullContext): A
         : undefined,
     ids: Object.keys(ids).length > 0 ? ids : undefined,
     parsed_ua:
-      Object.keys(ua).length > 0
+      event.parsed_ua || Object.keys(ua).length > 0
         ? {
             os_family: ua.os?.name,
             os_version: ua.os?.version,

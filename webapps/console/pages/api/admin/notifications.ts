@@ -296,6 +296,7 @@ async function processStatusChanges(
           } else if (lastStatus.status !== "SUCCESS" && lastStatus.timestamp.getTime() > sendRecurringTime) {
             // recurring alert
             doNotify = true;
+            lastStatus.description = "RECURRING: " + lastStatus.description;
           }
         }
       } else if (entity.changesPerHours === 0) {
@@ -303,14 +304,14 @@ async function processStatusChanges(
           .atInfo()
           .log(`[${chkey}] Flapping ended ${lastStatus.timestamp} Changes per hour: ${entity.changesPerHours}`);
         doNotify = true;
-      } else if (lastStatus.timestamp.getTime() > sendRecurringTime) {
+      } else if (lastStatus.timestamp.getTime() > sendRecurringTime && lastStatus.status !== "SUCCESS") {
         log
           .atInfo()
           .log(`[${chkey}] Flapping recurring ${state.flappingSince} Changes per hour: ${entity.changesPerHours}`);
         cStatuses.push({
           ...lastStatus,
           status: "FLAPPING",
-          description: `FLAPPING RECURRING: ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
+          description: `RECURRING: FLAPPING ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
         });
         doNotify = true;
       } else {
@@ -539,7 +540,7 @@ async function updateStatusChange(
         if (!entity.timestamp) {
           description = "First run.";
         } else {
-          description = `Recovered from ${entity.status} of ${entity.timestamp}.`;
+          description = `Recovered from ${entity.status} of ${entity.timestamp.toISOString()}.`;
         }
       }
       newEntity = {
