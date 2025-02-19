@@ -331,7 +331,7 @@ async function processStatusChanges(
 function makeNotificationState(
   channel: NotificationChannel,
   statusChange: StatusChange,
-  flappingSince?: Date,
+  flappingSince?: Date | null,
   error?: string
 ): NotificationState {
   return {
@@ -350,7 +350,7 @@ async function updateNotificationState(
   channelStates: Record<string, NotificationState>,
   channel: NotificationChannel,
   lastStatus: StatusChange,
-  flappingSince?: Date,
+  flappingSince?: Date | null,
   error?: string
 ): Promise<NotificationState> {
   const state = makeNotificationState(channel, lastStatus, flappingSince, error);
@@ -380,8 +380,8 @@ async function processNotifications(
   let error: string | undefined = undefined;
   const state = channelStates[chKey(channel.id, entity.actorId, entity.tableName)];
   const lastStatus = statusChanges[statusChanges.length - 1];
-  let flappingSince: Date | undefined =
-    lastStatus.status === "FLAPPING" ? state?.flappingSince || lastStatus.timestamp : undefined;
+  let flappingSince: Date | null =
+    lastStatus.status === "FLAPPING" ? state?.flappingSince || lastStatus.timestamp : null;
   const status = lastStatus.status === "SUCCESS" ? "SUCCESS" : lastStatus.status === "FLAPPING" ? "FLAPPING" : "FAILED";
   try {
     if (channel.channel === "slack") {
