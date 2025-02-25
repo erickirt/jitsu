@@ -76,6 +76,14 @@ const NotificationChannelList: React.FC<{}> = () => {
       },
       slackWebhookUrl: {
         hidden: a => a.channel !== "slack",
+        documentation: (
+          <>
+            See the slack documentation on how to{" "}
+            <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer">
+              create a webhook URL
+            </a>
+          </>
+        ),
       },
       // allWorkspaceEmails: {
       //   hidden: a => a.channel !== "email",
