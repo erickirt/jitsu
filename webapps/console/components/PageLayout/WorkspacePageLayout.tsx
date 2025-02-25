@@ -11,7 +11,7 @@ import {
   Activity,
   AlertCircle,
   ArrowLeftRight,
-  ArrowRight,
+  ArrowRight, BellIcon,
   ChevronDown,
   ChevronUp,
   CircleDollarSign,
@@ -619,11 +619,11 @@ function PageHeader() {
           : undefined,
         { title: "User Settings", path: "/user", icon: <User className="w-full h-full" />, globalPath: true },
         { title: "Billing Settings", path: "/settings/billing", icon: <CreditCard className="w-full h-full" /> },
-        // {
-        //   title: "Notification Settings",
-        //   path: "/settings/notifications",
-        //   icon: <BellIcon className="w-full h-full" />,
-        // },
+        {
+          title: "Notification Settings",
+          path: "/settings/notifications",
+          icon: <BellIcon className="w-full h-full" />,
+        },
         billing.enabled && billing.settings?.dataRetentionEditorEnabled
           ? {
               title: "Data Retention",
