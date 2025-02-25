@@ -819,7 +819,7 @@ const DestinationsList: React.FC<{ type?: string }> = ({ type }) => {
         <DestinationCatalog
           onClick={async destination => {
             const url = `/${
-              workspace.id
+              workspace.slugOrId
             }/destinations?id=new&destinationType=${destination}&backTo=${encodeURIComponent(
               (router.query.backTo ?? "") as string
             )}`;

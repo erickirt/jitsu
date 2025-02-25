@@ -34,20 +34,16 @@ const AvailableDestinationsList: React.FC<any> = () => {
       <div className="w-3/4 mx-auto">
         <h1 className="text-2xl font-bold mb-4">Start SQL Query Editor</h1>
         <div className="font-light text-textLight font-sm">
-          You can run SQL queries against following destinations. We support ClickHouse destinations connected via HTTPS
-          interface, including{" "}
-          <Link
-            className="underline"
-            href={appConfig.docsUrl ? concatUrl(appConfig.docsUrl, "/features/provisioned-warehouse") : "/"}
-          >
-            provision ClickHouse database
-          </Link>
+          We support ClickHouse destinations. <br />
+          SQL Query Editor connects to ClickHouse by HTTPS interface.
+          <br />
+          HTTPS port ( <code>8443</code> by default ) should be open in your ClickHouse server.
         </div>
         {Object.entries(data).length == 0 && (
           <>
             <div className="flex flex-col items-center">
               <Inbox className="h-16 w-16 my-6 text-neutral-200" />
-              <div className="text text-textLight mb-6">You don't any destinations available for SQL</div>
+              <div className="text text-textLight mb-6">You don't have any destinations available for SQL</div>
             </div>
           </>
         )}
