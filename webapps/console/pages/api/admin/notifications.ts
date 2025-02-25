@@ -658,7 +658,7 @@ export async function sendSlackNotification(
               status === "SUCCESS" ? "succeded 👍" : "failed 😣"
             }*. `,
             ``,
-            `The job was triggered in *<${baseUrl}/${entity.slug}\`|${entity.workspaceName}>* workspace from *${
+            `The job was triggered in *<${baseUrl}/${entity.slug}|${entity.workspaceName}>* workspace from *${
               entity.fromName
             }* to *${entity.toName}*. ${entity.tableName ? `\nTable: \`${entity.tableName}\`` : ""}`,
             ``,
