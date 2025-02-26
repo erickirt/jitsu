@@ -681,7 +681,7 @@ export async function sendSlackNotification(
             (status === "SUCCESS"
               ? `No additional reports will be sent for this connection unless the status changes.`
               : `No additional reports will be sent for this connection in ${channel.recurringAlertsPeriodHours} hours unless the status changes.`) +
-            `Previous job status: ${lastStatus.status}`,
+            ` Previous job status: ${lastStatus.status}`,
         },
       ],
     });
