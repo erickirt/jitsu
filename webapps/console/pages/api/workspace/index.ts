@@ -19,7 +19,7 @@ const api: Api = {
             include: {
               workspaceUserProperties: { where: { userId: userModel.id } },
               _count: {
-                select: { configurationObject: true },
+                select: { configurationObject: { where: { deleted: false } } },
               },
             },
             orderBy: { createdAt: "asc" },
