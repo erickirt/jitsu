@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
 import { withProductAnalytics } from "../../../lib/server/telemetry";
+import { isEEAvailable } from "../ee/jwt";
 
 const api: Api = {
   url: inferUrl(__filename),
@@ -14,7 +15,7 @@ const api: Api = {
         `User ${user.internalId} does not exist`
       );
       const activeWorkspaces = new Set<string>();
-      if (userModel.admin) {
+      if (userModel.admin && isEEAvailable()) {
         try {
           const rows = await db.pgPool()
             .query(`with customers as (select obj -> 'customer' ->> 'id'         as customer_id,
@@ -59,7 +60,7 @@ const api: Api = {
           ...workspace,
           lastUsed: workspaceUserProperties?.[0]?.lastUsed || undefined,
           entities: userModel.admin ? workspace["_count"]?.configurationObject : undefined,
-          active: userModel.admin ? activeWorkspaces.has(workspace.id) : undefined,
+          active: userModel.admin && isEEAvailable() ? activeWorkspaces.has(workspace.id) : undefined,
         }))
         .sort((a, b) => (b.lastUsed?.getTime() || 0) - (a.lastUsed?.getTime() || 0));
     },
