@@ -13,11 +13,37 @@ const api: Api = {
         await db.prisma().userProfile.findUnique({ where: { id: user.internalId } }),
         `User ${user.internalId} does not exist`
       );
-
+      const activeWorkspaces = new Set<string>();
+      if (userModel.admin) {
+        try {
+          const rows = await db.pgPool()
+            .query(`with customers as (select obj -> 'customer' ->> 'id'         as customer_id,
+                                              obj -> 'subscription' ->> 'status' as status
+                                       from newjitsuee.kvstore
+                                       where namespace = 'stripe-customer-info'
+                                       order by status),
+                         workspaces
+                             as (select id as workspace_id, obj ->> 'stripeCustomerId' as customer_id
+                                 from newjitsuee.kvstore
+                                 where namespace = 'stripe-settings')
+                    select workspace_id
+                    from workspaces w
+                             right join customers cus on cus.customer_id = w.customer_id
+                    where status = 'active'`);
+          for (const row of rows.rows) {
+            activeWorkspaces.add(row.workspace_id);
+          }
+        } catch (error) {}
+      }
       const baseList = userModel.admin
         ? await db.prisma().workspace.findMany({
             where: { deleted: false },
-            include: { workspaceUserProperties: { where: { userId: userModel.id } } },
+            include: {
+              workspaceUserProperties: { where: { userId: userModel.id } },
+              _count: {
+                select: { configurationObject: true },
+              },
+            },
             orderBy: { createdAt: "asc" },
           })
         : (
@@ -32,6 +58,8 @@ const api: Api = {
         .map(({ workspaceUserProperties, ...workspace }) => ({
           ...workspace,
           lastUsed: workspaceUserProperties?.[0]?.lastUsed || undefined,
+          entities: userModel.admin ? workspace["_count"]?.configurationObject : undefined,
+          active: userModel.admin ? activeWorkspaces.has(workspace.id) : undefined,
         }))
         .sort((a, b) => (b.lastUsed?.getTime() || 0) - (a.lastUsed?.getTime() || 0));
     },

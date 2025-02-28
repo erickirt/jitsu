@@ -92,13 +92,7 @@ const NotificationChannelList: React.FC<{}> = () => {
         displayName: "Recipients",
         editor: FakeEditor,
         hidden: a => a.channel !== "email",
-        documentation: (
-          <>
-            Email notifications are sent to all workspace users.
-            <br />
-            Individual users can unsubscribe from these notifications using the link provided in the email.
-          </>
-        ),
+        documentation: <>Email notifications are sent to all workspace users.</>,
       },
       recurringAlertsPeriodHours: {
         displayName: "Recurring Alerts Period (hours)",
