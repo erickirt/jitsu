@@ -3,7 +3,6 @@ import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
 import { withProductAnalytics } from "../../../lib/server/telemetry";
-import { isEEAvailable } from "../ee/jwt";
 
 const api: Api = {
   url: inferUrl(__filename),
