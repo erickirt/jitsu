@@ -89,7 +89,7 @@ const WorkspacesList = () => {
                     Not configured
                   </Tag>
                 )}
-                {userData?.admin && workspace["entities"] && (
+                {userData?.admin && workspace["entities"] > 0 && (
                   <Tag color="blue" className="text-xs text-textLight">
                     objects: {workspace["entities"]}
                   </Tag>
