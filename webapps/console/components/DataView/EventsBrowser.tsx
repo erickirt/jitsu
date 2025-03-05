@@ -213,13 +213,8 @@ const EventsBrowser0 = ({
       ? [
           ...mappedConnections,
           ...profileBuilders.map(p => {
-            const dst = destinationsMap[p.destinationId!];
-            const destinationType = coreDestinationsMap[dst?.destinationType];
             return {
               ...p,
-              mode: p.connectionOptions?.["mode"] || "batch",
-              destination: dst,
-              usesBulker: destinationType?.usesBulker || false,
               type: "profile-builder",
             };
           }),
