@@ -9,7 +9,8 @@ export type ProfileResult = {
 };
 
 export type ProfileUser = {
-  id?: string;
+  profileId: string;
+  userId?: string;
   anonymousId?: string;
   traits: Record<string, any>;
 };
