@@ -8,7 +8,7 @@ const log = getLog("warehouseStore");
 const warehouses: Record<string, Singleton<any>> = {};
 
 interface WarehouseStore {
-  query: (query: string, ...params: any) => Promise<any>;
+  query: (query: string, params?: Record<string, any>) => Promise<any[]>;
   close?: () => void;
 }
 
