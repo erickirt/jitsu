@@ -1,8 +1,8 @@
 import { WorkspacePageLayout } from "../../components/PageLayout/WorkspacePageLayout";
-import { Button, Collapse, Modal, Popover, Skeleton, Table, Tabs, Tooltip } from "antd";
+import { Button, Modal, Popover, Skeleton, Table, Tabs, Tooltip } from "antd";
 import { ConfigEditor, ConfigEditorProps, FieldDisplay } from "../../components/ConfigObjectEditor/ConfigEditor";
 import { DestinationConfig } from "../../lib/schema";
-import { confirmOp, feedbackError, serialization } from "../../lib/ui";
+import { confirmOp, copyTextToClipboard, feedbackError, feedbackSuccess, serialization } from "../../lib/ui";
 import {
   coreDestinations,
   coreDestinationsMap,
@@ -774,6 +774,15 @@ const DestinationsList: React.FC<{ type?: string }> = ({ type }) => {
         <EditorToolbar
           items={
             [
+              {
+                title: "ID: " + obj.id,
+                icon: <Copy className="w-full h-full" />,
+                href: "#",
+                onClick: () => {
+                  copyTextToClipboard(obj.id);
+                  feedbackSuccess("Copied to clipboard");
+                },
+              },
               obj.provisioned || obj.destinationType === "clickhouse"
                 ? {
                     title: "SQL Query Editor",
@@ -781,16 +790,6 @@ const DestinationsList: React.FC<{ type?: string }> = ({ type }) => {
                     href: `/${workspace.slugOrId}/sql?destinationId=${obj.id}`,
                   }
                 : undefined,
-              {
-                title: "Connected Sources",
-                icon: <Zap className="w-full h-full" />,
-                href: `/${workspace.slugOrId}/connections?destination=${obj.id}`,
-              },
-              {
-                title: "Syncs",
-                icon: <Share2 className="w-full h-full" />,
-                href: `/${workspace.slugOrId}/syncs?destination=${obj.id}`,
-              },
             ].filter(Boolean) as any
           }
           className="mb-4"
@@ -843,20 +842,20 @@ const DestinationsList: React.FC<{ type?: string }> = ({ type }) => {
         editorComponent={props => {
           return customEditors[props.object.destinationType];
         }}
-        subtitle={object => {
-          const destinationDocs = getCoreDestinationType((object as any).destinationType)?.documentation;
-          if (destinationDocs) {
-            // eslint-disable-next-line react/jsx-no-undef
-            return (
-              <Collapse ghost>
-                <Collapse.Panel header="Show destination documentation" key="1">
-                  <div className="prose-sm bg-neutral-100 rounded-lg px-5 py-4">{destinationDocs}</div>
-                </Collapse.Panel>
-              </Collapse>
-            );
-          }
-          return undefined;
-        }}
+        // subtitle={object => {
+        // const destinationDocs = getCoreDestinationType((object as any).destinationType)?.documentation;
+        //   if (destinationDocs) {
+        //     // eslint-disable-next-line react/jsx-no-undef
+        //     return (
+        //       <Collapse ghost>
+        //         <Collapse.Panel header="Show destination documentation" key="1">
+        //           <div className="prose-sm bg-neutral-100 rounded-lg px-5 py-4">{destinationDocs}</div>
+        //         </Collapse.Panel>
+        //       </Collapse>
+        //     );
+        //   }
+        //   return undefined;
+        // }}
       />
     </>
   );

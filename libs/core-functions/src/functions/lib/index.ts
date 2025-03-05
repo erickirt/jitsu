@@ -116,6 +116,7 @@ export type FunctionChainContext = {
   };
   fetch: InternalFetchType;
   store: TTLStore;
+  query?: (conId: string, query: string, params?: any) => Promise<any>;
   anonymousEventsStore?: AnonymousEventsStore;
   metrics?: FunctionMetrics;
   connectionOptions?: any;
