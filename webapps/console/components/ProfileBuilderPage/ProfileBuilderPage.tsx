@@ -397,7 +397,7 @@ const BuildProgress: React.FC<{
         children: (
           <Progress
             size={{ height: 15 }}
-            percent={(100 * (state?.processedUsers ?? 0)) / (state?.totalUsers ?? 1)}
+            percent={floorToTwo((100 * (state?.processedUsers ?? 0)) / (state?.totalUsers ?? 1))}
             status="active"
             strokeColor={{ from: "#108ee9", to: "#a405f5" }}
           />
@@ -1202,4 +1202,8 @@ export function ProfileBuilderPage() {
       </div>
     </WorkspacePageLayout>
   );
+}
+
+function floorToTwo(num) {
+  return Math.floor(num * 100) / 100;
 }
