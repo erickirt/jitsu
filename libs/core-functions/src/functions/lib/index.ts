@@ -146,6 +146,9 @@ export function wrapperFunction<E extends AnyEvent = AnyEvent, P extends AnyProp
       ...ctx,
       log,
       fetch: ftch,
+      getWarehouse: () => {
+        throw newError("Warehouse API is not available in builtin functions");
+      },
       store,
       props,
     };

@@ -9,6 +9,8 @@ import { PlusOutlined } from "@ant-design/icons";
 import classNames from "classnames";
 import { isTruish } from "../../lib/shared/chores";
 import { useRouter } from "next/router";
+import { WJitsuButton } from "../JitsuButton/JitsuButton";
+import { WLink } from "../Workspace/WLink";
 
 export type ConnectorNode = {
   id: string;
@@ -57,16 +59,16 @@ const Header: React.FC<Actions & { className?: string; hasData: boolean }> = p =
   return (
     <div className={classNames(`flex items-center justify-between`, p.className)}>
       <h1 className="text-2xl">
-        <Link href={p.editLink}>{p.title}</Link>
+        <WLink href={p.editLink}>{p.title}</WLink>
       </h1>
       <div className="gap-2 flex items-center">
-        <Link type="ghost" href={p.editLink} className="group flex items-center flex-nowrap whitespace-nowrap ml-12">
+        <WLink href={p.editLink} className="group flex items-center flex-nowrap whitespace-nowrap ml-12">
           View All <ArrowRight className="h-4 group-hover:-rotate-12 transition-all duration-500" />
-        </Link>
+        </WLink>
         {p.hasData && (
-          <Button type="primary" ghost={true} icon={<PlusOutlined />} href={p.newLink}>
+          <WJitsuButton type="primary" ghost={true} icon={<PlusOutlined />} href={p.newLink}>
             Add
-          </Button>
+          </WJitsuButton>
         )}
       </div>
     </div>

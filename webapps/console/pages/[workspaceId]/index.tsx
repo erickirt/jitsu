@@ -220,8 +220,8 @@ function WorkspaceOverview(props: {
         <ConnectionsDiagram
           connectorSourcesActions={{
             title: "Connectors",
-            newLink: `/${workspace.slugOrId}/services?showCatalog=true`,
-            editLink: `/${workspace.slugOrId}/services`,
+            newLink: `/services?showCatalog=true`,
+            editLink: `/services`,
           }}
           connectorSources={connectors.map(({ id, name, ...cfg }) => ({
             id,
@@ -262,13 +262,13 @@ function WorkspaceOverview(props: {
           }))}
           srcActions={{
             title: "Sites",
-            newLink: `/${workspace.slugOrId}/streams?id=new`,
-            editLink: `/${workspace.slugOrId}/streams`,
+            newLink: `/streams?id=new`,
+            editLink: `/streams`,
           }}
           dstActions={{
             title: "Destinations",
-            newLink: `/${workspace.slugOrId}/destinations?showCatalog=true`,
-            editLink: `/${workspace.slugOrId}/destinations`,
+            newLink: `/destinations?showCatalog=true`,
+            editLink: `/destinations`,
           }}
           sources={streams.map(({ id, name }) => ({
             id: id,

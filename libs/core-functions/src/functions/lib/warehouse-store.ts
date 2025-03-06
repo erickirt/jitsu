@@ -53,11 +53,11 @@ export async function warehouseQuery(
 const getClickhouseWarehouse = (cred: any): WarehouseStore => {
   const client = getClickhouseClient(cred);
   return {
-    query: async (query: string, query_params: Record<string, any>) => {
+    query: async (query: string, query_params?: Record<string, any>) => {
       //replace named parameters in query (like :paramName or @param_name) with clickhouse positional parameters (like {paramName: Int32})
       query = query.replace(/[:@](\w+)/g, (match, paramName) => {
         let t = "String";
-        const param = query_params[paramName];
+        const param = query_params?.[paramName];
         switch (typeof param) {
           case "number":
             if (Number.isInteger(param)) {

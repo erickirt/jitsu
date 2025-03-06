@@ -362,6 +362,16 @@ export type JitsuOptions = {
    */
   cookieDomain?: string;
   /**
+   * Name of cookies
+   */
+  cookieNames?: {
+    anonymousId?: string;
+    userId?: string;
+    userTraits?: string;
+    groupId?: string;
+    groupTraits?: string;
+  };
+  /**
    * Additional cookies to capture, where the keys are cookie names and
    * the values are the corresponding cookie values. By default, the following cookies are captured:
    * - Facebook: `_fbc`, `_fbp`

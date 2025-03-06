@@ -313,6 +313,9 @@ async function sendToBulker(profileBuilder: ProfileBuilder, profile: Profile, co
     },
     fetch: context.fetch,
     store: context.store,
+    getWarehouse: () => {
+      throw new Error("Warehouse API is not available in builtin functions");
+    },
     props: {
       bulkerEndpoint: bulkerBase,
       destinationId: profile.destination_id || profileBuilder.destinationId,
