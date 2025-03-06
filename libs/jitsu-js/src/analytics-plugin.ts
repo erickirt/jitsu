@@ -33,6 +33,7 @@ const defaultConfig: Required<JitsuOptions> = {
   fetch: null,
   echoEvents: false,
   cookieDomain: undefined,
+  cookieNames: {},
   cookieCapture: {},
   runtime: undefined,
   fetchTimeoutMs: undefined,
@@ -135,7 +136,7 @@ function restoreTraits(storage: PersistentStorage) {
   };
 }
 
-export type StorageFactory = (cookieDomain: string, cookie2key: Record<string, string>) => PersistentStorage;
+export type StorageFactory = (cookieDomain: string, key2Cookie: (key: string) => string) => PersistentStorage;
 
 function getCookie(name: string) {
   const value = `; ${document.cookie}`;
@@ -215,8 +216,8 @@ function setCookie(name: string, val: string, { domain, secure }: { domain: stri
 
 const defaultCookie2Key = {
   __anon_id: "__eventn_id",
-  __user_traits: "__eventn_id_usr",
   __user_id: "__eventn_uid",
+  __user_traits: "__eventn_id_usr",
   __group_id: "__group_id",
   __group_traits: "__group_traits",
 };
@@ -224,22 +225,22 @@ const defaultCookie2Key = {
 const cookieStorage: StorageFactory = (cookieDomain, key2cookie) => {
   return {
     setItem(key: string, val: any) {
+      const cookieName = key2cookie(key) || key;
       if (typeof val === "undefined") {
-        removeCookie(key2cookie[key] || key, {
+        removeCookie(cookieName, {
           domain: cookieDomain,
           secure: window.location.protocol === "https:",
         });
         return;
       }
       const strVal = typeof val === "object" && val !== null ? encodeURIComponent(JSON.stringify(val)) : val;
-      const cookieName = key2cookie[key] || key;
       setCookie(cookieName, strVal, {
         domain: cookieDomain,
         secure: window.location.protocol === "https:",
       });
     },
     getItem(key: string) {
-      const cookieName = key2cookie[key] || key;
+      const cookieName = key2cookie(key) || key;
       const result = getCookie(cookieName);
       if (key === "__anon_id") {
         //anonymous id must always be a string, so we don't parse it to preserve its exact value
@@ -247,20 +248,20 @@ const cookieStorage: StorageFactory = (cookieDomain, key2cookie) => {
       }
       if (typeof result === "undefined" && key === "__user_id") {
         //backward compatibility with old jitsu cookie. get user id if from traits
-        const traits = parse(getCookie("__eventn_id_usr")) || {};
+        const traits = parse(getCookie(key2cookie("__user_traits") || "__eventn_id_usr")) || {};
         return traits.internal_id || traits.user_id || traits.id || traits.userId;
       }
       return parse(result);
     },
     removeItem(key: string) {
-      removeCookie(key2cookie[key] || key, {
+      removeCookie(key2cookie(key) || key, {
         domain: cookieDomain,
         secure: window.location.protocol === "https:",
       });
     },
     reset() {
-      for (const v of Object.values(key2cookie)) {
-        removeCookie(v, {
+      for (const key of Object.keys(defaultCookie2Key)) {
+        removeCookie(key2cookie(key) || key, {
           domain: cookieDomain,
           secure: window.location.protocol === "https:",
         });
@@ -270,6 +271,22 @@ const cookieStorage: StorageFactory = (cookieDomain, key2cookie) => {
 };
 
 export function windowRuntime(opts: JitsuOptions): RuntimeFacade {
+  const key2Cookie = (key: string) => {
+    switch (key) {
+      case "__anon_id":
+        return opts.cookieNames?.anonymousId || defaultCookie2Key.__anon_id;
+      case "__user_id":
+        return opts.cookieNames?.userId || defaultCookie2Key.__user_id;
+      case "__user_traits":
+        return opts.cookieNames?.userTraits || defaultCookie2Key.__user_traits;
+      case "__group_id":
+        return opts.cookieNames?.groupId || defaultCookie2Key.__group_id;
+      case "__group_traits":
+        return opts.cookieNames?.groupTraits || defaultCookie2Key.__group_traits;
+      default:
+        return key;
+    }
+  };
   return {
     getCookie(name: string): string | undefined {
       const value = `; ${document.cookie}`;
@@ -292,7 +309,7 @@ export function windowRuntime(opts: JitsuOptions): RuntimeFacade {
       return new Date().getTimezoneOffset();
     },
     store(): PersistentStorage {
-      return cookieStorage(opts.cookieDomain || getTopLevelDomain(window.location.hostname), defaultCookie2Key);
+      return cookieStorage(opts.cookieDomain || getTopLevelDomain(window.location.hostname), key2Cookie);
     },
 
     language(): string {

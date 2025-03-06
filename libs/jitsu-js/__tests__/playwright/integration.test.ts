@@ -482,6 +482,66 @@ test("anonymous-id-bug", async ({ browser }) => {
   expect(p.body.anonymousId).toEqual(anonymousId);
 });
 
+test("cookie-names", async ({ browser }) => {
+  clearRequestLog();
+  const browserContext = await browser.newContext();
+  const { page, uncaughtErrors } = await createLoggingPage(browserContext);
+  const pageResult = await page.goto(`${server.baseUrl}/cookie-names.html`);
+  await page.waitForFunction(() => window["jitsu"] !== undefined, undefined, {
+    timeout: 1000,
+    polling: 100,
+  });
+  expect(pageResult.status()).toBe(200);
+  const cookies = (await browserContext.cookies()).reduce(
+    (res, cookie) => ({
+      ...res,
+      [cookie.name]: cookie.value,
+    }),
+    {}
+  );
+  console.log("🍪 Jitsu Cookies", cookies);
+  expect(cookies).toHaveProperty("my_anon_ck");
+  const anonymousId = cookies["my_anon_ck"];
+
+  //wait for some time since the server has an artificial latency of 30ms
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  expect(uncaughtErrors.length).toEqual(0);
+  console.log(
+    `📝 Request log size of ${requestLog.length}`,
+    requestLog.map(x => describeEvent(x.type, x.body))
+  );
+  expect(requestLog[0].body.anonymousId).toEqual(anonymousId);
+
+  const { page: secondPage } = await createLoggingPage(browserContext);
+  const pageResult2 = await secondPage.goto(
+    `${server.baseUrl}/cookie-names.html?utm_source=source&utm_medium=medium&utm_campaign=campaign`
+  );
+  await secondPage.waitForFunction(() => window["jitsu"] !== undefined, undefined, {
+    timeout: 1000,
+    polling: 100,
+  });
+  expect(pageResult2.status()).toBe(200);
+  const cookies2 = (await browserContext.cookies()).reduce(
+    (res, cookie) => ({
+      ...res,
+      [cookie.name]: cookie.value,
+    }),
+    {}
+  );
+  console.log("🍪 Jitsu Cookies", cookies2);
+  expect(cookies2).toHaveProperty("my_anon_ck");
+  expect(cookies["my_anon_ck"]).toEqual(anonymousId);
+
+  //wait for some time since the server has an artificial latency of 30ms
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  expect(uncaughtErrors.length).toEqual(0);
+  console.log(
+    `📝 Request log size of ${requestLog.length}`,
+    requestLog.map(x => describeEvent(x.type, x.body))
+  );
+  expect(requestLog[1].body.anonymousId).toEqual(anonymousId);
+});
+
 test("basic", async ({ browser }) => {
   clearRequestLog();
   const browserContext = await browser.newContext();
