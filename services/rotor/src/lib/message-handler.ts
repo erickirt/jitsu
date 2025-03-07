@@ -79,7 +79,7 @@ export async function rotorMessageHandler(
   );
 
   const event = (
-    message.origin?.classic ? fromJitsuClassic(message.httpPayload) : message.httpPayload
+    message.origin?.classic && retries === 0 ? fromJitsuClassic(message.httpPayload) : message.httpPayload
   ) as AnalyticsServerEvent;
 
   if (!event.context) {
