@@ -459,15 +459,17 @@ function ConnectionEditor({
       ),
     });
   }
-  if (hasZodFields(connectionOptionsZodType, "deduplicateWindow") && destinationType.id === "bigquery") {
+  if (
+    hasZodFields(connectionOptionsZodType, "deduplicateWindow") &&
+    (destinationType.id === "bigquery" || destinationType.id === "redshift")
+  ) {
     configItems.push({
       group: "Advanced",
       documentation: (
         <>
-          Limits date range on which deduplication is performed by reducing lookup to historic data. In BigQuery that
-          means that only data from partitions that are in that range will be processed for deduplication. That may
-          significantly reduce cost of data processing during inserting batches with 'Deduplicate' option. 'Timestamp
-          Column' is used as a parameter that defines date range.
+          Limits date range on which deduplication is performed by reducing lookup to historic data. That may
+          significantly reduce cost or duration of data processing during inserting batches with 'Deduplicate' option.
+          'Timestamp Column' is used as a parameter that defines date range.
         </>
       ),
       name: "Deduplicate Window",
