@@ -366,7 +366,7 @@ const AvailablePlans: React.FC<{}> = () => {
     async () => {
       if (billing.settings?.isLegacyPlan) {
         return {
-          plans: {}
+          plans: {},
         };
       }
       const plans = await rpc(`/api/${workspace.id}/ee/billing/plans`);
