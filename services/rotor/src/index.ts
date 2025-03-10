@@ -9,7 +9,7 @@ import { FunctionsHandler, FunctionsHandlerMulti } from "./http/functions";
 import { initMaxMindClient, GeoResolver } from "./lib/maxmind";
 import { MessageHandlerContext, rotorMessageHandler } from "./lib/message-handler";
 import { DummyMetrics } from "./lib/metrics";
-import { connectionsStore, functionsStore } from "./lib/repositories";
+import { connectionsStore, functionsStore, streamsStore } from "./lib/repositories";
 import { Server } from "node:net";
 import { getApplicationVersion, getDiagnostics } from "./lib/version";
 import { Redis } from "ioredis";
@@ -158,7 +158,7 @@ async function main() {
   }
 }
 
-function initHTTP(rotorContext: Omit<MessageHandlerContext, "connectionStore" | "functionsStore" | "workspaceStore">) {
+function initHTTP(rotorContext: Omit<MessageHandlerContext, "connectionStore" | "functionsStore" | "streamsStore">) {
   http.use((req, res, next) => {
     if (req.path === "/health" || req.path === "/version") {
       return next();
@@ -208,6 +208,12 @@ function initHTTP(rotorContext: Omit<MessageHandlerContext, "connectionStore" | 
         status: functionsStore.status(),
         lastUpdated: functionsStore.lastRefresh(),
         lastModified: functionsStore.lastModified(),
+      },
+      streamsStore: {
+        enabled: streamsStore.getCurrent()?.enabled || "loading",
+        status: streamsStore.status(),
+        lastUpdated: streamsStore.lastRefresh(),
+        lastModified: streamsStore.lastModified(),
       },
     });
   });

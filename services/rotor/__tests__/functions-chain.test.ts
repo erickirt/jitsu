@@ -8,7 +8,7 @@ import {
   EnrichedConnectionConfig,
   EntityStore,
   FunctionConfig,
-  WorkspaceWithProfiles,
+  StreamWithDestinations,
 } from "@jitsu/core-functions";
 import { IngestMessage } from "@jitsu/protocols/async-request";
 import { isEqual } from "lodash";
@@ -190,12 +190,12 @@ const connectionStore: EntityStore<EnrichedConnectionConfig> = {
   lastModified: new Date(),
 };
 
-const workspaceStore: EntityStore<WorkspaceWithProfiles> = {
+const streamsStore: EntityStore<StreamWithDestinations> = {
   getObject: (id: string) => {
     return undefined;
   },
   getAll: () => {
-    return {} as Record<string, WorkspaceWithProfiles>;
+    return {} as Record<string, StreamWithDestinations>;
   },
   toJSON: () => "",
   enabled: true,
@@ -274,7 +274,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -300,7 +300,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -327,7 +327,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -351,7 +351,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -378,7 +378,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -403,7 +403,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -430,7 +430,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -453,7 +453,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -477,7 +477,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -501,7 +501,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -528,7 +528,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },
@@ -553,7 +553,7 @@ describe("Test Functions Chain", () => {
         {
           connectionStore: connectionStore,
           functionsStore: funcStore,
-          workspaceStore: workspaceStore,
+          streamsStore: streamsStore,
           eventsLogger: DummyEventsStore,
           dummyPersistentStore: createMemoryStore({}),
         },

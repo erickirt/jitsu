@@ -406,6 +406,15 @@ export async function UDFTestRun(
       connection: {
         id: "functionsDebugger",
       },
+      allConnections: [
+        {
+          id: "functionsDebugger",
+          destinationId: "functionsDebugger-destinationId",
+          destinationName: "Functions Debugger Destination",
+          type: "clickhouse",
+          mode: "batch",
+        },
+      ],
       workspace: {
         id: workspaceId,
       },
