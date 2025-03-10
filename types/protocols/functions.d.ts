@@ -165,6 +165,14 @@ export type EventContext = {
     mode?: string;
     options?: any;
   };
+  // available in Profile Builder transformations
+  allConnections?: {
+    id: string;
+    destinationId: string;
+    destinationName: string;
+    type: string;
+    mode: string;
+  }[];
   workspace: {
     id: string;
   };

@@ -11,7 +11,7 @@ import { FuncChainFilter } from "./functions-chain";
 import type { Admin, Consumer, Producer, KafkaMessage } from "kafkajs";
 import { CompressionTypes } from "kafkajs";
 import { functionFilter, MessageHandlerContext } from "./message-handler";
-import { connectionsStore, functionsStore, workspaceStore } from "./repositories";
+import { connectionsStore, functionsStore, streamsStore } from "./repositories";
 import { RotorMetrics, FuncChainResult } from "@jitsu/core-functions";
 
 const log = getLog("kafka-rotor");
@@ -31,7 +31,7 @@ export type KafkaRotorConfig = {
   consumerGroupId: string;
   kafkaTopics: string[];
   kafkaClientId?: string;
-  rotorContext: Omit<MessageHandlerContext, "connectionStore" | "functionsStore" | "workspaceStore" | "metrics">;
+  rotorContext: Omit<MessageHandlerContext, "connectionStore" | "functionsStore" | "streamsStore" | "metrics">;
   handle: (
     message: string,
     rotorContext: MessageHandlerContext,
@@ -144,7 +144,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
               ...rotorContext,
               connectionStore: requireDefined(connectionsStore.getCurrent(), "Connection store is not initialized"),
               functionsStore: requireDefined(functionsStore.getCurrent(), "Functions store is not initialized"),
-              workspaceStore: requireDefined(workspaceStore.getCurrent(), "Workspace store is not initialized"),
+              streamsStore: requireDefined(streamsStore.getCurrent(), "Streams store is not initialized"),
               metrics,
             },
             functionFilter(retriedFunctionId),

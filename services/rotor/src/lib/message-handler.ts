@@ -3,19 +3,17 @@ import { GeoResolver } from "./maxmind";
 import { IngestMessage } from "@jitsu/protocols/async-request";
 import { CONNECTION_IDS_HEADER } from "./rotor";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
-import { EventContext, FetchType, TTLStore } from "@jitsu/protocols/functions";
+import { EventContext, TTLStore } from "@jitsu/protocols/functions";
 import {
   MetricsMeta,
   mongoAnonymousEventsStore,
   parseUserAgent,
   EventsStore,
-  ProfilesFunction,
-  ProfilesConfig,
   EntityStore,
   EnrichedConnectionConfig,
   FunctionConfig,
-  WorkspaceWithProfiles,
   RotorMetrics,
+  StreamWithDestinations,
 } from "@jitsu/core-functions";
 import NodeCache from "node-cache";
 import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } from "./functions-chain";
@@ -32,7 +30,7 @@ const funcsChainCache = new NodeCache({ stdTTL: funcsChainTTL, checkperiod: 60, 
 export type MessageHandlerContext = {
   connectionStore: EntityStore<EnrichedConnectionConfig>;
   functionsStore: EntityStore<FunctionConfig>;
-  workspaceStore: EntityStore<WorkspaceWithProfiles>;
+  streamsStore: EntityStore<StreamWithDestinations>;
   eventsLogger: EventsStore;
   metrics?: RotorMetrics;
   geoResolver?: GeoResolver;
@@ -65,6 +63,7 @@ export async function rotorMessageHandler(
   }
   const connStore = rotorContext.connectionStore;
   const funcStore = rotorContext.functionsStore;
+  const streamsStore = rotorContext.streamsStore;
 
   const message = (typeof _message === "string" ? JSON.parse(_message) : _message) as IngestMessage;
   const connectionId =
@@ -118,6 +117,15 @@ export async function rotorMessageHandler(
       id: connection.workspaceId,
     },
   };
+  if (connection.type === "profiles") {
+    ctx.allConnections = streamsStore.getObject(ctx.source.id)?.destinations?.map(d => ({
+      id: d.connectionId,
+      destinationId: d.id,
+      destinationName: d.name,
+      type: d.destinationType,
+      mode: d.options?.mode,
+    }));
+  }
 
   const metricsMeta: MetricsMeta = {
     workspaceId: connection.workspaceId,
