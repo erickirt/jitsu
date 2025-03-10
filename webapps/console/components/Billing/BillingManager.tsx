@@ -364,6 +364,11 @@ const AvailablePlans: React.FC<{}> = () => {
   const { isLoading, error, data } = useQuery(
     ["availablePlans", workspace.id],
     async () => {
+      if (billing.settings?.isLegacyPlan) {
+        return {
+          plans: {}
+        };
+      }
       const plans = await rpc(`/api/${workspace.id}/ee/billing/plans`);
       assertDefined(billing.settings.planId, `planId is not defined in ${JSON.stringify(billing.settings)}`);
 
@@ -402,13 +407,25 @@ const AvailablePlans: React.FC<{}> = () => {
     },
     { cacheTime: 0, retry: false }
   );
+  //if (billing.settings?.customBilling)
   if (isLoading) {
     return <Skeleton active />;
   } else if (error) {
     return <ErrorCard error={error} title="Failed to load available plans" />;
   }
   assertDefined(data, "Data is not defined");
-
+  if (billing.settings?.isLegacyPlan) {
+    return (
+      <div className="text-center">
+        <div className="text-textLight mt-6">
+          You're using a legacy plan. To upgrade to a new plan or cancel your subscription, please reach out to our{" "}
+          <Link className="text-primary underline" href={`/${workspace.slugOrId}/support`}>
+            Support Team
+          </Link>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-row flex-nowrap justify-center space-x-6">
       {Object.entries(data.plans).map(([planId, plan]) => (
