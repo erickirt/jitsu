@@ -17,6 +17,7 @@ export const stripeDataTable =
 
 export type SubscriptionStatus = {
   planId: string;
+  isLegacyPlan?: boolean;
   expiresAt?: string;
   renewAfterExpiration?: boolean;
 } & Record<string, any>;
@@ -83,6 +84,7 @@ export async function getOrCreateCurrentSubscription(
   stripeCustomerId: string;
   customBilling?: boolean;
   noRestrictions?: boolean;
+  isLegacyPlan?: boolean;
   subscriptionStatus: SubscriptionStatus;
 }> {
   let stripeOptions: StripeDataTableEntry = await store.getTable(stripeDataTable).get(workspaceId);
@@ -143,6 +145,7 @@ export async function getOrCreateCurrentSubscription(
   return {
     stripeCustomerId: stripeOptions.stripeCustomerId,
     noRestrictions: !!stripeOptions.noRestrictions,
+    isLegacyPlan: !!stripeOptions.activeSubscription,
     subscriptionStatus: {
       ...plan,
       ...(stripeOptions.customSettings || {}),
@@ -229,6 +232,7 @@ export async function getActivePlan(customerId: string): Promise<null | Subscrip
     return {
       planId: requireDefined(product.metadata?.jitsu_plan_id),
       planName: product.name,
+      isLegacyPlan: product.metadata?.is_legacy === "true" || product.metadata?.is_legacy === "1",
       expiresAt: new Date(subscription.current_period_end * 1000).toISOString(),
       renewAfterExpiration: !subscription.cancel_at_period_end,
       pastDue: pastDueSubscription && !activeSubscription,
@@ -340,7 +344,7 @@ export async function getOrCreatePortalConfiguration() {
       payment_method_update: { enabled: true },
       subscription_update: {
         default_allowed_updates: ["price"],
-        enabled: true,
+        enabled: false,
         products: allowedProducts,
         proration_behavior: "always_invoice",
       },
