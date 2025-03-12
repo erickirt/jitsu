@@ -486,12 +486,26 @@ export const coreDestinations: DestinationType<any>[] = [
     title: "Snowflake",
     tags: "Datawarehouse",
     credentials: z.object({
+      authenticationMethod: z
+        .enum(["key-pair", "password"])
+        .optional()
+        .default("key-pair")
+        .describe(
+          "Authentication Method::Snowflake authentication method: <a target='_blank' rel='noopener noreferrer' href='https://docs.snowflake.com/en/user-guide/key-pair-auth'>Key-pair</a> or username/password"
+        ),
+      username: z.string().optional().describe("Snowflake username"),
+      password: z.string().optional().describe("Snowflake password"),
+      privateKey: z
+        .string()
+        .optional()
+        .describe(
+          "Private Key::Snowflake private key. <a target='_blank' rel='noopener noreferrer' href='https://docs.snowflake.com/en/user-guide/key-pair-auth'>Generate the private key</a>"
+        ),
+      privateKeyPassphrase: z.string().optional(),
       account: z.string().describe("Snowflake account name"),
+      warehouse: z.string().describe("Snowflake warehouse name"),
       database: z.string().describe("Snowflake database name"),
       defaultSchema: z.string().default("PUBLIC").describe("Schema::Snowflake schema"),
-      username: z.string().describe("Snowflake username"),
-      password: z.string().describe("Snowflake password"),
-      warehouse: z.string().describe("Snowflake warehouse name"),
       parameters: z
         .object({})
         .catchall(z.string().default(""))
@@ -499,7 +513,20 @@ export const coreDestinations: DestinationType<any>[] = [
         .describe("Additional Snowflake connection parameters"),
     }),
     credentialsUi: {
+      authenticationMethod: {
+        correction: (obj, isNew) => (isNew ? "key-pair" : obj.authenticationMethod || "password"),
+      },
       password: {
+        password: true,
+        hidden: obj => obj.authenticationMethod === "key-pair",
+      },
+      privateKey: {
+        hidden: obj => obj.authenticationMethod !== "key-pair",
+        textarea: true,
+        password: true,
+      },
+      privateKeyPassphrase: {
+        hidden: obj => obj.authenticationMethod !== "key-pair",
         password: true,
       },
     },
