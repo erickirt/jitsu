@@ -6,13 +6,8 @@ import { createClient } from "@clickhouse/client";
 import { EventsStore } from "./index";
 import { Readable } from "stream";
 
-type LogEntry = {
-  actorId: string;
-  type: string;
-  timestamp: Date;
-  level: LogLevel;
-  message: any;
-};
+type LogEntry = [Date, string, string, LogLevel, any];
+
 function clickhouseHost() {
   if (process.env.CLICKHOUSE_URL) {
     return process.env.CLICKHOUSE_URL;
@@ -49,7 +44,7 @@ export function createClickhouseLogger(): EventsStore {
     const eventsStream = new Readable({ objectMode: true });
     const res = clickhouse.insert<LogEntry>({
       table: metricsSchema + ".events_log",
-      format: "JSONEachRow",
+      format: "JSONCompactEachRow",
       values: eventsStream,
     });
     const asyncWrite = async () => {
@@ -81,13 +76,7 @@ export function createClickhouseLogger(): EventsStore {
 
   return {
     log: (connectionId: string, level: LogLevel, message) => {
-      const logEntry = {
-        actorId: connectionId,
-        type: "function",
-        timestamp: new Date(),
-        level,
-        message,
-      };
+      const logEntry: LogEntry = [new Date(), connectionId, "function", level, message];
       buffer.push(logEntry);
     },
     close: () => {

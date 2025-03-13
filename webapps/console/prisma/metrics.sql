@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS newjitsu_metrics.metrics  on cluster jitsu_cluster
     functionId LowCardinality(String),
     destinationId LowCardinality(String),
     status LowCardinality(String),
-    events Int64
+    events Int64,
+    eventIndex UInt32
     )
     ENGINE = Null;
 
@@ -104,7 +105,7 @@ CREATE MATERIALIZED VIEW newjitsu_metrics.to_mv_metrics on cluster jitsu_cluster
                 )
 AS
 SELECT
-    timestamp,
+    date_trunc('minute', timestamp) as timestamp,
     workspaceId,
     streamId,
     connectionId,

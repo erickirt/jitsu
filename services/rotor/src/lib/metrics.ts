@@ -18,13 +18,18 @@ const metricsTable = "metrics";
 const max_batch_size = 10000;
 const flush_interval_ms = 60000;
 
-type MetricsEvent = MetricsMeta & {
-  key: string;
-  functionId: string;
-  timestamp: Date;
-  status: string;
-  events: number;
-};
+const _Timestamp = 0;
+const _MessageId = 1;
+const _WorkspaceId = 2;
+const _StreamId = 3;
+const _ConnectionId = 4;
+const _FunctionId = 5;
+const _DestinationId = 6;
+const _Status = 7;
+const _Count = 8;
+const _EventIndex = 9;
+
+type MetricsEvent = [Date, string, string, string, string, string, string, string, number, number];
 
 export const DummyMetrics: RotorMetrics = {
   logMetrics: () => {},
@@ -60,17 +65,20 @@ export function createMetrics(
           topic: `in.id.metrics.m.batch.t.${billingMetricsTable}`,
           compression: getCompressionType(),
           messages: buf
-            .filter(m => m.functionId.startsWith("builtin.destination.") && m.status !== "dropped")
+            .filter(m => m[_FunctionId].startsWith("builtin.destination.") && m[_Status] !== "dropped")
             .map(m => {
-              const d = new Date(m.timestamp);
+              const d = new Date(m[_Timestamp]);
+              d.setMilliseconds(0);
+              d.setSeconds(0);
               d.setMinutes(0);
+              const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_Timestamp].getTime() - d.getTime());
               return {
-                key: m.key,
+                key: key,
                 value: JSON.stringify({
                   timestamp: d,
-                  workspaceId: m.workspaceId,
+                  workspaceId: m[_WorkspaceId],
                   // to count active events use composed key: messageId_eventIndex_receivedAt
-                  messageId: m.key,
+                  messageId: key,
                 }),
               };
             }),
@@ -95,15 +103,18 @@ export function createMetrics(
       );
       const asyncWrite = async () => {
         for (let i = 0; i < buf.length; i++) {
-          const e = buf[i];
-          if (e.functionId.startsWith("builtin.destination.") && e.status !== "dropped") {
-            const d = new Date(e.timestamp);
+          const m = buf[i];
+          if (m[_FunctionId].startsWith("builtin.destination.") && m[_Status] !== "dropped") {
+            const d = new Date(m[_Timestamp]);
+            d.setMilliseconds(0);
+            d.setSeconds(0);
             d.setMinutes(0);
+            const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_Timestamp].getTime() - d.getTime());
             billingStream.push(
               JSON.stringify({
                 timestamp: d,
-                workspaceId: e.workspaceId,
-                messageId: e.key,
+                workspaceId: m[_WorkspaceId],
+                messageId: key,
               }) + "\n"
             );
           }
@@ -126,11 +137,8 @@ export function createMetrics(
     }
     const metricsStream = new Readable({ objectMode: true });
     const metricsResponse = clickhouse.insert({
-      clickhouse_settings: {
-        input_format_skip_unknown_fields: 1,
-      },
       table: metricsSchema + "." + metricsTable,
-      format: "JSONEachRow",
+      format: "JSONCompactEachRow",
       values: metricsStream,
     });
     const asyncWrite = async () => {
@@ -182,13 +190,6 @@ export function createMetrics(
         if (!el.metricsMeta) {
           continue;
         }
-        const d = el.receivedAt || new Date();
-        const epochTime = d.getTime();
-        d.setMilliseconds(0);
-        d.setSeconds(0);
-        // console.log(
-        //   `${el.metricsMeta.connectionId} ${el.metricsMeta.messageId} ${el.functionId} ${el.error} ${el.dropped} ${el.metricsMeta.retries}`
-        // );
         const status = ((el: FunctionExecRes) => {
           let prefix = el.functionId.startsWith("builtin.destination.")
             ? ""
@@ -209,14 +210,18 @@ export function createMetrics(
           }
           return prefix + status;
         })(el);
-        buffer.push({
-          key: el.metricsMeta.messageId + "_" + el.eventIndex + "_" + epochTime,
-          timestamp: d,
-          ...omit(el.metricsMeta, "retries"),
-          functionId: el.functionId,
+        buffer.push([
+          el.receivedAt || new Date(),
+          el.metricsMeta.messageId,
+          el.metricsMeta.workspaceId,
+          el.metricsMeta.streamId,
+          el.metricsMeta.connectionId,
+          el.functionId,
+          el.metricsMeta.destinationId,
           status,
-          events: 1,
-        });
+          1,
+          el.eventIndex,
+        ]);
       }
       if (buffer.length >= max_batch_size) {
         const sw = stopwatch();
