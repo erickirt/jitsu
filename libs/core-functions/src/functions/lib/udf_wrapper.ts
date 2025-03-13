@@ -365,6 +365,7 @@ export async function UDFTestRun(
   let realStore = false;
   try {
     const eventContext: EventContext = {
+      receivedAt: new Date(),
       geo: {
         country: {
           code: "US",

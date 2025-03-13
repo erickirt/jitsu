@@ -339,6 +339,7 @@ async function sendToBulker(profileBuilder: ProfileBuilder, profile: Profile, co
       type: "s2s",
     },
     headers: {},
+    receivedAt: new Date(),
     workspace: { id: profileBuilder.workspaceId },
   };
   const payload = {

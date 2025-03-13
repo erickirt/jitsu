@@ -38,6 +38,7 @@ create table newjitsu_metrics.mv_active_incoming3 on cluster jitsu_cluster
 )
     engine = ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/newjitsu_metrics/mv_active_incoming3_1', '{replica}')
         ORDER BY (workspaceId, timestamp, messageId)
+        PRIMARY KEY (workspaceId, timestamp)
         PARTITION BY toYYYYMM(timestamp)
 ;
 
