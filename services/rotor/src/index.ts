@@ -8,7 +8,7 @@ import Prometheus from "prom-client";
 import { FunctionsHandler, FunctionsHandlerMulti } from "./http/functions";
 import { initMaxMindClient, GeoResolver } from "./lib/maxmind";
 import { MessageHandlerContext, rotorMessageHandler } from "./lib/message-handler";
-import { DummyMetrics } from "./lib/metrics";
+import { createMetrics } from "./lib/metrics";
 import { connectionsStore, functionsStore, streamsStore } from "./lib/repositories";
 import { Server } from "node:net";
 import { getApplicationVersion, getDiagnostics } from "./lib/version";
@@ -149,10 +149,17 @@ async function main() {
       });
     });
   } else {
-    httpServer = initHTTP({ eventsLogger, metrics: DummyMetrics, geoResolver, redisClient });
+    const storeErrors = new Prometheus.Counter({
+      name: "rotor_store_statuses",
+      help: "rotor store statuses",
+      labelNames: ["namespace", "operation", "status"] as const,
+    });
+    const metrics = createMetrics(undefined, storeErrors);
+    httpServer = initHTTP({ eventsLogger, metrics: metrics, geoResolver, redisClient });
     signalTraps.forEach(type => {
       process.once(type, () => {
         gracefulShutdown();
+        metrics.close();
       });
     });
   }

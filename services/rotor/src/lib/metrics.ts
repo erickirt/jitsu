@@ -57,8 +57,7 @@ export function createMetrics(
     },
   });
 
-  const flush = async (buf: MetricsEvent[]) => {
-    const promises: Promise<any>[] = [];
+  const flushBillingMetrics = async (buf: MetricsEvent[]) => {
     if (producer) {
       const asyncWrite = async () => {
         return producer.send({
@@ -84,23 +83,17 @@ export function createMetrics(
             }),
         });
       };
-      promises.push(
-        asyncWrite().catch(e => {
-          log.atError().withCause(e).log(`Failed to flush billing metrics`);
-        })
-      );
+      return asyncWrite().catch(e => {
+        log.atError().withCause(e).log(`Failed to flush billing metrics`);
+      });
     } else {
-      //create readable stream
-      const billingStream = new Readable();
-      const billingResponse = fetch(
-        `${bulkerBase}/bulk/${metricsDestinationId}?tableName=${billingMetricsTable}&mode=batch`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${bulkerAuthKey}` },
-          duplex: "half",
-          body: Readable.toWeb(billingStream),
-        } as RequestInit
-      );
+      const billingStream = new Readable({ objectMode: true });
+      const billingResponse = clickhouse.insert({
+        table: metricsSchema + "." + billingMetricsTable,
+        format: "JSONCompactEachRow",
+        values: billingStream,
+      });
+
       const asyncWrite = async () => {
         for (let i = 0; i < buf.length; i++) {
           const m = buf[i];
@@ -110,31 +103,27 @@ export function createMetrics(
             d.setSeconds(0);
             d.setMinutes(0);
             const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_Timestamp].getTime() - d.getTime());
-            billingStream.push(
-              JSON.stringify({
-                timestamp: d,
-                workspaceId: m[_WorkspaceId],
-                messageId: key,
-              }) + "\n"
-            );
+            billingStream.push([d, m[_WorkspaceId], key]);
           }
         }
         billingStream.push(null);
         return billingResponse;
       };
-      //close stream
-      promises.push(
-        asyncWrite()
-          .then(async r => {
-            if (!r.ok) {
-              log.atError().log(`Failed to flush billing metrics: ${r.status} ${r.statusText}`);
-            }
-          })
-          .catch(e => {
-            log.atError().withCause(e).log(`Failed to flush billing metrics`);
-          })
-      );
+      return asyncWrite()
+        .then(async r => {
+          if (!r.executed) {
+            log.atError().log(`Failed to insert ${buf.length} billing metrics: ${JSON.stringify(r)}`);
+          }
+        })
+        .catch(e => {
+          log.atError().withCause(e).log(`Failed to insert billing metrics.`);
+        });
     }
+  };
+
+  const flush = async (buf: MetricsEvent[]) => {
+    const promises: Promise<any>[] = [flushBillingMetrics(buf)];
+
     const metricsStream = new Readable({ objectMode: true });
     const metricsResponse = clickhouse.insert({
       table: metricsSchema + "." + metricsTable,
