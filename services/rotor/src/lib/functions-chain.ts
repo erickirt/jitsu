@@ -316,11 +316,10 @@ export async function runChain(
       const event = events[i];
       let result: FuncReturn = undefined;
       const sw = stopwatch();
-      const rat = new Date(event.receivedAt);
       const execLogMeta = {
         // we don't multiply active incoming metrics for events produced by user recognition
         eventIndex: event[UserRecognitionParameter] ? 0 : i,
-        receivedAt: !isNaN(rat.getTime()) ? rat : new Date(),
+        receivedAt: !isNaN(eventContext.receivedAt.getTime()) ? eventContext.receivedAt : new Date(),
         functionId: f.id,
         metricsMeta: metricsMeta,
       };

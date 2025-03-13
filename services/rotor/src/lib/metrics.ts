@@ -1,19 +1,12 @@
-import { getLog, requireDefined, stopwatch } from "juava";
-import fetch from "node-fetch-commonjs";
-import {
-  FunctionExecLog,
-  FunctionExecRes,
-  MetricsMeta,
-  httpAgent,
-  httpsAgent,
-  RotorMetrics,
-} from "@jitsu/core-functions";
+import { getLog, isTruish, requireDefined, stopwatch } from "juava";
+import { FunctionExecLog, FunctionExecRes, MetricsMeta, RotorMetrics } from "@jitsu/core-functions";
 
 import omit from "lodash/omit";
 import type { Producer } from "kafkajs";
 import { getCompressionType } from "./rotor";
 import { Readable } from "stream";
 import { Counter } from "prom-client";
+import { createClient } from "@clickhouse/client";
 
 const log = getLog("metrics");
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
@@ -44,19 +37,26 @@ export function createMetrics(
   storeCounter?: Counter<"namespace" | "operation" | "status">
 ): RotorMetrics {
   const buffer: MetricsEvent[] = [];
+  const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
+
+  const clickhouse = createClient({
+    url: clickhouseHost(),
+    username: process.env.CLICKHOUSE_USERNAME || "default",
+    password: requireDefined(process.env.CLICKHOUSE_PASSWORD, `env CLICKHOUSE_PASSWORD is not defined`),
+    clickhouse_settings: {
+      async_insert: 1,
+      wait_for_async_insert: 0,
+      async_insert_busy_timeout_ms: 30000,
+      async_insert_busy_timeout_max_ms: 30000,
+      date_time_input_format: "best_effort",
+    },
+  });
 
   const flush = async (buf: MetricsEvent[]) => {
+    const promises: Promise<any>[] = [];
     if (producer) {
-      await Promise.all([
-        producer.send({
-          topic: `in.id.metrics.m.batch.t.${metricsTable}`,
-          compression: getCompressionType(),
-          messages: buf.map(m => ({
-            key: m.key,
-            value: JSON.stringify(omit(m, "retries", "messageId", "key")),
-          })),
-        }),
-        producer.send({
+      const asyncWrite = async () => {
+        return producer.send({
           topic: `in.id.metrics.m.batch.t.${billingMetricsTable}`,
           compression: getCompressionType(),
           messages: buf
@@ -74,62 +74,86 @@ export function createMetrics(
                 }),
               };
             }),
-        }),
-      ]);
+        });
+      };
+      promises.push(
+        asyncWrite().catch(e => {
+          log.atError().withCause(e).log(`Failed to flush billing metrics`);
+        })
+      );
     } else {
       //create readable stream
-      const streamOld = new Readable();
-      const resOld = fetch(`${bulkerBase}/bulk/${metricsDestinationId}?tableName=${billingMetricsTable}&mode=batch`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${bulkerAuthKey}` },
-        body: streamOld,
-        agent: (bulkerBase.startsWith("https://") ? httpsAgent : httpAgent)(),
-      });
-      const stream = new Readable();
-      const res = fetch(`${bulkerBase}/bulk/${metricsDestinationId}?tableName=${metricsTable}&mode=batch`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${bulkerAuthKey}` },
-        body: stream,
-        agent: (bulkerBase.startsWith("https://") ? httpsAgent : httpAgent)(),
-      });
-      buf.forEach(e => {
-        if (e.functionId.startsWith("builtin.destination.") && e.status !== "dropped") {
-          streamOld.push(
-            JSON.stringify({
-              timestamp: e.timestamp,
-              workspaceId: e.workspaceId,
-              messageId: e.key,
-            })
-          );
-          streamOld.push("\n");
+      const billingStream = new Readable();
+      const billingResponse = fetch(
+        `${bulkerBase}/bulk/${metricsDestinationId}?tableName=${billingMetricsTable}&mode=batch`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${bulkerAuthKey}` },
+          duplex: "half",
+          body: Readable.toWeb(billingStream),
+        } as RequestInit
+      );
+      const asyncWrite = async () => {
+        for (let i = 0; i < buf.length; i++) {
+          const e = buf[i];
+          if (e.functionId.startsWith("builtin.destination.") && e.status !== "dropped") {
+            const d = new Date(e.timestamp);
+            d.setMinutes(0);
+            billingStream.push(
+              JSON.stringify({
+                timestamp: d,
+                workspaceId: e.workspaceId,
+                messageId: e.key,
+              }) + "\n"
+            );
+          }
         }
-        stream.push(JSON.stringify(omit(e, "retries", "messageId", "key")));
-        stream.push("\n");
-      });
+        billingStream.push(null);
+        return billingResponse;
+      };
       //close stream
-      streamOld.push(null);
-      stream.push(null);
-      await Promise.all([
-        resOld
+      promises.push(
+        asyncWrite()
           .then(async r => {
             if (!r.ok) {
-              log.atError().log(`Failed to flush metrics events(old): ${r.status} ${r.statusText}`);
+              log.atError().log(`Failed to flush billing metrics: ${r.status} ${r.statusText}`);
             }
           })
           .catch(e => {
-            log.atError().withCause(e).log(`Failed to flush metrics events(old)`);
-          }),
-        res
-          .then(async r => {
-            if (!r.ok) {
-              log.atError().log(`Failed to flush metrics events: ${r.status} ${r.statusText}`);
-            }
+            log.atError().withCause(e).log(`Failed to flush billing metrics`);
           })
-          .catch(e => {
-            log.atError().withCause(e).log(`Failed to flush metrics events`);
-          }),
-      ]);
+      );
     }
+    const metricsStream = new Readable({ objectMode: true });
+    const metricsResponse = clickhouse.insert({
+      clickhouse_settings: {
+        input_format_skip_unknown_fields: 1,
+      },
+      table: metricsSchema + "." + metricsTable,
+      format: "JSONEachRow",
+      values: metricsStream,
+    });
+    const asyncWrite = async () => {
+      for (let i = 0; i < buf.length; i++) {
+        metricsStream.push(buf[i]);
+      }
+      metricsStream.push(null);
+      return metricsResponse;
+    };
+
+    promises.push(
+      asyncWrite()
+        .then(async r => {
+          if (!r.executed) {
+            log.atError().log(`Failed to insert ${buf.length} records: ${JSON.stringify(r)}`);
+          }
+        })
+        .catch(e => {
+          log.atError().withCause(e).log(`Failed to flush metrics events`);
+        })
+    );
+
+    await Promise.all(promises);
   };
 
   const interval = setInterval(async () => {
@@ -137,9 +161,9 @@ export function createMetrics(
     if (length > 0) {
       const sw = stopwatch();
       try {
-        const copy = [...buffer];
-        await flush(copy);
+        const copy = buffer.slice();
         buffer.length = 0;
+        await flush(copy);
         log.atDebug().log(`Periodic flushing ${copy.length} metrics events took ${sw.elapsedPretty()}`);
       } catch (e) {
         log.atError().withCause(e).log(`Failed to flush metrics`);
@@ -153,7 +177,8 @@ export function createMetrics(
         return;
       }
 
-      for (const el of execLog) {
+      for (let i = 0; i < execLog.length; i++) {
+        const el = execLog[i];
         if (!el.metricsMeta) {
           continue;
         }
@@ -195,7 +220,8 @@ export function createMetrics(
       }
       if (buffer.length >= max_batch_size) {
         const sw = stopwatch();
-        const copy = [...buffer];
+        const copy = buffer.slice();
+        buffer.length = 0;
         setImmediate(async () =>
           flush(copy)
             .then(() => log.atDebug().log(`Flushed ${copy.length} metrics events. Took: ${sw.elapsedPretty()}`))
@@ -203,7 +229,6 @@ export function createMetrics(
               log.atError().withCause(e).log(`Failed to flush metrics`);
             })
         );
-        buffer.length = 0;
       }
     },
     storeStatus: (namespace: string, operation: string, status: string) => {
@@ -213,6 +238,17 @@ export function createMetrics(
     },
     close: () => {
       clearInterval(interval);
+      clickhouse.close();
     },
   };
+}
+
+function clickhouseHost() {
+  if (process.env.CLICKHOUSE_URL) {
+    return process.env.CLICKHOUSE_URL;
+  }
+  return `${isTruish(process.env.CLICKHOUSE_SSL) ? "https://" : "http://"}${requireDefined(
+    process.env.CLICKHOUSE_HOST,
+    "env CLICKHOUSE_HOST is not defined"
+  )}`;
 }

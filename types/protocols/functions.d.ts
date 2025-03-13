@@ -176,6 +176,8 @@ export type EventContext = {
   workspace: {
     id: string;
   };
+  // original receivedAt as it stamped by the ingest service;
+  receivedAt: Date;
   // number of retries attempted
   retries?: number;
 };

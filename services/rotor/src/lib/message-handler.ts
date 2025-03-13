@@ -93,6 +93,7 @@ export async function rotorMessageHandler(
     event.context.geo = geo;
   }
   const ctx: EventContext = {
+    receivedAt: new Date(message.messageCreated),
     headers: message.httpHeaders,
     geo: geo,
     ua: parseUserAgent(event.context.userAgent),
