@@ -74,6 +74,8 @@ const getClickhouseWarehouse = (cred: any): WarehouseStore => {
           default:
             if (param == null) {
               t = "Nullable(String)";
+            } else if (Array.isArray(param)) {
+              query_params![paramName] = JSON.stringify(param);
             }
         }
         return `{${paramName}: ${t}}`;
