@@ -957,6 +957,12 @@ const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, even
       key: "size",
     },
     {
+      title: "Queue size",
+      width: "7em",
+      dataIndex: ["content", "queueSize"],
+      key: "queue",
+    },
+    {
       title: "Status",
       width: "8em",
       dataIndex: ["content", "status"],
