@@ -44,7 +44,6 @@
     "@types/pg": "^8.6.5",
     "@types/stripe": "^8.0.417",
     "dotenv": "^16.3.1",
-    "next-transpile-modules": "^10.0.1",
     "raw-loader": "^4.0.2",
     "ts-node": "^10.9.2",
     "type-fest": "^3.5.7",

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+module.exports =  {
+  transpilePackages: ["juava"],
   experimental: {
     turbo: {
       rules: {
@@ -40,7 +41,3 @@ const nextConfig = {
     ];
   },
 };
-
-const withTM = require("next-transpile-modules")(["juava"]); // pass the modules you would like to see transpiled
-
-module.exports = withTM(nextConfig);
