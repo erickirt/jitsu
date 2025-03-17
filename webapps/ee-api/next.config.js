@@ -1,5 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    turbo: {
+      rules: {
+        '*.sql$': {
+          loaders: ['raw-loader'],
+          as: '*.js',
+        },
+      },
+    },
+  },
   reactStrictMode: true,
   swcMinify: true,
   webpack: (config, opts) => {
