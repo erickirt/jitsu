@@ -742,10 +742,21 @@ export async function syncWithScheduler(baseUrl: string) {
       },
     };
     log.atInfo().log(`Creating job ${job.name}`);
-    await client.createJob({
-      parent: googleSchedulerParent,
-      job: job,
-    });
+    try {
+      await client.createJob({
+        parent: googleSchedulerParent,
+        job: job,
+      });
+    } catch (e: any) {
+      log.atError().log(`Error creating job ${job.name}`, e);
+      if (e.message.includes("ALREADY_EXISTS")) {
+        await client.updateJob({
+          job,
+        });
+      } else {
+        throw e;
+      }
+    }
   }
   for (const id of idsToDelete) {
     const job = jobsById[id];
