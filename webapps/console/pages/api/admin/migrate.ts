@@ -12,7 +12,6 @@ import {
   TableFunctionCode,
 } from "./migrate-mappings";
 import { getCoreDestinationType } from "../../../lib/schema/destinations";
-import omit from "lodash/omit";
 import { z } from "zod";
 
 const log = getServerLog("migrate");
