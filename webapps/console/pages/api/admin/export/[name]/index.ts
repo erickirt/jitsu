@@ -12,6 +12,12 @@ import { WorkspaceDbModel } from "../../../../../prisma/schema";
 import pick from "lodash/pick";
 import { ProfileBuilder } from "@jitsu/core-functions";
 
+export const config = {
+  api: {
+    responseLimit: false,
+  },
+};
+
 interface Writer {
   write(data: string): void;
 }
