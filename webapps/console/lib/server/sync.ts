@@ -761,9 +761,16 @@ export async function syncWithScheduler(baseUrl: string) {
   for (const id of idsToDelete) {
     const job = jobsById[id];
     log.atInfo().log(`Deleting job ${job.name}`);
-    await client.deleteJob({
-      name: job.name ?? "",
-    });
+    try {
+      await client.deleteJob({
+        name: job.name ?? "",
+      });
+    } catch (e: any) {
+      log.atError().log(`Error deleting job ${job.name}`, e);
+      if (!e.message.includes("NOT_FOUND")) {
+        throw e;
+      }
+    }
   }
   for (const id of idsToUpdate) {
     const sync = syncsById[id];
