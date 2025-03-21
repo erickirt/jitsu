@@ -142,7 +142,7 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
       try {
         await get(`/api/${workspace.id}/config/link`, {
           method: "DELETE",
-          query: { fromId: link.fromId, toId: link.toId },
+          query: { id: link.id },
         });
         await reloadStore();
         feedbackSuccess("Successfully unliked");

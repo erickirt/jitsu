@@ -803,7 +803,7 @@ function ConnectionEditor({
                   try {
                     await get(`/api/${workspace.id}/config/link`, {
                       method: "DELETE",
-                      query: { fromId: existingLink.fromId, toId: existingLink.toId },
+                      query: { id: existingLink.id },
                     });
                     await reloadStore();
                     feedbackSuccess("Successfully unliked");

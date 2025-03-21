@@ -18,6 +18,7 @@ import { mixpanelFacebookAdsSync, mixpanelGoogleAdsSync } from "./syncs/mixpanel
 import IJob = google.cloud.scheduler.v1.IJob;
 import hash from "stable-hash";
 import { clickhouse } from "./clickhouse";
+import { SyncDbModel } from "../../pages/api/[workspaceId]/config/link";
 const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 const clickhouseUploadS3Bucket = process.env.CLICKHOUSE_UPLOAD_S3_BUCKET;
 const s3Region = process.env.S3_REGION;
@@ -26,6 +27,9 @@ const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
 const clickhouseS3Configured = clickhouseUploadS3Bucket && s3Region && s3AccessKeyId && s3SecretAccessKey;
 
 const log = getServerLog("sync-scheduler");
+
+const googleSchedulerLocation = process.env.GOOGLE_SCHEDULER_LOCATION || "us-central1";
+const googleScheduler = createGoogleSchedulerClient();
 
 export type ScheduleSyncError = { ok: false; error: string; [key: string]: any };
 export type ScheduleSyncSuccess = { ok: true; taskId: string; [key: string]: any };
@@ -677,17 +681,100 @@ export async function scheduleSync({
   }
 }
 
+export async function updateScheduler(baseUrl: string, sync: SyncDbModel) {
+  if (!googleScheduler) {
+    return;
+  }
+  const sw = stopwatch();
+  const parent = googleScheduler.locationPath(await googleScheduler.getProjectId(), googleSchedulerLocation);
+  const job: IJob = {
+    name: googleScheduler.jobPath(await googleScheduler.getProjectId(), googleSchedulerLocation, sync.id),
+    schedule: sync.data?.schedule,
+    timeZone: sync.data?.timezone ?? "Etc/UTC",
+    httpTarget: {
+      uri: `${baseUrl}/api/${sync.workspaceId}/sources/run?syncId=${sync.id}`,
+      headers: {
+        Authorization: `Bearer ${process.env.SYNCCTL_AUTH_KEY}`,
+      },
+      httpMethod: "GET",
+    },
+  };
+  log.atInfo().log(`Updating job ${job.name}`);
+  try {
+    await googleScheduler.updateJob({ job });
+    log.atInfo().log("Update scheduler took", sw.elapsedPretty());
+  } catch (e: any) {
+    if (e.message.includes("NOT_FOUND") || e.message.includes("INVALID_ARGUMENT:")) {
+      log.atInfo().log(`Creating job ${job.name}`);
+      await googleScheduler.createJob({ job, parent });
+      log.atInfo().log("Create scheduler took", sw.elapsedPretty());
+    } else {
+      log.atError().log(`Error updating job ${job.name}`, e);
+      throw new Error(`Error updating scheduler`, { cause: e });
+    }
+  }
+}
+
+export async function createScheduler(baseUrl: string, sync: SyncDbModel) {
+  if (!googleScheduler) {
+    return;
+  }
+  const sw = stopwatch();
+  const parent = googleScheduler.locationPath(await googleScheduler.getProjectId(), googleSchedulerLocation);
+  const job: IJob = {
+    name: googleScheduler.jobPath(await googleScheduler.getProjectId(), googleSchedulerLocation, sync.id),
+    schedule: sync.data?.schedule,
+    timeZone: sync.data?.timezone ?? "Etc/UTC",
+    httpTarget: {
+      uri: `${baseUrl}/api/${sync.workspaceId}/sources/run?syncId=${sync.id}`,
+      headers: {
+        Authorization: `Bearer ${process.env.SYNCCTL_AUTH_KEY}`,
+      },
+      httpMethod: "GET",
+    },
+  };
+  log.atInfo().log(`Creating job ${job.name}`);
+  try {
+    await googleScheduler.createJob({ job, parent });
+    log.atInfo().log("Create scheduler took", sw.elapsedPretty());
+  } catch (e: any) {
+    if (e.message.includes("ALREADY_EXISTS")) {
+      log.atInfo().log(`Updating job ${job.name}`);
+      await googleScheduler.updateJob({ job });
+      log.atInfo().log("Updating scheduler took", sw.elapsedPretty());
+    } else {
+      log.atError().log(`Error creating job ${job.name}`, e);
+      throw new Error(`Error creating scheduler`, { cause: e });
+    }
+  }
+}
+
+export async function deleteScheduler(syncId: string) {
+  if (!googleScheduler) {
+    return;
+  }
+  const sw = stopwatch();
+
+  const jobName = googleScheduler.jobPath(await googleScheduler.getProjectId(), googleSchedulerLocation, syncId);
+  log.atInfo().log(`Deleting job ${jobName}`);
+  try {
+    await googleScheduler.deleteJob({ name: jobName });
+    log.atInfo().log("Delete scheduler took", sw.elapsedPretty());
+  } catch (e: any) {
+    if (!e.message.includes("NOT_FOUND")) {
+      log.atError().log(`Error deleting job ${jobName}`, e);
+      throw new Error(`Error deleting scheduler`, { cause: e });
+    }
+  }
+}
+
 export async function syncWithScheduler(baseUrl: string) {
   const sw = stopwatch();
-  const googleSchedulerKeyJson = process.env.GOOGLE_SCHEDULER_KEY;
-  if (!googleSchedulerKeyJson) {
+  if (!googleScheduler) {
     log.atInfo().log(`GoogleCloudScheduler sync: GOOGLE_SCHEDULER_KEY is not defined, skipping`);
     return;
   }
-  const googleSchedulerKey = JSON.parse(googleSchedulerKeyJson);
-  const googleSchedulerProjectId = googleSchedulerKey.project_id;
-  const googleSchedulerLocation = process.env.GOOGLE_SCHEDULER_LOCATION || "us-central1";
-  const googleSchedulerParent = `projects/${googleSchedulerProjectId}/locations/${googleSchedulerLocation}`;
+  const gsParent = googleScheduler.locationPath(await googleScheduler.getProjectId(), googleSchedulerLocation);
 
   const allSyncs = await db.prisma().configurationObjectLink.findMany({
     where: {
@@ -704,16 +791,12 @@ export async function syncWithScheduler(baseUrl: string) {
     return acc;
   }, {} as Record<string, any>);
 
-  const client = new CloudSchedulerClient({
-    credentials: googleSchedulerKey,
-    projectId: googleSchedulerProjectId,
-  });
-  const iterable = client.listJobsAsync({
-    parent: googleSchedulerParent,
+  const iterable = googleScheduler.listJobsAsync({
+    parent: gsParent,
   });
   const jobsById: Record<string, IJob> = {};
   for await (const response of iterable) {
-    jobsById[(response.name ?? "").replace(`${googleSchedulerParent}/jobs/`, "")] = response;
+    jobsById[(response.name ?? "").replace(`${gsParent}/jobs/`, "")] = response;
   }
 
   const syncsIds = Object.keys(syncsById);
@@ -730,7 +813,7 @@ export async function syncWithScheduler(baseUrl: string) {
     const sync = syncsById[id];
     const schedule = (sync.data as any).schedule;
     const job: IJob = {
-      name: `${googleSchedulerParent}/jobs/${id}`,
+      name: `${gsParent}/jobs/${id}`,
       schedule: schedule,
       timeZone: (sync.data as any).timezone ?? "Etc/UTC",
       httpTarget: {
@@ -743,14 +826,14 @@ export async function syncWithScheduler(baseUrl: string) {
     };
     log.atInfo().log(`Creating job ${job.name}`);
     try {
-      await client.createJob({
-        parent: googleSchedulerParent,
+      await googleScheduler.createJob({
+        parent: gsParent,
         job: job,
       });
     } catch (e: any) {
       log.atError().log(`Error creating job ${job.name}`, e);
       if (e.message.includes("ALREADY_EXISTS")) {
-        await client.updateJob({
+        await googleScheduler.updateJob({
           job,
         });
       } else {
@@ -762,7 +845,7 @@ export async function syncWithScheduler(baseUrl: string) {
     const job = jobsById[id];
     log.atInfo().log(`Deleting job ${job.name}`);
     try {
-      await client.deleteJob({
+      await googleScheduler.deleteJob({
         name: job.name ?? "",
       });
     } catch (e: any) {
@@ -779,7 +862,7 @@ export async function syncWithScheduler(baseUrl: string) {
     const syncTimezone = (sync.data as any).timezone ?? "Etc/UTC";
     if (job.schedule !== schedule || job.timeZone !== syncTimezone) {
       log.atInfo().log(`Updating job ${job.name}`);
-      await client.updateJob({
+      await googleScheduler.updateJob({
         job: {
           ...job,
           schedule: schedule,
@@ -789,6 +872,24 @@ export async function syncWithScheduler(baseUrl: string) {
     }
   }
   getServerLog().atInfo().log("Sync with GoogleCloudScheduler took", sw.elapsedPretty());
+}
+
+function createGoogleSchedulerClient(): CloudSchedulerClient | undefined {
+  const googleSchedulerKeyJson = process.env.GOOGLE_SCHEDULER_KEY;
+  if (!googleSchedulerKeyJson) {
+    log.atWarn().log(`GoogleCloudScheduler sync: GOOGLE_SCHEDULER_KEY is not defined. Sync scheduler is disabled`);
+    return;
+  }
+  const googleSchedulerKey = JSON.parse(googleSchedulerKeyJson);
+  const googleSchedulerProjectId = googleSchedulerKey.project_id;
+
+  const client = new CloudSchedulerClient({
+    credentials: googleSchedulerKey,
+    projectId: googleSchedulerProjectId,
+  });
+  // client.getProjectId();
+  // client.locationPath();
+  return client;
 }
 
 // export async function syncWithK8SCronJob(baseUrl: string) {
