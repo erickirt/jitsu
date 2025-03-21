@@ -234,12 +234,15 @@ export function useConfigObjectsUpdater(workspaceIdOrSlug: string): UseConfigObj
         interval = setInterval(async () => {
           if (!document.hidden) {
             try {
-              const ifModified = await fetch(`/api/${res.workspaceId}/listen?maxWaitMs=0`, {
-                signal: abortController.signal,
-                headers: {
-                  "If-Modified-Since": modifiedSince.toUTCString(),
-                },
-              });
+              const ifModified = await fetch(
+                `/api/${res.workspaceId}/listen?maxWaitMs=0&ifModifiedSince=${modifiedSince.toISOString()}`,
+                {
+                  signal: abortController.signal,
+                  headers: {
+                    "If-Modified-Since": modifiedSince.toUTCString(),
+                  },
+                }
+              );
               if (ifModified.status === 304) {
                 //do nothing
               } else if (ifModified.status === 200) {
