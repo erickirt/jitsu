@@ -470,7 +470,7 @@ function TasksTable({ tasks, loading, linksMap, servicesMap, destinationsMap, re
                 service={servicesMap[link.fromId]}
                 destination={destinationsMap[link.toId]}
                 showLink={true}
-                className={"max-w-sm xl:max-w-fit"}
+                className={"max-w-sm xl:max-w-fit flex-wrap"}
               />
             );
           }
