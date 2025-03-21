@@ -72,7 +72,10 @@ const postAndPutCfg = {
         where: { id: existingLink.id },
         data: { data, deleted: false, workspaceId },
       })) as SyncDbModel;
-      if (data.schedule !== existingLink!.data?.["schedule"] || data.timezone !== existingLink!.data?.["timezone"]) {
+      if (
+        (type === "sync" && data.schedule !== existingLink!.data?.["schedule"]) ||
+        data.timezone !== existingLink!.data?.["timezone"]
+      ) {
         await updateScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
       }
     } else {
@@ -86,8 +89,10 @@ const postAndPutCfg = {
           type,
         },
       })) as SyncDbModel;
-      //sync scheduler immediately, so if it fails, user sees the error
-      await createScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
+      if (type == "sync") {
+        //sync scheduler immediately, so if it fails, user sees the error
+        await createScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
+      }
     }
     if (type === "sync" && (runSync === "true" || runSync === "1")) {
       await scheduleSync({
@@ -141,7 +146,9 @@ export const api: Api = {
         if (!updatedLink) {
           return { deleted: false };
         }
-        await deleteScheduler(updatedLink.id);
+        if (updatedLink.type == "sync") {
+          await deleteScheduler(updatedLink.id);
+        }
         return { deleted: true };
       } else if (fromId && toId) {
         if (id) {
@@ -152,7 +159,9 @@ export const api: Api = {
           data: { deleted: true },
         });
         for (const updatedLink of updatedLinks) {
-          await deleteScheduler(updatedLink.id);
+          if (updatedLink.type == "sync") {
+            await deleteScheduler(updatedLink.id);
+          }
         }
         return { deleted: updatedLinks.length > 0 };
       } else {
