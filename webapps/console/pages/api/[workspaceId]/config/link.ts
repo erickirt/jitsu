@@ -76,7 +76,11 @@ const postAndPutCfg = {
         (type === "sync" && data.schedule !== existingLink!.data?.["schedule"]) ||
         data.timezone !== existingLink!.data?.["timezone"]
       ) {
-        await updateScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
+        if (!data.schedule) {
+          await deleteScheduler(createdOrUpdated.id);
+        } else {
+          await updateScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
+        }
       }
     } else {
       createdOrUpdated = (await db.prisma().configurationObjectLink.create({
@@ -89,7 +93,7 @@ const postAndPutCfg = {
           type,
         },
       })) as SyncDbModel;
-      if (type == "sync") {
+      if (type == "sync" && data.schedule) {
         //sync scheduler immediately, so if it fails, user sees the error
         await createScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
       }
