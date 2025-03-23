@@ -131,6 +131,7 @@ test("user-recognition-test", async () => {
       workspace: {
         id: "test",
       },
+      receivedAt: new Date(),
     },
     config: {} as UserRecognitionConfig,
     events: [],
