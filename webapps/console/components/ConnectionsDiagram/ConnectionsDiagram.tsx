@@ -91,9 +91,9 @@ export function EmptyList({
       <Inbox className="h-12 w-12 my-3 text-neutral-200" />
       <h4 className="text-lg font-bold text-center">{title}</h4>
       <p className="font-light text-sm text-center mt-2 text-neutral-600">{children}</p>
-      <Button type="primary" href={createLink} className="mt-4">
+      <WJitsuButton type="primary" href={createLink} className="mt-4">
         Create
-      </Button>
+      </WJitsuButton>
       {footer}
     </div>
   );
