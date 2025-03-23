@@ -4,7 +4,6 @@ import { getLog, requireDefined } from "juava";
 import Link from "next/link";
 import { useAppConfig, useWorkspace } from "../../lib/context";
 import { ArrowRight, ExternalLink, Inbox } from "lucide-react";
-import { Button } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import classNames from "classnames";
 import { isTruish } from "../../lib/shared/chores";
