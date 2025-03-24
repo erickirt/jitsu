@@ -510,7 +510,7 @@ async function loadBatchStatusesChanges(
     log.atInfo().log(`Events log processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
     returnPromiseResolve();
   });
-  stream.on("data", rs => {
+  stream.on("data", async rs => {
     for (const r of rs) {
       const row = r.json() as any;
       let entity = entities[key(row.actorId)];
