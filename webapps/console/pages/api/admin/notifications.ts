@@ -178,12 +178,13 @@ export default createRoute()
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
     if (increments.size > 0) {
       const values = Array.from(increments.entries())
-        .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}')`)
+        .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}', '${data.description}')`)
         .join(",");
       const query = `update newjitsu."StatusChange" as s
                      set counts    = s.counts + data.counts,
+                         description = data.description,
                          timestamp = data.timestamp::TIMESTAMPTZ(3)
-                     from (values ${values}) as data (id, counts, timestamp)
+                     from (values ${values}) as data (id, counts, timestamp, description)
                      where s.id = data.id`;
       const res = await db.pgPool().query(query);
       log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
@@ -459,7 +460,7 @@ async function loadSyncStatusesChanges(
 
 // StatusRepeats - optimization. we have batches that runs way too often.
 // to avoid multiple db updates we can accumulate changes and write them in a single query
-type StatusRepeats = { counts: number; timestamp: Date };
+type StatusRepeats = { counts: number; timestamp: Date; description: string };
 
 async function loadBatchStatusesChanges(
   fromTimestamp: Date,
@@ -574,10 +575,11 @@ async function updateStatusChange(
         // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
         let increment = increments.get(entity.id);
         if (!increment) {
-          increment = { counts: 1, timestamp: timestamp };
+          increment = { counts: 1, timestamp, description };
           increments.set(entity.id, increment);
         } else {
           increment.counts++;
+          increment.description = description;
           increment.timestamp = timestamp;
         }
         newEntity = {
@@ -589,6 +591,7 @@ async function updateStatusChange(
         newEntity = await db.prisma().statusChange.update({
           where: { id: entity.id },
           data: {
+            description: description,
             counts: { increment: 1 },
             timestamp: timestamp,
           },
