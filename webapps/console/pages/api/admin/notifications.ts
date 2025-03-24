@@ -178,7 +178,10 @@ export default createRoute()
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
     if (increments.size > 0) {
       const values = Array.from(increments.entries())
-        .map(([id, data]) => `(${id}, ${data.counts}, '${data.timestamp.toISOString()}', '${data.description}')`)
+        .map(
+          ([id, data]) =>
+            `(${id}, ${data.counts}, '${data.timestamp.toISOString()}', '${data.description.replaceAll("'", "''")}')`
+        )
         .join(",");
       const query = `update newjitsu."StatusChange" as s
                      set counts    = s.counts + data.counts,
@@ -483,21 +486,34 @@ async function loadBatchStatusesChanges(
                                     and has({actorIds:Array(String)}, actorId)
                                   order by timestamp
                                           asc`;
-  const eventsLogRes = (await (
+  var returnPromiseResolve;
+  let returnPromise = new Promise<void>((resolve, reject) => {
+    responsePromiseResolve = resolve;
+  });
+  const chResult = (await (
     await clickhouse.query({
       query: eventsLogQuery,
       query_params: {
         fromTimestamp: dateToClickhouse(fromTimestamp),
         actorIds: actorIds,
       },
+      format: "JSONEachRow",
       clickhouse_settings: {
         wait_end_of_query: 1,
       },
     })
   ).json()) as any;
-  log.atInfo().log(`Got ${eventsLogRes.data.length} events log records in ${sw.elapsedPretty()}`);
-  if (eventsLogRes.data && eventsLogRes.data.length > 0) {
-    for (const row of eventsLogRes.data) {
+  const stream = chResult.stream();
+  stream.on("error", err => {
+    log.atError().withCause(err).log(`Error streaming data. Elapsed: ${sw.elapsedPretty()}`);
+    returnPromiseResolve();
+  });
+  stream.on("end", async () => {
+    log.atInfo().log(`Events log processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
+    returnPromiseResolve();
+  });
+  stream.on("data", rs => {
+    for (const row of rs) {
       let entity = entities[key(row.actorId)];
       const status = row.level === "error" ? "FAILED" : "SUCCESS";
       let message: any = {};
@@ -528,8 +544,8 @@ async function loadBatchStatusesChanges(
         statusChanges++;
       }
     }
-    log.atInfo().log(`Events log processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
-  }
+  });
+  await returnPromise;
   return increments;
 }
 
