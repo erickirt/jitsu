@@ -488,21 +488,19 @@ async function loadBatchStatusesChanges(
                                           asc`;
   var returnPromiseResolve;
   let returnPromise = new Promise<void>((resolve, reject) => {
-    responsePromiseResolve = resolve;
+    returnPromiseResolve = resolve;
   });
-  const chResult = (await (
-    await clickhouse.query({
-      query: eventsLogQuery,
-      query_params: {
-        fromTimestamp: dateToClickhouse(fromTimestamp),
-        actorIds: actorIds,
-      },
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        wait_end_of_query: 1,
-      },
-    })
-  ).json()) as any;
+  const chResult = await clickhouse.query({
+    query: eventsLogQuery,
+    query_params: {
+      fromTimestamp: dateToClickhouse(fromTimestamp),
+      actorIds: actorIds,
+    },
+    format: "JSONEachRow",
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
   const stream = chResult.stream();
   stream.on("error", err => {
     log.atError().withCause(err).log(`Error streaming data. Elapsed: ${sw.elapsedPretty()}`);
