@@ -174,7 +174,9 @@ export default createRoute()
       }
     }
 
-    const increments = await loadBatchStatusesChanges(previousRunTime, entities);
+    let increments = await loadBatchStatusesChanges(previousRunTime, entities);
+    const increments2 = await loadSyncStatusesChanges(previousRunTime, entities);
+    increments = new Map<bigint, StatusRepeats>([...increments, ...increments2]);
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
     if (increments.size > 0) {
       const values = Array.from(increments.entries())
@@ -192,8 +194,6 @@ export default createRoute()
       const res = await db.pgPool().query(query);
       log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
     }
-
-    await loadSyncStatusesChanges(previousRunTime, entities);
 
     processedTimestamp = await processStatusChanges(processedTimestamp, entities, publicEndpoints);
 
@@ -429,7 +429,8 @@ async function processNotifications(
 async function loadSyncStatusesChanges(
   fromTimestamp: Date,
   entities: Record<string, StatusChangeEntity>
-): Promise<void> {
+): Promise<Map<bigint, StatusRepeats>> {
+  const increments: Map<bigint, StatusRepeats> = new Map();
   const sw = stopwatch();
   let statusChanges = 0;
 
@@ -453,12 +454,13 @@ async function loadSyncStatusesChanges(
     }
     //log.atInfo().log(`SS`, rowTimestamp, typeof rowTimestamp, batch.timestamp, typeof batch.timestamp);
 
-    const chId = await updateStatusChange(entities, entity, row.updated_at, status, row.error);
+    const chId = await updateStatusChange(entities, entity, row.updated_at, status, row.error, increments);
     if (chId) {
       statusChanges++;
     }
   }
   log.atInfo().log(`Sync tasks processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
+  return increments;
 }
 
 // StatusRepeats - optimization. we have batches that runs way too often.
