@@ -511,7 +511,8 @@ async function loadBatchStatusesChanges(
     returnPromiseResolve();
   });
   stream.on("data", rs => {
-    for (const row of rs) {
+    for (const r of rs) {
+      const row = r.json() as any;
       let entity = entities[key(row.actorId)];
       const status = row.level === "error" ? "FAILED" : "SUCCESS";
       let message: any = {};
