@@ -786,5 +786,5 @@ export async function sendEmailNotification(
 }
 
 export const config = {
-  maxDuration: 600,
+  maxDuration: 300,
 };
