@@ -575,11 +575,11 @@ async function updateStatusChange(
         // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
         let increment = increments.get(entity.id);
         if (!increment) {
-          increment = { counts: 1, timestamp, description };
+          increment = { counts: 1, timestamp, description: description ?? "" };
           increments.set(entity.id, increment);
         } else {
           increment.counts++;
-          increment.description = description;
+          increment.description = description ?? "";
           increment.timestamp = timestamp;
         }
         newEntity = {
