@@ -582,20 +582,21 @@ async function updateStatusChange(
       changed = true;
       log.atInfo().log(`${entity.actorId} ${entity.tableName} status changed from ${entity.status} to ${status}`);
     } else {
+      const newDescription = description || entity.description || "";
       if (increments) {
         // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
         let increment = increments.get(entity.id);
         if (!increment) {
-          increment = { counts: 1, timestamp, description: description ?? "" };
+          increment = { counts: 1, timestamp, description: newDescription };
           increments.set(entity.id, increment);
         } else {
           increment.counts++;
-          increment.description = description ?? "";
+          increment.description = newDescription;
           increment.timestamp = timestamp;
         }
         newEntity = {
           ...entity,
-          description: description ?? "",
+          description: newDescription,
           counts: entity.counts + 1,
           timestamp: timestamp,
         };
@@ -603,7 +604,7 @@ async function updateStatusChange(
         newEntity = await db.prisma().statusChange.update({
           where: { id: entity.id },
           data: {
-            description: description,
+            description: newDescription,
             counts: { increment: 1 },
             timestamp: timestamp,
           },
