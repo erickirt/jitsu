@@ -173,10 +173,11 @@ export default createRoute()
         entities[key(row.actorId, row.tableName)] = row;
       }
     }
-
-    let increments = await loadBatchStatusesChanges(previousRunTime, entities);
-    const increments2 = await loadSyncStatusesChanges(previousRunTime, entities);
-    increments = new Map<bigint, StatusRepeats>([...increments, ...increments2]);
+    const incrms = await Promise.all([
+      loadBatchStatusesChanges(previousRunTime, entities),
+      loadSyncStatusesChanges(previousRunTime, entities),
+    ]);
+    const increments = new Map<bigint, StatusRepeats>([...incrms[0], ...incrms[1]]);
     // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
     if (increments.size > 0) {
       const values = Array.from(increments.entries())
@@ -434,7 +435,7 @@ async function loadSyncStatusesChanges(
   const sw = stopwatch();
   let statusChanges = 0;
 
-  const r = await db.pgPool().query(
+  const processed = await db.pgHelper().streamQuery(
     `
         select *
         from newjitsu.source_task
@@ -442,24 +443,26 @@ async function loadSyncStatusesChanges(
           and updated_at > $1
         order by updated_at asc
     `,
-    [fromTimestamp]
+    [fromTimestamp],
+    async row => {
+      let entity = entities[key(row.sync_id)];
+      const status = row.status;
+      if (!entity) {
+        log.atWarn().log(`Sync ${row.sync_id} not found`);
+        return;
+      }
+      //log.atInfo().log(`SS`, rowTimestamp, typeof rowTimestamp, batch.timestamp, typeof batch.timestamp);
+      const chId = await updateStatusChange(entities, entity, row.updated_at, status, row.error, increments);
+      if (chId) {
+        statusChanges++;
+      }
+    }
   );
-  log.atInfo().log(`Got ${r.rowCount} sync task records in ${sw.elapsedPretty()}`);
-  for (const row of r.rows) {
-    let entity = entities[key(row.sync_id)];
-    const status = row.status;
-    if (!entity) {
-      log.atWarn().log(`Sync ${row.sync_id} not found`);
-      continue;
-    }
-    //log.atInfo().log(`SS`, rowTimestamp, typeof rowTimestamp, batch.timestamp, typeof batch.timestamp);
-
-    const chId = await updateStatusChange(entities, entity, row.updated_at, status, row.error, increments);
-    if (chId) {
-      statusChanges++;
-    }
-  }
-  log.atInfo().log(`Sync tasks processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
+  log
+    .atInfo()
+    .log(
+      `Sync tasks processed. Rows: ${processed.rows}. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`
+    );
   return increments;
 }
 
@@ -476,6 +479,7 @@ async function loadBatchStatusesChanges(
   const actorIds = Object.entries(entities)
     .filter(([_, b]) => b.type === "batch")
     .map(([id, _]) => id);
+  let processed = 0;
   let statusChanges = 0;
 
   const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
@@ -488,10 +492,6 @@ async function loadBatchStatusesChanges(
                                     and has({actorIds:Array(String)}, actorId)
                                   order by timestamp
                                           asc`;
-  var returnPromiseResolve;
-  let returnPromise = new Promise<void>((resolve, reject) => {
-    returnPromiseResolve = resolve;
-  });
   const chResult = await clickhouse.query({
     query: eventsLogQuery,
     query_params: {
@@ -503,17 +503,9 @@ async function loadBatchStatusesChanges(
       wait_end_of_query: 1,
     },
   });
-  const stream = chResult.stream();
-  stream.on("error", err => {
-    log.atError().withCause(err).log(`Error streaming data. Elapsed: ${sw.elapsedPretty()}`);
-    returnPromiseResolve();
-  });
-  stream.on("end", async () => {
-    log.atInfo().log(`Events log processed. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
-    returnPromiseResolve();
-  });
-  stream.on("data", async rs => {
-    for (const r of rs) {
+  for await (const rows of chResult.stream()) {
+    for (const r of rows) {
+      processed++;
       const row = r.json() as any;
       let entity = entities[key(row.actorId)];
       const status = row.level === "error" ? "FAILED" : "SUCCESS";
@@ -545,8 +537,10 @@ async function loadBatchStatusesChanges(
         statusChanges++;
       }
     }
-  });
-  await returnPromise;
+  }
+  log
+    .atInfo()
+    .log(`Events log processed. Rows: ${processed}. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
   return increments;
 }
 
@@ -601,6 +595,7 @@ async function updateStatusChange(
         }
         newEntity = {
           ...entity,
+          description: description ?? "",
           counts: entity.counts + 1,
           timestamp: timestamp,
         };
