@@ -236,10 +236,15 @@ async function migrateWorkspace(workspace: Workspace) {
       log.atWarn().log(`Skipping destination ${name} id: ${dstId} of type ${dst._type}. Not supported.`);
       continue;
     }
-    const dstType = getCoreDestinationType(dst._type);
+    const dstType = getCoreDestinationType(mappedConfig.type || dst._type);
+    const cfg = mappedConfig.credentialsFunc(dst._formData);
+    if (!cfg) {
+      log.atWarn().log(`Skipping destination ${name} id: ${dstId} of type ${dst._type}. Not supported.`);
+      continue;
+    }
     const destinationConfig = {
-      destinationType: dst._type,
-      ...mappedConfig.credentialsFunc(dst._formData),
+      destinationType: dstType.id,
+      ...cfg,
     };
     await createConfigurationObject(workspace, "destination", dstId, name, destinationConfig);
     let skipConnections = false;
@@ -261,7 +266,10 @@ async function migrateWorkspace(workspace: Workspace) {
         let data: any = {
           functions: [],
         };
-        if (dst._transform_enabled && dst._transform) {
+        if (
+          (dst._transform_enabled || dstType.id === "facebook-conversions" || dstType.id === "amplitude") &&
+          dst._transform
+        ) {
           await createFunction(
             workspace,
             dstId + "_transform",

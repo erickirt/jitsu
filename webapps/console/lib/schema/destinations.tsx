@@ -422,9 +422,14 @@ export const coreDestinations: DestinationType<any>[] = [
       host: z.string().describe("Postgres host"),
       port: z.number().default(5432).describe("Postgres port"),
       sslMode: z
-        .enum(["disable", "require"])
+        .enum(["disable", "require", "verify-ca", "verify-full"])
         .default("require")
-        .describe("SSL Mode::SSL mode for Postgres connection: <code>disable</code> or <code>require</code>"),
+        .describe(
+          "SSL Mode::SSL mode for Postgres connection: <code>disable</code>,<code>require</code>,<code>verify-ca</code>,<code>verify-full</code>"
+        ),
+      sslServerCA: z.string().optional().describe("SSL Server CA::"),
+      sslClientCert: z.string().optional().describe("SSL Client Cert::"),
+      sslClientKey: z.string().optional().describe("SSL Client Key::"),
       database: z.string().describe("Postgres database name"),
       username: z.string().describe("Postgres username"),
       password: z.string().describe("Postgres password"),
@@ -433,6 +438,18 @@ export const coreDestinations: DestinationType<any>[] = [
     credentialsUi: {
       password: {
         password: true,
+      },
+      sslServerCA: {
+        textarea: true,
+        hidden: obj => obj.sslMode === "disable" || obj.sslMode === "require",
+      },
+      sslClientCert: {
+        textarea: true,
+        hidden: obj => obj.sslMode === "disable" || obj.sslMode === "require",
+      },
+      sslClientKey: {
+        textarea: true,
+        hidden: obj => obj.sslMode === "disable" || obj.sslMode === "require",
       },
     },
     description: "Postgres is a powerful, open source object-relational database system.",

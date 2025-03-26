@@ -48,9 +48,6 @@ const pgHelper: PgHelper = {
         }
         rows = await cursor.read(100);
       }
-      let queryResult;
-
-      queryResult = await db.pgPool().query(processedQuery, processedParams);
     } catch (e) {
       log
         .atError()

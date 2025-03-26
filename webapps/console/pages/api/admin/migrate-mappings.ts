@@ -4,6 +4,7 @@ import {
   MixpanelCredentials,
   AmplitudeDestinationConfig,
   FacebookConversionApiCredentials,
+  HubspotCredentials,
 } from "@jitsu/core-functions/src/meta";
 
 type SourceMapping =
@@ -17,6 +18,7 @@ type SourceMapping =
 
 type DestinationMapping =
   | {
+      type?: string;
       credentialsFunc: (_formData: any) => any;
       transformFunc?: (code: string) => string;
     }
@@ -121,6 +123,7 @@ export const destinationMappings: Record<string, DestinationMapping> = {
     transformFunc: mapAmplitudeFunction,
   },
   facebook: {
+    type: "facebook-conversions",
     credentialsFunc: _formData => {
       const facebookCred: FacebookConversionApiCredentials = {
         pixelId: _formData.fbPixelId,
@@ -129,16 +132,45 @@ export const destinationMappings: Record<string, DestinationMapping> = {
         events: "",
         phoneFieldName: "",
       };
-      return parseDstCreds("facebook", facebookCred);
+      return parseDstCreds("facebook-conversions", facebookCred);
     },
     transformFunc: mapFacebookFunction,
+  },
+  hubspot: {
+    credentialsFunc: _formData => {
+      const hubspotCred: HubspotCredentials = {
+        accessToken: _formData.accessToken,
+        autoCreateCustomProperties: false,
+        sendPageViewEvents: false,
+      };
+      return parseDstCreds("hubspot", hubspotCred);
+    },
+  },
+  mixpanel2: {
+    type: "mixpanel",
+    credentialsFunc: _formData => {
+      const mixpanelCred: MixpanelCredentials = {
+        projectId: _formData.project_id,
+        serviceAccountUserName: "",
+        serviceAccountPassword: "",
+        projectToken: _formData.token,
+        sendPageEvents: false,
+        sendIdentifyEvents: false,
+        simplifiedIdMerge: false,
+        enableGroupAnalytics: false,
+        groupKey: "",
+        filterBotTraffic: true,
+        enableAnonymousUserProfiles: _formData.anonymous_users_enabled,
+      };
+      return parseDstCreds("mixpanel", mixpanelCred);
+    },
   },
   mixpanel: {
     credentialsFunc: _formData => {
       const mixpanelCred: MixpanelCredentials = {
-        projectId: "PLEASE PROVIDE YOUR PROJECT ID",
-        serviceAccountUserName: "PLEASE PROVIDE SERVICE ACCOUNT USERNAME",
-        serviceAccountPassword: "PLEASE PROVIDE SERVICE ACCOUNT PASSWORD",
+        projectId: "",
+        serviceAccountUserName: "",
+        serviceAccountPassword: "",
         projectToken: _formData.token,
         sendPageEvents: true,
         sendIdentifyEvents: false,
@@ -171,17 +203,43 @@ export const destinationMappings: Record<string, DestinationMapping> = {
       });
     },
   },
+  snowflake: {
+    credentialsFunc: _formData => {
+      return parseDstCreds("snowflake", {
+        authenticationMethod: "password",
+        username: _formData.snowflakeUsername,
+        password: _formData.snowflakePassword,
+        account: _formData.snowflakeAccount,
+        warehouse: _formData.snowflakeWarehouse,
+        database: _formData.snowflakeDB,
+        defaultSchema: _formData.snowflakeSchema,
+      });
+    },
+  },
+  mysql: {
+    credentialsFunc: _formData => {
+      return parseDstCreds("mysql", {
+        host: _formData.mysqlHost,
+        port: _formData.mysqlPort,
+        database: _formData.mysqlDatabase,
+        username: _formData.mysqlUser,
+        password: _formData.mysqlPassword,
+      });
+    },
+  },
   postgres: {
     credentialsFunc: _formData => {
+      if (_formData.pghost.includes("eventnative.com")) {
+        return undefined;
+      }
       return parseDstCreds("postgres", {
         host: _formData.pghost,
         port: _formData.pgport,
+        sslMode: _formData.pgsslmode,
         database: _formData.pgdatabase,
         username: _formData.pguser,
         password: _formData.pgpassword,
-        schema: _formData.pgschema,
-        parameters: _formData.parameters ? Object.fromEntries(_formData.parameters) : {},
-        sslMode: _formData.pgsslmode,
+        defaultSchema: _formData.pgschema,
         sslServerCA: _formData.pgssl.server_ca,
         sslClientCert: _formData.pgssl.client_cert,
         sslClientKey: _formData.pgssl.client_key,
@@ -297,14 +355,39 @@ export const sourceMappings: Record<string, SourceMapping> = {
       ])
     ),
   }),
+  singer_tap_google_search_console: src => {
+    let config: any;
+    if (typeof src.config.config === "string") {
+      config = JSON.parse(src.config.config);
+    } else {
+      config = src.config.config;
+    }
+    return {
+      package: "airbyte/source-google-search-console",
+      version: "latest",
+      credentials: {
+        authorization: {
+          auth_type: "Client",
+          client_id: config?.client_id,
+          client_secret: config?.client_secret,
+          refresh_token: config?.refresh_token,
+        },
+        start_date: config?.start_date?.substring(0, 10),
+        site_urls: Array.isArray(config?.site_urls) ? config?.site_urls : config?.site_urls.split(","),
+      },
+      streams: {},
+    };
+  },
   singer_tap_google_sheets: src => ({
     package: "airbyte/source-google-sheets",
     version: "latest",
     credentials: {
-      auth_type: "Client",
-      client_id: "",
-      client_secret: "",
-      refresh_token: src.config.config?.refresh_token,
+      credentials: {
+        auth_type: "Client",
+        client_id: "",
+        client_secret: "",
+        refresh_token: src.config.config?.refresh_token,
+      },
       spreadsheet_id: !src.config.config?.spreadsheet_id.startsWith("https://")
         ? `https://docs.google.com/spreadsheets/d/${src.config.config?.spreadsheet_id}/edit`
         : src.config.config?.spreadsheet_id,
@@ -341,7 +424,7 @@ export default async function(event, { log }) {
 
 export const mapClassicFunction = (funcCode: string) => {
   return `
-export default async function(event, ctx) {
+xport default async function(event, ctx) {
     event = toJitsuClassic(event, ctx)
     
     let res = classicFunction(event, ctx)
@@ -350,14 +433,29 @@ export default async function(event, ctx) {
       return "drop"
     } else if (typeof res === 'object') {
       if (Array.isArray(res)) {
-        return res.map(fromJitsuClassic)
+        return res.map(postMapping(event))
       } else {
-        return fromJitsuClassic(res)
+        return postMapping(event)(res)
       }
     } else {
       return res
     }
 } 
+function postMapping(original) {
+    const ogId = original.eventn_ctx_event_id
+    const ogTimestamp = original._timestamp
+    return (event, index) => {
+        if (index > 0) {
+            event.eventn_ctx_event_id = (event.eventn_ctx_event_id || ogId) + "_" + index
+        } else if (!event.eventn_ctx_event_id) {
+            event.eventn_ctx_event_id = ogId
+        }
+        if (!event._timestamp) {
+            event._timestamp = ogTimestamp
+        }
+        return fromJitsuClassic(event)
+    }
+}
 
 function classicFunction(event, $context) {
     let $ = event
