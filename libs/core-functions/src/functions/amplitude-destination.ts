@@ -12,7 +12,7 @@ const AmplitudeDestination: JitsuFunction<AnalyticsServerEvent, AmplitudeDestina
   try {
     const deviceId = event.anonymousId;
     let sessionId: number | undefined = undefined;
-    if (deviceId) {
+    if (deviceId || event.amplitudeEvent) {
       const ttlStore = store;
       const ttlSec = 60 * (props.sessionWindow ?? 30);
       const sessionKey = `${ctx.source.id}_${deviceId}_sess`;
@@ -35,7 +35,12 @@ const AmplitudeDestination: JitsuFunction<AnalyticsServerEvent, AmplitudeDestina
     const endpoint =
       props.dataResidency === "EU" ? "https://api.eu.amplitude.com/2/httpapi" : "https://api2.amplitude.com/2/httpapi";
     let payload: any = undefined;
-    if (event.type === "identify" && event.userId) {
+    if (event.amplitudeEvent && typeof event.amplitudeEvent === "object") {
+      payload = {
+        api_key: props.key,
+        events: Array.isArray(event.amplitudeEvent) ? event.amplitudeEvent : [event.amplitudeEvent],
+      };
+    } else if (event.type === "identify" && event.userId) {
       payload = {
         api_key: props.key,
         events: [
