@@ -406,6 +406,9 @@ export const coreDestinations: DestinationType<any>[] = [
       hosts: {
         editor: "StringArrayEditor",
       },
+      loadAsJson: {
+        correction: (obj, isNew) => (isNew ? obj.loadAsJson : obj.loadAsJson || false),
+      },
       password: {
         password: true,
       },
