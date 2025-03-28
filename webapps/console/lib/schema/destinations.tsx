@@ -407,7 +407,7 @@ export const coreDestinations: DestinationType<any>[] = [
         editor: "StringArrayEditor",
       },
       loadAsJson: {
-        correction: (obj, isNew) => (isNew ? obj.loadAsJson : obj.loadAsJson || false),
+        correction: (obj, isNew) => (isNew ? true : obj.loadAsJson || false),
       },
       password: {
         password: true,
