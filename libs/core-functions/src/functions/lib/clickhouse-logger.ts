@@ -30,7 +30,6 @@ export function createClickhouseLogger(): EventsStore {
       async_insert: 1,
       wait_for_async_insert: 0,
       async_insert_busy_timeout_ms: 10000,
-      async_insert_busy_timeout_max_ms: 10000,
       date_time_input_format: "best_effort",
     },
   });
