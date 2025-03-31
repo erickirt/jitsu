@@ -147,7 +147,7 @@ async function migrateWorkspace(workspace: Workspace) {
     const existingUser = await db.prisma().userProfile.findFirst({
       where: {
         email: user._email,
-        loginProvider: "firebase/google.com",
+        externalId: user._uid,
       },
     });
     if (existingUser) {
@@ -158,7 +158,7 @@ async function migrateWorkspace(workspace: Workspace) {
         id: user._uid,
         name: user._name || user._email || user._uid,
         email: user._email,
-        loginProvider: "firebase/google.com",
+        loginProvider: "firebase",
         externalId: user._uid,
       };
       await db.prisma().userProfile.upsert({
