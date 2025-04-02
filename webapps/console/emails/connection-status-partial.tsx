@@ -35,7 +35,7 @@ export const ConnectionStatusPartialEmail: EmailTemplate<ConnectionStatusNotific
   return (
     <Html>
       <Preview>
-        ⚠️ {capitalize(entityType)} job "{entityName}" has run with <b>PARTIAL</b> success in the {workspaceName}
+        ⚠️ {capitalize(entityType)} job "{entityName}" has run with PARTIAL success in the {workspaceName}
       </Preview>
       <Body style={main}>
         <Container>
