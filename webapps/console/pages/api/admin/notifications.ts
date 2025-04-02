@@ -850,7 +850,7 @@ const ConnectionStatusFailedSlack: SlackTemplate = {
 };
 
 const ConnectionStatusFirstRunSlack: SlackTemplate = {
-  text: props => `:large_green_circle: ${jobName(props)} *FIRST RUN* ${props.entityName} [${props.workspaceName}]`,
+  text: props => `:tada: ${jobName(props)} *FIRST RUN* ${props.entityName} [${props.workspaceName}]`,
   header: props => `:tada: ${jobName(props)} successful initial run`,
   description: props => [
     `Jitsu ${jobName(props)} *succeeded* :+1:.`,
@@ -863,7 +863,7 @@ const ConnectionStatusFirstRunSlack: SlackTemplate = {
 };
 
 const ConnectionStatusFlappingSlack: SlackTemplate = {
-  text: props => `::large_yellow_circle:: ${jobName(props)} *FLAPPING* ${props.entityName} [${props.workspaceName}]`,
+  text: props => `:large_yellow_circle: ${jobName(props)} *FLAPPING* ${props.entityName} [${props.workspaceName}]`,
   header: props => `:large_yellow_circle: ${jobName(props)} intermittent failures`,
   description: props => [
     `Jitsu ${jobName(props)} status fluctuating between success and failure :game_die:.`,
@@ -877,8 +877,14 @@ const ConnectionStatusFlappingSlack: SlackTemplate = {
 };
 
 const ConnectionStatusOngoingSlack: SlackTemplate = {
-  text: props => `:red_circle: ${jobName(props)} *RECURRING* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:red_circle: ${jobName(props)} ongoing issues`,
+  text: props =>
+    `${
+      ["PARTIAL", "TIME_EXCEEDED"].includes(props.incidentStatus) ? ":large_yellow_circle:" : ":red_circle:"
+    } ${jobName(props)} *RECURRING* ${props.entityName} [${props.workspaceName}]`,
+  header: props =>
+    `${
+      ["PARTIAL", "TIME_EXCEEDED"].includes(props.incidentStatus) ? ":large_yellow_circle:" : ":red_circle:"
+    } ${jobName(props)} ongoing issues`,
   description: props => [
     `Jitsu ${jobName(props)} processing issues persist :persevere:.`,
     ``,
