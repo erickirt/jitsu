@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 
 type MetaListProps = {
   tableName?: string;
+  streamsFailed?: string;
   incidentStartedAt?: string;
   incidentStatus?: string;
   recoveredFrom?: string;
@@ -15,6 +16,7 @@ export const MetaList: React.FC<MetaListProps> = ({
   incidentStartedAt,
   incidentStatus,
   recoveredFrom,
+  streamsFailed,
   queueSize,
 }) => {
   return (
@@ -38,6 +40,14 @@ export const MetaList: React.FC<MetaListProps> = ({
       {incidentStatus ? (
         <span>
           <b>Last Status: </b> {incidentStatus}
+          <br />
+        </span>
+      ) : (
+        <></>
+      )}
+      {streamsFailed ? (
+        <span>
+          <b>Streams Failed: </b> {streamsFailed}
           <br />
         </span>
       ) : (

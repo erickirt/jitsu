@@ -104,6 +104,7 @@ ConnectionStatusFlappingEmail.PreviewProps = {
   recurringAlertsPeriodHours: 24,
   recurring: true,
   flappingSince: "",
+  streamsFailed: "",
   detailsUrl: "http://localhost:3000/data",
   baseUrl: "http://localhost:3000",
   unsubscribeLink: "https://example.com/unsubscribe",

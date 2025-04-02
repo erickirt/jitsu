@@ -36,7 +36,7 @@ export const ConnectionStatusFailedEmail: EmailTemplate<ConnectionStatusNotifica
   return (
     <Html>
       <Preview>
-        🚨 ${capitalize(entityType)} job "{entityName}" has FAILED in the {workspaceName}
+        🚨 {capitalize(entityType)} job "{entityName}" has FAILED in the {workspaceName}
       </Preview>
       <Body style={main}>
         <Container>
@@ -108,6 +108,7 @@ ConnectionStatusFailedEmail.PreviewProps = {
   flappingWindowHours: 2,
   changesPerHours: 0,
   flappingSince: "",
+  streamsFailed: "",
   detailsUrl: "http://localhost:3000/data",
   baseUrl: "http://localhost:3000",
   unsubscribeLink: "https://example.com/unsubscribe",
