@@ -274,8 +274,8 @@ async function loadNotificationsChannels() {
 
   const res = await db.pgPool()
     .query(`select wa."workspaceId", wa."userId", u.email, u.name, upw.preferences "workspacePref", upg.preferences "globalPref" from newjitsu."WorkspaceAccess" wa
-                                left join newjitsu."UserProfile" u on u.id = wa."userId" and u.email like '%@jitsu.com'
-                                left join newjitsu."Workspace" w on w.id = wa."workspaceId" and w.deleted = false
+                                join newjitsu."UserProfile" u on u.id = wa."userId" and u.email like '%@jitsu.com'
+                                join newjitsu."Workspace" w on w.id = wa."workspaceId" and w.deleted = false
                                 left outer join newjitsu."UserPreferences" upw on  upw."userId" = wa."userId" and upw."workspaceId" = wa."workspaceId"
                                 left outer join newjitsu."UserPreferences" upg on upg."userId" = wa."userId" and upg."workspaceId" is null`);
   for (const row of res.rows) {
