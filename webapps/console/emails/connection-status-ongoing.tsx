@@ -32,17 +32,18 @@ export const ConnectionStatusOngoingEmail: EmailTemplate<ConnectionStatusNotific
   if (!workspaceName?.toLowerCase().endsWith(" workspace")) {
     workspaceName += " workspace";
   }
+  const partial = incidentStatus === "PARTIAL" || incidentStatus === "TIME_EXCEEDED";
 
   return (
     <Html>
       <Preview>
-        🚨 Ongoing {entityType} processing issues with "{entityName}" in the {workspaceName}
+        {partial ? "⚠️" : "🚨"} Ongoing {entityType} processing issues with "{entityName}" in the {workspaceName}
       </Preview>
       <Body style={main}>
         <Container>
           <Section style={{ textAlign: "center", margin: "20px 0" }}>
             <Text style={{ fontSize: "20px", color: "#333" }}>
-              🚨 Ongoing {entityType} processing issues with the connection <b>{entityName}</b>
+              {partial ? "⚠️" : "🚨"} Ongoing {entityType} processing issues with the connection <b>{entityName}</b>
             </Text>
           </Section>
           <Text>Hi {name || "there"}!</Text>
@@ -73,11 +74,15 @@ export const ConnectionStatusOngoingEmail: EmailTemplate<ConnectionStatusNotific
   );
 };
 
-ConnectionStatusOngoingEmail.subject = ({ workspaceName, entityType, entityName }) => {
+ConnectionStatusOngoingEmail.subject = ({ workspaceName, entityType, entityName, incidentStatus }) => {
   if (!workspaceName?.toLowerCase().endsWith(" workspace")) {
     workspaceName += " workspace";
   }
-  return `[${workspaceName || "Your Jitsu Workspace"}] 🚨 Ongoing ${entityType} processing issues: ${entityName}`;
+  const partial = incidentStatus === "PARTIAL" || incidentStatus === "TIME_EXCEEDED";
+
+  return `[${workspaceName || "Your Jitsu Workspace"}] ${
+    partial ? "⚠️" : "🚨"
+  } Ongoing ${entityType} processing issues: ${entityName}`;
 };
 
 ConnectionStatusOngoingEmail.from = "Jitsu Support <support@notify.jitsu.com>";
