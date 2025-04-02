@@ -1,7 +1,7 @@
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import UserRecognitionFunction from "../src/functions/user-recognition";
 import { prefixLogMessage, testJitsuFunction, TestOptions } from "./lib/testing-lib";
-import { createAnonymousEventsStore, createStore } from "./lib/mem-store";
+import { createAnonymousEventsStore, createStore, EventsByAnonId } from "./lib/mem-store";
 import nodeFetch from "node-fetch-commonjs";
 import { FunctionContext } from "../src";
 import { InternalFetchType } from "../src/functions/lib";
@@ -159,6 +159,7 @@ const expectedEventsEmailOnly: AnalyticsServerEvent[] = [
 
 test("user-recognition-test", async () => {
   const store = createStore();
+  const eventsStore: Record<string, EventsByAnonId> = {};
   const options: TestOptions = {
     func: UserRecognitionFunction,
     chainCtx: {
@@ -170,7 +171,7 @@ test("user-recognition-test", async () => {
         debug: (ctx: FunctionContext, msg: any, ...args: any[]) => console.debug(prefixLogMessage("DEBUG", msg), args),
         warn: (ctx: FunctionContext, msg: any, ...args: any[]) => console.warn(prefixLogMessage("WARN", msg), args),
       },
-      anonymousEventsStore: createAnonymousEventsStore(),
+      anonymousEventsStore: createAnonymousEventsStore(eventsStore),
     },
     ctx: {
       headers: {},
@@ -199,7 +200,8 @@ test("user-recognition-test", async () => {
     config: {},
     events: [],
   };
-  let res = await testJitsuFunction({ ...options, events: anonymousEvents });
+  const copy = JSON.parse(JSON.stringify(anonymousEvents));
+  let res = await testJitsuFunction({ ...options, events: copy });
   expect(res).toEqual([]);
 
   res = await testJitsuFunction({ ...options, events: [identifiedEventEmailOnly] });
@@ -216,6 +218,8 @@ test("user-recognition-test", async () => {
 
 test("user-recognition-test-email-only", async () => {
   const store = createStore();
+  const eventsStore: Record<string, EventsByAnonId> = {};
+
   const options: TestOptions = {
     func: UserRecognitionFunction,
     chainCtx: {
@@ -227,7 +231,7 @@ test("user-recognition-test-email-only", async () => {
         debug: (ctx: FunctionContext, msg: any, ...args: any[]) => console.debug(prefixLogMessage("DEBUG", msg), args),
         warn: (ctx: FunctionContext, msg: any, ...args: any[]) => console.warn(prefixLogMessage("WARN", msg), args),
       },
-      anonymousEventsStore: createAnonymousEventsStore(),
+      anonymousEventsStore: createAnonymousEventsStore(eventsStore),
     },
     ctx: {
       headers: {},
@@ -256,7 +260,8 @@ test("user-recognition-test-email-only", async () => {
     config: {},
     events: [],
   };
-  let res = await testJitsuFunction({ ...options, events: anonymousEvents });
+  const copy = JSON.parse(JSON.stringify(anonymousEvents));
+  let res = await testJitsuFunction({ ...options, events: copy });
   expect(res).toEqual([]);
 
   res = await testJitsuFunction({ ...options, events: [identifiedEventEmailOnly] });

@@ -18,7 +18,6 @@ import { ConnectionStatusRecoveredEmail } from "../../../emails/connection-statu
 
 import { sendEmail, UnsubscribeLinkProps, WorkspaceEmailProps } from "@jitsu-internal/webapps-shared";
 import { DefaultUserNotificationsPreferences } from "../../../lib/server/user-preferences";
-import capitalize from "lodash/capitalize";
 import pick from "lodash/pick";
 
 dayjs.extend(utc);
@@ -781,7 +780,7 @@ const metaBlock = (props: {
   if (props.incidentStatus) {
     textArray.push(`Incident status: ${props.incidentStatus}`);
   }
-  if (props.incidentStartedAt && Date.now() - new Date(props.incidentStartedAt).getTime() > 60 * 60 * 1000) {
+  if (props.incidentStartedAt && Date.now() - new Date(props.incidentStartedAt).getTime() > 5 * 60 * 1000) {
     textArray.push(`Incident started at: ${dayjs(props.incidentStartedAt).toLocaleString()}`);
   }
   if (props.queueSize) {
@@ -790,11 +789,14 @@ const metaBlock = (props: {
   return textArray.join("\n");
 };
 
+const jobName = (props: ConnectionStatusNotificationProps) =>
+  props.entityType === "sync" ? "Sync Task" : "Data Warehouse Batch Job";
+
 const ConnectionStatusFailedSlack: SlackTemplate = {
-  text: props => `:red_circle: ${capitalize(props.entityType)} *FAILED* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:red_circle: ${capitalize(props.entityType)} failed`,
+  text: props => `:red_circle: ${jobName(props)} *FAILED* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:red_circle: ${jobName(props)} failed`,
   description: props => [
-    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *failed* :persevere:.`,
+    `Jitsu ${jobName(props)} *failed* :persevere:.`,
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
   ],
@@ -804,11 +806,10 @@ const ConnectionStatusFailedSlack: SlackTemplate = {
 };
 
 const ConnectionStatusFirstRunSlack: SlackTemplate = {
-  text: props =>
-    `:large_green_circle: ${capitalize(props.entityType)} *FIRST RUN* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:tada: ${capitalize(props.entityType)} successful initial run`,
+  text: props => `:large_green_circle: ${jobName(props)} *FIRST RUN* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:tada: ${jobName(props)} successful initial run`,
   description: props => [
-    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *succeeded* :+1:.`,
+    `Jitsu ${jobName(props)} *succeeded* :+1:.`,
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
   ],
@@ -818,13 +819,10 @@ const ConnectionStatusFirstRunSlack: SlackTemplate = {
 };
 
 const ConnectionStatusFlappingSlack: SlackTemplate = {
-  text: props =>
-    `::large_yellow_circle:: ${capitalize(props.entityType)} *FLAPPING* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:large_yellow_circle: ${capitalize(props.entityType)} intermittent failures`,
+  text: props => `::large_yellow_circle:: ${jobName(props)} *FLAPPING* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:large_yellow_circle: ${jobName(props)} intermittent failures`,
   description: props => [
-    `Jitsu ${
-      props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"
-    } status fluctuating between success and failure :game_die:.`,
+    `Jitsu ${jobName(props)} status fluctuating between success and failure :game_die:.`,
     `It has changed status *${props.changesPerHours}* times in the last *${props.flappingWindowHours}* hours.`,
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
@@ -835,13 +833,10 @@ const ConnectionStatusFlappingSlack: SlackTemplate = {
 };
 
 const ConnectionStatusOngoingSlack: SlackTemplate = {
-  text: props =>
-    `:red_circle: ${capitalize(props.entityType)} *RECURRING* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:red_circle: ${capitalize(props.entityType)} ongoing issues`,
+  text: props => `:red_circle: ${jobName(props)} *RECURRING* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:red_circle: ${jobName(props)} ongoing issues`,
   description: props => [
-    `Jitsu ${
-      props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"
-    } processing issues persist :persevere:.`,
+    `Jitsu ${jobName(props)} processing issues persist :persevere:.`,
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
   ],
@@ -851,11 +846,10 @@ const ConnectionStatusOngoingSlack: SlackTemplate = {
 };
 
 const ConnectionStatusRecoveredSlack: SlackTemplate = {
-  text: props =>
-    `:large_green_circle: ${capitalize(props.entityType)} *RECOVERED* ${props.entityName} [${props.workspaceName}]`,
-  header: props => `:large_green_circle: ${capitalize(props.entityType)} recovered`,
+  text: props => `:large_green_circle: ${jobName(props)} *RECOVERED* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:large_green_circle: ${jobName(props)} recovered`,
   description: props => [
-    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *recovered* :+1:.`,
+    `Jitsu ${jobName(props)} *recovered* :+1:.`,
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
   ],
@@ -970,7 +964,7 @@ export async function sendSlackNotification(
     });
   }
 
-  console.debug(`Sending slack notification to ${channel.id} (${channel.name}): ${JSON.stringify(payload, null, 2)}`);
+  console.debug(`Sending slack notification to ${channel.id} (${channel.name}): ${payload.text}`);
 
   const res = await fetch(channel.slackWebhookUrl!, {
     method: "POST",
