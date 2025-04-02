@@ -567,7 +567,7 @@ async function loadSyncStatusesChanges(
         return;
       }
       let description = row.error;
-      if (status === "PARTIAL") {
+      if (status === "PARTIAL" || status === "TIME_EXCEEDED") {
         try {
           const st = JSON.parse(row.description);
           const failed: string[] = [];
@@ -940,6 +940,7 @@ export async function sendSlackNotification(
       case "ONGOING":
         return ConnectionStatusOngoingSlack;
       case "PARTIAL":
+      case "TIME_EXCEEDED":
         return ConnectionStatusPartialSlack;
       default:
         return ConnectionStatusFailedSlack;
@@ -1056,6 +1057,7 @@ export async function sendEmailNotification(
       case "ONGOING":
         return ConnectionStatusOngoingEmail;
       case "PARTIAL":
+      case "TIME_EXCEEDED":
         return ConnectionStatusPartialEmail;
       default:
         return ConnectionStatusFailedEmail;
@@ -1121,9 +1123,8 @@ function fillNotificationProps(
 function extractDescription(statusChange: StatusChange): string | null | undefined {
   if (statusChange.description && statusChange.description.startsWith(_J_PREF)) {
     try {
-      statusChange.description = statusChange.description.substring(_J_PREF.length);
-      const extraPayload = JSON.parse(statusChange.description);
-      statusChange.description = extraPayload.description || "";
+      const extraPayload = JSON.parse(statusChange.description.substring(_J_PREF.length));
+      return extraPayload.description;
     } catch (e) {}
   }
   return statusChange.description;
