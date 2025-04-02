@@ -43,7 +43,7 @@ export const MetaList: React.FC<MetaListProps> = ({
       ) : (
         <></>
       )}
-      {incidentStartedAt && Date.now() - new Date(incidentStartedAt).getTime() > 60 * 60 * 1000 ? (
+      {incidentStartedAt && Date.now() - new Date(incidentStartedAt).getTime() > 5 * 60 * 1000 ? (
         <span>
           <b>Incident Started At: </b> {dayjs(incidentStartedAt).toLocaleString()}
           <br />
