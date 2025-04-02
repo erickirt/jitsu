@@ -15,6 +15,7 @@ import { ConnectionStatusFirstRunEmail } from "../../../emails/connection-status
 import { ConnectionStatusFlappingEmail } from "../../../emails/connection-status-flapping";
 import { ConnectionStatusOngoingEmail } from "../../../emails/connection-status-ongoing";
 import { ConnectionStatusRecoveredEmail } from "../../../emails/connection-status-recovered";
+import { ConnectionStatusPartialEmail } from "../../../emails/connection-status-partial";
 
 import { sendEmail, UnsubscribeLinkProps, WorkspaceEmailProps } from "@jitsu-internal/webapps-shared";
 import { DefaultUserNotificationsPreferences } from "../../../lib/server/user-preferences";
@@ -56,6 +57,7 @@ export type ConnectionStatusNotificationProps = {
   flappingWindowHours?: number;
   flappingSince?: string;
   changesPerHours?: number;
+  streamsFailed?: string;
   detailsUrl?: string;
   baseUrl: string;
 } & WorkspaceEmailProps &
@@ -403,8 +405,19 @@ async function processStatusChanges(
           } else if (lastStatus.status !== "SUCCESS" && lastStatus.timestamp.getTime() > sendRecurringTime) {
             // recurring alert
             doNotify = true;
+            let extraPayload: any = {};
+            if (lastStatus.description && lastStatus.description.startsWith(_J_PREF)) {
+              try {
+                extraPayload = JSON.parse(lastStatus.description.substring(_J_PREF.length));
+              } catch (e) {}
+            }
             lastStatus.description =
-              _J_PREF + JSON.stringify({ status: "ONGOING", description: lastStatus.description });
+              _J_PREF +
+              JSON.stringify({
+                status: "ONGOING",
+                description: extraPayload.description || lastStatus.description,
+                ...extraPayload,
+              });
           }
         }
       } else if (entity.changesPerHours === 0) {
@@ -553,8 +566,34 @@ async function loadSyncStatusesChanges(
         log.atWarn().log(`Sync ${row.sync_id} not found`);
         return;
       }
+      let description = row.error;
+      if (status === "PARTIAL") {
+        try {
+          const st = JSON.parse(row.description);
+          const failed: string[] = [];
+          const succeeded: string[] = [];
+          for (const [name, stts] of Object.entries(st)) {
+            if ((stts as any).status === "SUCCESS") {
+              succeeded.push(name);
+            } else {
+              failed.push(name);
+            }
+          }
+          const streamsFailed = `${failed.length} of ${failed.length + succeeded.length}`;
+          description =
+            _J_PREF +
+            JSON.stringify({
+              description: `${streamsFailed} streams failed. Failed: ${failed.join(", ")}. Succeeded: ${succeeded.join(
+                ", "
+              )}\n${row.error}`,
+              streamsFailed,
+            });
+        } catch (e: any) {
+          log.atError().log(`Failed to parse sync ${row.sync_id} status: ${e.message}: ${row.description}`);
+        }
+      }
       //log.atInfo().log(`SS`, rowTimestamp, typeof rowTimestamp, batch.timestamp, typeof batch.timestamp);
-      const chId = await updateStatusChange(entities, entity, row.updated_at, status, 0, row.error, increments);
+      const chId = await updateStatusChange(entities, entity, row.updated_at, status, 0, description, increments);
       if (chId) {
         statusChanges++;
       }
@@ -678,7 +717,7 @@ async function updateStatusChange(
             JSON.stringify({
               status: "RECOVERED",
               incidentStatus: entity.status,
-              incidentStartedAt: entity.startedAt,
+              incidentStartedAt: entity.startedAt?.toISOString(),
               incidentDetails: extractDescription(entity),
             });
         }
@@ -765,6 +804,7 @@ interface SlackTemplate {
 
 const metaBlock = (props: {
   tableName?: string;
+  streamsFailed?: string;
   incidentStartedAt?: string;
   incidentStatus?: string;
   recoveredFrom?: string;
@@ -779,6 +819,9 @@ const metaBlock = (props: {
   }
   if (props.incidentStatus) {
     textArray.push(`Incident status: ${props.incidentStatus}`);
+  }
+  if (props.streamsFailed) {
+    textArray.push(`Streams Failed: ${props.streamsFailed}`);
   }
   if (props.incidentStartedAt && Date.now() - new Date(props.incidentStartedAt).getTime() > 5 * 60 * 1000) {
     textArray.push(`Incident started at: ${dayjs(props.incidentStartedAt).toLocaleString()}`);
@@ -840,7 +883,8 @@ const ConnectionStatusOngoingSlack: SlackTemplate = {
     ``,
     `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
   ],
-  metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize")),
+  metaBlock: props =>
+    metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize", "streamsFailed")),
   footer: props =>
     `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
 };
@@ -864,6 +908,19 @@ const ConnectionStatusRecoveredSlack: SlackTemplate = {
   showDetails: _ => false,
 };
 
+const ConnectionStatusPartialSlack: SlackTemplate = {
+  text: props => `:large_yellow_circle: ${jobName(props)} *PARTIAL* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:large_yellow_circle: ${jobName(props)} partial success`,
+  description: props => [
+    `Jitsu ${jobName(props)} had *partial* success :persevere:.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props => metaBlock(pick(props, "streamsFailed", "incidentStatus", "incidentStartedAt")),
+  footer: props =>
+    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+};
+
 export async function sendSlackNotification(
   channel: NotificationChannel,
   entity: StatusChangeEntity,
@@ -882,6 +939,8 @@ export async function sendSlackNotification(
         return ConnectionStatusRecoveredSlack;
       case "ONGOING":
         return ConnectionStatusOngoingSlack;
+      case "PARTIAL":
+        return ConnectionStatusPartialSlack;
       default:
         return ConnectionStatusFailedSlack;
     }
@@ -996,6 +1055,8 @@ export async function sendEmailNotification(
         return ConnectionStatusRecoveredEmail;
       case "ONGOING":
         return ConnectionStatusOngoingEmail;
+      case "PARTIAL":
+        return ConnectionStatusPartialEmail;
       default:
         return ConnectionStatusFailedEmail;
     }

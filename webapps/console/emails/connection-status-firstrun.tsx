@@ -30,7 +30,7 @@ export const ConnectionStatusFirstRunEmail: EmailTemplate<ConnectionStatusNotifi
   return (
     <Html>
       <Preview>
-        🎉 Successful initial run of ${entityType} job "${entityName}" in the {workspaceName}
+        🎉 Successful initial run of {entityType} job "{entityName}" in the {workspaceName}
       </Preview>
       <Body style={main}>
         <Container>
@@ -94,6 +94,7 @@ ConnectionStatusFirstRunEmail.PreviewProps = {
   flappingWindowHours: 2,
   changesPerHours: 0,
   flappingSince: "",
+  streamsFailed: "",
   detailsUrl: "http://localhost:3000/data",
   baseUrl: "http://localhost:3000",
   unsubscribeLink: "https://example.com/unsubscribe",
