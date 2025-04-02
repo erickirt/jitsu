@@ -860,8 +860,7 @@ const ConnectionStatusRecoveredSlack: SlackTemplate = {
       incidentStartedAt: props.incidentStartedAt,
       queueSize: props.queueSize,
     }),
-  footer: props =>
-    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+  footer: _ => `No additional reports will be sent for this connection unless the status changes.`,
   showDetails: _ => false,
 };
 
