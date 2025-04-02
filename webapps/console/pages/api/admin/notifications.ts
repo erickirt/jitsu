@@ -6,11 +6,20 @@ import { NotificationStateDbModel, StatusChangeDbModel } from "../../../prisma/s
 import { z } from "zod";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { rpc, stopwatch } from "juava";
+import { stopwatch } from "juava";
 import { getAppEndpoint, PublicEndpoint } from "../../../lib/domains";
 import { NotificationChannel } from "../../../lib/schema";
 import omit from "lodash/omit";
-import { createJwt, getEeConnection } from "../../../lib/server/ee";
+import { ConnectionStatusFailedEmail } from "../../../emails/connection-status-failed";
+import { ConnectionStatusFirstRunEmail } from "../../../emails/connection-status-firstrun";
+import { ConnectionStatusFlappingEmail } from "../../../emails/connection-status-flapping";
+import { ConnectionStatusOngoingEmail } from "../../../emails/connection-status-ongoing";
+import { ConnectionStatusRecoveredEmail } from "../../../emails/connection-status-recovered";
+
+import { sendEmail, UnsubscribeLinkProps, WorkspaceEmailProps } from "@jitsu-internal/webapps-shared";
+import { DefaultUserNotificationsPreferences } from "../../../lib/server/user-preferences";
+import capitalize from "lodash/capitalize";
+import pick from "lodash/pick";
 
 dayjs.extend(utc);
 
@@ -27,6 +36,31 @@ export type JobStatus = "FAILED" | "SUCCESS" | "FLAPPING";
 const flappingWindowHours = 2;
 
 const flappingThreshold = 4;
+
+export const _J_PREF = "_j:";
+
+export type ConnectionStatusNotificationProps = {
+  entityId: string;
+  entityType: "batch" | "sync";
+  entityName: string;
+  entityFrom: string;
+  entityTo: string;
+  timestamp?: string;
+  tableName?: string;
+  status: string;
+  incidentStatus: string;
+  incidentStartedAt?: string;
+  incidentDetails: string;
+  queueSize?: number;
+  recurring?: boolean;
+  recurringAlertsPeriodHours?: number;
+  flappingWindowHours?: number;
+  flappingSince?: string;
+  changesPerHours?: number;
+  detailsUrl?: string;
+  baseUrl: string;
+} & WorkspaceEmailProps &
+  UnsubscribeLinkProps;
 
 const adminChannel: NotificationChannel = {
   id: "admin",
@@ -183,14 +217,17 @@ export default createRoute()
       const values = Array.from(increments.entries())
         .map(
           ([id, data]) =>
-            `(${id}, ${data.counts}, '${data.timestamp.toISOString()}', '${data.description.replaceAll("'", "''")}')`
+            `(${id}, ${data.counts}, '${data.timestamp.toISOString()}', '${data.description.replaceAll("'", "''")}', ${
+              data.queueSize
+            })`
         )
         .join(",");
       const query = `update newjitsu."StatusChange" as s
                      set counts    = s.counts + data.counts,
                          description = data.description,
+                         "queueSize" = data."queueSize",
                          timestamp = data.timestamp::TIMESTAMPTZ(3)
-                     from (values ${values}) as data (id, counts, timestamp, description)
+                     from (values ${values}) as data (id, counts, timestamp, description, "queueSize")
                      where s.id = data.id`;
       const res = await db.pgPool().query(query);
       log.atInfo().log(`Status counts updated for ${res.rowCount} rows.`);
@@ -212,15 +249,10 @@ export default createRoute()
   })
   .toNextApiHandler();
 
-async function processStatusChanges(
-  processedTimestamp: Date,
-  entities: Record<string, StatusChangeEntity>,
-  publicEndpoints: any
-): Promise<Date> {
+async function loadNotificationsChannels() {
   const channels: Record<string, NotificationChannel[]> = {
     admin: [adminChannel],
   };
-  const channelStates: Record<string, NotificationState> = {};
   await db
     .prisma()
     .configurationObject.findMany({
@@ -240,13 +272,52 @@ async function processStatusChanges(
       }
     });
 
-  const states = await db.prisma().notificationState.findMany({});
-  for (const state of states) {
-    channelStates[chKey(state.channelId, state.actorId, state.tableName)] = state;
+  const res = await db.pgPool()
+    .query(`select wa."workspaceId", wa."userId", u.email, u.name, upw.preferences "workspacePref", upg.preferences "globalPref" from newjitsu."WorkspaceAccess" wa
+                                left join newjitsu."UserProfile" u on u.id = wa."userId" and u.email like '%@jitsu.com'
+                                left join newjitsu."Workspace" w on w.id = wa."workspaceId" and w.deleted = false
+                                left outer join newjitsu."UserPreferences" upw on  upw."userId" = wa."userId" and upw."workspaceId" = wa."workspaceId"
+                                left outer join newjitsu."UserPreferences" upg on upg."userId" = wa."userId" and upg."workspaceId" is null`);
+  for (const row of res.rows) {
+    const settings = {
+      ...DefaultUserNotificationsPreferences,
+      ...row.globalPref?.notifications,
+      ...row.workspacePref?.notifications,
+    };
+    if (settings.syncs || settings.batches) {
+      const events: ("all" | "sync" | "batch")[] = [];
+      if (settings.syncs) {
+        events.push("sync");
+      }
+      if (settings.batches) {
+        events.push("batch");
+      }
+      let channelsByWorkspace = channels[row.workspaceId];
+      if (!channelsByWorkspace) {
+        channelsByWorkspace = [];
+        channels[row.workspaceId] = channelsByWorkspace;
+      }
+      channelsByWorkspace.push({
+        id: "user:" + row.userId,
+        channel: "email",
+        events: events,
+        name: row.name,
+        emails: [row.email],
+        recurringAlertsPeriodHours: row.recurringAlertsPeriodHours,
+        type: "notification",
+        workspaceId: row.workspaceId,
+      });
+    }
   }
+  return channels;
+}
 
+async function processStatusChanges(
+  processedTimestamp: Date,
+  entities: Record<string, StatusChangeEntity>,
+  publicEndpoints: any
+): Promise<Date> {
   log.atInfo().log(`Loading changes from ${processedTimestamp.toISOString()}`);
-
   const statusChanges = await db.prisma().statusChange.findMany({
     where: {
       timestamp: { gt: processedTimestamp },
@@ -256,8 +327,19 @@ async function processStatusChanges(
 
   log.atInfo().log(`Got ${statusChanges.length} new status changes`);
 
-  const aggrStatues: Record<string, StatusChange[]> = {};
+  if (statusChanges.length === 0) {
+    return processedTimestamp;
+  }
 
+  const channels = await loadNotificationsChannels();
+
+  const channelStates: Record<string, NotificationState> = {};
+  const states = await db.prisma().notificationState.findMany({});
+  for (const state of states) {
+    channelStates[chKey(state.channelId, state.actorId, state.tableName)] = state;
+  }
+
+  const aggrStatues: Record<string, StatusChange[]> = {};
   for (const change of statusChanges) {
     const k = key(change.actorId, change.tableName);
     const statuses = aggrStatues[k] || [];
@@ -294,13 +376,25 @@ async function processStatusChanges(
           cStatuses.push({
             ...lastStatus,
             status: "FLAPPING",
-            description: `FLAPPING: ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
+            description:
+              _J_PREF +
+              JSON.stringify({
+                status: "FLAPPING",
+                description: `${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
+                changesPerHours: entity.changesPerHours,
+                flappingWindowHours,
+                lastStatus: lastStatus.description,
+              }),
           });
           doNotify = true;
         } else {
           if (!state) {
             if (lastStatus.status !== "SUCCESS" || lastStatus.counts === 0) {
-              log.atInfo().log(`[${chkey}] First SUCCESS for ${entity.actorId} ${entity.tableName}`);
+              log
+                .atInfo()
+                .log(
+                  `[${chkey}] First status on channel: ${lastStatus.status} for ${entity.actorId} ${entity.tableName}`
+                );
               // first status change. report SUCCESS only if it is the first observed run of this entity
               doNotify = true;
             }
@@ -310,7 +404,8 @@ async function processStatusChanges(
           } else if (lastStatus.status !== "SUCCESS" && lastStatus.timestamp.getTime() > sendRecurringTime) {
             // recurring alert
             doNotify = true;
-            lastStatus.description = "RECURRING: " + lastStatus.description;
+            lastStatus.description =
+              _J_PREF + JSON.stringify({ status: "ONGOING", description: lastStatus.description });
           }
         }
       } else if (entity.changesPerHours === 0) {
@@ -325,7 +420,16 @@ async function processStatusChanges(
         cStatuses.push({
           ...lastStatus,
           status: "FLAPPING",
-          description: `RECURRING: FLAPPING ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
+          description:
+            _J_PREF +
+            JSON.stringify({
+              status: "FLAPPING",
+              description: `ONGOING: ${entity.changesPerHours} transitions from SUCCESS to FAILED within a ${flappingWindowHours}-hours window`,
+              changesPerHours: entity.changesPerHours,
+              flappingSince: state.flappingSince,
+              flappingWindowHours,
+              lastStatus: lastStatus.description,
+            }),
         });
         doNotify = true;
       } else {
@@ -396,12 +500,11 @@ async function processNotifications(
   const lastStatus = statusChanges[statusChanges.length - 1];
   let flappingSince: Date | null =
     lastStatus.status === "FLAPPING" ? state?.flappingSince || lastStatus.timestamp : null;
-  const status = lastStatus.status === "SUCCESS" ? "SUCCESS" : lastStatus.status === "FLAPPING" ? "FLAPPING" : "FAILED";
   try {
     if (channel.channel === "slack") {
-      await sendSlackNotification(channel, entity, status, statusChanges, publicEndpoints.baseUrl);
+      await sendSlackNotification(channel, entity, statusChanges, publicEndpoints.baseUrl);
     } else if (channel.channel === "email") {
-      await sendEmailNotification(channel, entity, status, statusChanges, publicEndpoints.baseUrl);
+      await sendEmailNotification(channel, entity, statusChanges, publicEndpoints.baseUrl);
     }
     log.atInfo().log(`[${chkey}] ${channel.channel} notification sent. Id: ${entity.id} ts: ${entity.timestamp}`);
   } catch (e: any) {
@@ -452,7 +555,7 @@ async function loadSyncStatusesChanges(
         return;
       }
       //log.atInfo().log(`SS`, rowTimestamp, typeof rowTimestamp, batch.timestamp, typeof batch.timestamp);
-      const chId = await updateStatusChange(entities, entity, row.updated_at, status, row.error, increments);
+      const chId = await updateStatusChange(entities, entity, row.updated_at, status, 0, row.error, increments);
       if (chId) {
         statusChanges++;
       }
@@ -468,7 +571,7 @@ async function loadSyncStatusesChanges(
 
 // StatusRepeats - optimization. we have batches that runs way too often.
 // to avoid multiple db updates we can accumulate changes and write them in a single query
-type StatusRepeats = { counts: number; timestamp: Date; description: string };
+type StatusRepeats = { counts: number; timestamp: Date; description: string; queueSize: number };
 
 async function loadBatchStatusesChanges(
   fromTimestamp: Date,
@@ -525,6 +628,7 @@ async function loadBatchStatusesChanges(
         }
         entity = entityWithTable;
       }
+      const queueSize = message.queueSize || 0;
       //log.atInfo().log(`Batch ${row.actorId} ${entity.tableName} ${status} ${row.timestamp} ${entity.timestamp}`);
       if (!entity) {
         log.atWarn().log(`Batch ${row.actorId} not found`);
@@ -532,7 +636,15 @@ async function loadBatchStatusesChanges(
       }
       const rowTimestamp = dayjs(row.timestamp, { utc: true }).toDate();
 
-      const chId = await updateStatusChange(entities, entity, rowTimestamp, status, message.error, increments);
+      const chId = await updateStatusChange(
+        entities,
+        entity,
+        rowTimestamp,
+        status,
+        queueSize,
+        message.error,
+        increments
+      );
       if (chId) {
         statusChanges++;
       }
@@ -549,6 +661,7 @@ async function updateStatusChange(
   entity: StatusChangeEntity,
   timestamp: Date,
   status: string,
+  queueSize: number,
   description?: string,
   increments?: Map<bigint, StatusRepeats>
 ): Promise<boolean> {
@@ -559,9 +672,16 @@ async function updateStatusChange(
     if (status != entity.status) {
       if (status === "SUCCESS") {
         if (!entity.timestamp) {
-          description = "First run.";
+          description = _J_PREF + JSON.stringify({ status: "FIRST_RUN" });
         } else {
-          description = `Recovered from ${entity.status} of ${entity.timestamp.toISOString()}.`;
+          description =
+            _J_PREF +
+            JSON.stringify({
+              status: "RECOVERED",
+              incidentStatus: entity.status,
+              incidentStartedAt: entity.startedAt,
+              incidentDetails: extractDescription(entity),
+            });
         }
       }
       newEntity = {
@@ -574,6 +694,7 @@ async function updateStatusChange(
         description: description,
         // 0 - means that this is the first status of connection
         counts: entity.timestamp ? 1 : 0,
+        queueSize: queueSize,
       };
       const b = await db.prisma().statusChange.create({
         data: newEntity,
@@ -587,17 +708,19 @@ async function updateStatusChange(
         // optimization. we have batches that runs way too often. to avoid multiple db updates we can accumulate changes and write them in a single query
         let increment = increments.get(entity.id);
         if (!increment) {
-          increment = { counts: 1, timestamp, description: newDescription };
+          increment = { counts: 1, timestamp, description: newDescription, queueSize };
           increments.set(entity.id, increment);
         } else {
           increment.counts++;
           increment.description = newDescription;
           increment.timestamp = timestamp;
+          increment.queueSize = queueSize;
         }
         newEntity = {
           ...entity,
           description: newDescription,
           counts: entity.counts + 1,
+          queueSize: queueSize,
           timestamp: timestamp,
         };
       } else {
@@ -606,6 +729,7 @@ async function updateStatusChange(
           data: {
             description: newDescription,
             counts: { increment: 1 },
+            queueSize: queueSize,
             timestamp: timestamp,
           },
         });
@@ -630,100 +754,223 @@ type SlackPayload = {
   attachments?: any[];
 };
 
+interface SlackTemplate {
+  text(props: ConnectionStatusNotificationProps): string;
+  header(props: ConnectionStatusNotificationProps): string;
+  description(props: ConnectionStatusNotificationProps): string[];
+  metaBlock?(props: ConnectionStatusNotificationProps): string;
+  footer(props: ConnectionStatusNotificationProps): string;
+  showDetails?(props: ConnectionStatusNotificationProps): boolean;
+  showButtons?(props: ConnectionStatusNotificationProps): boolean;
+}
+
+const metaBlock = (props: {
+  tableName?: string;
+  incidentStartedAt?: string;
+  incidentStatus?: string;
+  recoveredFrom?: string;
+  queueSize?: number;
+}) => {
+  const textArray: string[] = [];
+  if (props.tableName) {
+    textArray.push(`Table: \`${props.tableName}\``);
+  }
+  if (props.recoveredFrom) {
+    textArray.push(`Recovered from: ${props.recoveredFrom}`);
+  }
+  if (props.incidentStatus) {
+    textArray.push(`Incident status: ${props.incidentStatus}`);
+  }
+  if (props.incidentStartedAt && Date.now() - new Date(props.incidentStartedAt).getTime() > 60 * 60 * 1000) {
+    textArray.push(`Incident started at: ${dayjs(props.incidentStartedAt).toLocaleString()}`);
+  }
+  if (props.queueSize) {
+    textArray.push(`Queue size: ${props.queueSize.toLocaleString()}`);
+  }
+  return textArray.join("\n");
+};
+
+const ConnectionStatusFailedSlack: SlackTemplate = {
+  text: props => `:red_circle: ${capitalize(props.entityType)} *FAILED* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:red_circle: ${capitalize(props.entityType)} failed`,
+  description: props => [
+    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *failed* :persevere:.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize")),
+  footer: props =>
+    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+};
+
+const ConnectionStatusFirstRunSlack: SlackTemplate = {
+  text: props =>
+    `:large_green_circle: ${capitalize(props.entityType)} *FIRST RUN* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:tada: ${capitalize(props.entityType)} successful initial run`,
+  description: props => [
+    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *succeeded* :+1:.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props => metaBlock({ tableName: props.tableName }),
+  footer: _ => `No additional reports will be sent for this connection unless the status changes.`,
+  showDetails: _ => false,
+};
+
+const ConnectionStatusFlappingSlack: SlackTemplate = {
+  text: props =>
+    `::large_yellow_circle:: ${capitalize(props.entityType)} *FLAPPING* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:large_yellow_circle: ${capitalize(props.entityType)} intermittent failures`,
+  description: props => [
+    `Jitsu ${
+      props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"
+    } status fluctuating between success and failure :game_die:.`,
+    `It has changed status *${props.changesPerHours}* times in the last *${props.flappingWindowHours}* hours.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "queueSize")),
+  footer: props =>
+    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+};
+
+const ConnectionStatusOngoingSlack: SlackTemplate = {
+  text: props =>
+    `:red_circle: ${capitalize(props.entityType)} *RECURRING* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:red_circle: ${capitalize(props.entityType)} ongoing issues`,
+  description: props => [
+    `Jitsu ${
+      props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"
+    } processing issues persist :persevere:.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize")),
+  footer: props =>
+    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+};
+
+const ConnectionStatusRecoveredSlack: SlackTemplate = {
+  text: props =>
+    `:large_green_circle: ${capitalize(props.entityType)} *RECOVERED* ${props.entityName} [${props.workspaceName}]`,
+  header: props => `:large_green_circle: ${capitalize(props.entityType)} recovered`,
+  description: props => [
+    `Jitsu ${props.entityType === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *recovered* :+1:.`,
+    ``,
+    `The job was triggered in *<${props.baseUrl}/${props.workspaceSlug}|${props.workspaceName}>* workspace from *${props.entityFrom}* to *${props.entityTo}*`,
+  ],
+  metaBlock: props =>
+    metaBlock({
+      tableName: props.tableName,
+      recoveredFrom: props.incidentStatus,
+      incidentStartedAt: props.incidentStartedAt,
+      queueSize: props.queueSize,
+    }),
+  footer: props =>
+    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+  showDetails: _ => false,
+};
+
 export async function sendSlackNotification(
-  channel: Pick<NotificationChannel, "recurringAlertsPeriodHours" | "slackWebhookUrl">,
+  channel: NotificationChannel,
   entity: StatusChangeEntity,
-  status: JobStatus,
   statusChanges: StatusChange[],
   baseUrl: string
 ): Promise<void> {
-  const lastStatus = statusChanges[statusChanges.length - 1];
-  const url =
-    entity.type == "sync"
-      ? `${baseUrl}/${entity.slug}/syncs/tasks?query={syncId:'${entity.actorId}'}`
-      : `${baseUrl}/${entity.slug}/data?query={activeView%3A'bulker'%2CviewState%3A{bulker%3A{actorId%3A'${entity.actorId}'}}}`;
-  const name = `${entity.fromName} → ${entity.toName}`;
-  const jobType = entity.type == "sync" ? "Sync Task" : "Batch";
-  const jobName = `<${url}|${name}>`;
-  const test =
-    status === "SUCCESS"
-      ? `:large_green_circle: ${jobType} *SUCCESS* ${jobName} [${entity.workspaceName}]`
-      : `:red_circle: ${jobType} *FAILED* ${jobName} [${entity.workspaceName}]`;
-  const color = status === "SUCCESS" ? "#36a64f" : "#ff0000"; // Red for failed, Green for recovered
-  const details = [...statusChanges]
-    .reverse()
-    .map(s => `${s.timestamp.toISOString()} [${s.status}] ${s.description || "Unknown"}`)
-    .join("\n");
+  const props = fillNotificationProps(channel, entity, statusChanges, baseUrl);
+
+  const selectTemplate = (status: string) => {
+    switch (status) {
+      case "FIRST_RUN":
+        return ConnectionStatusFirstRunSlack;
+      case "FLAPPING":
+        return ConnectionStatusFlappingSlack;
+      case "RECOVERED":
+        return ConnectionStatusRecoveredSlack;
+      case "ONGOING":
+        return ConnectionStatusOngoingSlack;
+      default:
+        return ConnectionStatusFailedSlack;
+    }
+  };
+
+  const template = selectTemplate(props.status);
 
   const payload: SlackPayload = {
-    text: test,
+    text: template.text(props),
     blocks: [
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: status === "SUCCESS" ? `:large_green_circle: ${jobType} succeeded` : `:red_circle: ${jobType} failed`,
+          text: template.header(props),
         },
       },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: [
-            `Jitsu ${entity.status === "sync" ? "Sync Job" : "Data Warehouse Batch Job"} *${
-              status === "SUCCESS" ? "succeded 👍" : "failed 😣"
-            }*. `,
-            ``,
-            `The job was triggered in *<${baseUrl}/${entity.slug}|${entity.workspaceName}>* workspace from *${
-              entity.fromName
-            }* to *${entity.toName}*. ${entity.tableName ? `\nTable: \`${entity.tableName}\`` : ""}`,
-            ``,
-            `*Status change log*:`,
-            "```",
-            `${details}`,
-            "```",
-          ].join("\n"),
+          text: template.description(props).join("\n"),
         },
       },
     ],
   };
-  if (channel.recurringAlertsPeriodHours) {
+  const metaBlock = template.metaBlock?.(props);
+  if (metaBlock) {
+    payload.blocks!.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: metaBlock,
+      },
+    });
+  }
+  if (typeof template.showDetails === "undefined" || template.showDetails(props)) {
+    payload.blocks!.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [`*Details*:`, "```", `${props.incidentDetails}`, "```"].join("\n"),
+      },
+    });
+  }
+  const footer = template.footer(props);
+  if (footer) {
     payload.blocks!.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text:
-            status === "SUCCESS"
-              ? `No additional reports will be sent for this connection unless the status changes.`
-              : `No additional reports will be sent for this connection in ${channel.recurringAlertsPeriodHours} hours unless the status changes.`,
+          text: footer,
         },
       ],
     });
   }
-  payload.blocks!.push({
-    type: "actions",
-    elements: [
-      {
-        type: "button",
-        text: {
-          type: "plain_text",
-          text: ":house: Open Workspace",
+  if (typeof template.showButtons === "undefined" || template.showButtons(props)) {
+    payload.blocks!.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: ":house: Open Workspace",
+          },
+          url: `${props.baseUrl}/${props.workspaceSlug}`,
         },
-        url: `${baseUrl}/${entity.slug}`,
-      },
-      {
-        type: "button",
-        text: {
-          type: "plain_text",
-          text: ":scroll: View Job Logs",
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: ":scroll: View Job Logs",
+          },
+          url: `${props.detailsUrl}`,
         },
-        url: `${url}`,
-      },
-    ],
-  });
+      ],
+    });
+  }
 
-  console.debug(`Sending slack notification to ${channel.slackWebhookUrl}: ${JSON.stringify(payload, null, 2)}`);
+  console.debug(`Sending slack notification to ${channel.id} (${channel.name}): ${JSON.stringify(payload, null, 2)}`);
 
   const res = await fetch(channel.slackWebhookUrl!, {
     method: "POST",
@@ -741,46 +988,91 @@ export async function sendSlackNotification(
 export async function sendEmailNotification(
   channel: NotificationChannel,
   entity: StatusChangeEntity,
-  status: JobStatus,
   statusChanges: StatusChange[],
   baseUrl: string
 ): Promise<void> {
+  const props = fillNotificationProps(channel, entity, statusChanges, baseUrl);
+
+  const selectTemplate = (status: string) => {
+    switch (status) {
+      case "FIRST_RUN":
+        return ConnectionStatusFirstRunEmail;
+      case "FLAPPING":
+        return ConnectionStatusFlappingEmail;
+      case "RECOVERED":
+        return ConnectionStatusRecoveredEmail;
+      case "ONGOING":
+        return ConnectionStatusOngoingEmail;
+      default:
+        return ConnectionStatusFailedEmail;
+    }
+  };
+
+  const template = selectTemplate(props.status);
+
+  await sendEmail(template, props, channel.emails!);
+}
+
+function fillNotificationProps(
+  channel: NotificationChannel,
+  entity: StatusChangeEntity,
+  statusChanges: StatusChange[],
+  baseUrl: string
+) {
   const lastStatus = statusChanges[statusChanges.length - 1];
   const name = `${entity.fromName} → ${entity.toName}`;
+  let extraPayload: any = {};
+  if (lastStatus.description && lastStatus.description.startsWith(_J_PREF)) {
+    try {
+      extraPayload = JSON.parse(lastStatus.description.substring(_J_PREF.length));
+    } catch (e) {}
+  }
   const details = [...statusChanges]
     .reverse()
-    .map(
-      s =>
-        `${s.timestamp.toISOString()} <b>${s.status}</b>${
-          s.description ? ":<br/><code className='text-xxs'>" + s.description + "</code>" : ""
-        }<br/>`
-    )
+    .map(s => {
+      const description = extractDescription(s);
+      return `${s.timestamp.toISOString()} [${s.status}] ${description ?? ""}`;
+    })
     .join("\n");
 
-  const eeAuthToken = createJwt("admin-service-account@jitsu.com", "admin-service-account@jitsu.com", "$all", 60).jwt;
+  const detailsUrl =
+    entity.type == "sync"
+      ? `${baseUrl}/${entity.slug}/syncs/tasks?query={syncId:'${entity.actorId}'}`
+      : `${baseUrl}/${entity.slug}/data?query={activeView%3A'bulker'%2CviewState%3A{bulker%3A{actorId%3A'${entity.actorId}'}}}`;
 
-  await rpc(`${getEeConnection().host}api/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${eeAuthToken}`,
-    },
-    body: {
-      template: status === "SUCCESS" ? "connection-status-success" : "connection-status-failed",
-      workspaceId: entity.workspaceId,
-      variables: {
-        workspaceName: entity.workspaceName,
-        workspaceSlug: entity.slug,
-        entityId: entity.actorId,
-        entityType: entity.type,
-        entityName: name,
-        tableName: entity.tableName,
-        recurringAlertsPeriodHours: channel.recurringAlertsPeriodHours,
-        lastStatus: lastStatus.status,
-        details: details,
-      },
-    },
-  });
+  return {
+    name: channel.name,
+    workspaceName: entity.workspaceName,
+    workspaceSlug: entity.slug,
+    entityId: entity.actorId,
+    entityType: entity.type,
+    entityName: name,
+    entityFrom: entity.fromName,
+    entityTo: entity.toName,
+    timestamp: lastStatus.timestamp.toISOString(),
+    tableName: entity.tableName,
+    status: lastStatus.status,
+    incidentStatus: lastStatus.status,
+    incidentStartedAt: lastStatus.startedAt.toISOString(),
+    incidentDetails: details,
+    queueSize: lastStatus.queueSize,
+    recurringAlertsPeriodHours: channel.recurringAlertsPeriodHours,
+    detailsUrl,
+    baseUrl,
+    unsubscribeLink: `${baseUrl}/${entity.slug}/settings/notifications`,
+    ...extraPayload,
+  } as ConnectionStatusNotificationProps;
+}
+
+function extractDescription(statusChange: StatusChange): string | null | undefined {
+  if (statusChange.description && statusChange.description.startsWith(_J_PREF)) {
+    try {
+      statusChange.description = statusChange.description.substring(_J_PREF.length);
+      const extraPayload = JSON.parse(statusChange.description);
+      statusChange.description = extraPayload.description || "";
+    } catch (e) {}
+  }
+  return statusChange.description;
 }
 
 export const config = {
