@@ -583,9 +583,7 @@ async function loadSyncStatusesChanges(
           description =
             _J_PREF +
             JSON.stringify({
-              description: `${streamsFailed} streams failed. Failed: ${failed.join(", ")}. Succeeded: ${succeeded.join(
-                ", "
-              )}\n${row.error}`,
+              description: `${streamsFailed} streams failed. Failed streams: ${failed.join(", ")}.\n${row.error}`,
               streamsFailed,
             });
         } catch (e: any) {
@@ -815,7 +813,7 @@ const metaBlock = (props: {
     textArray.push(`Table: \`${props.tableName}\``);
   }
   if (props.recoveredFrom) {
-    textArray.push(`Recovered from: ${props.recoveredFrom}`);
+    textArray.push(`Recovered from: ${props.recoveredFrom.toLowerCase()}`);
   }
   if (props.incidentStatus) {
     textArray.push(`Incident status: ${props.incidentStatus}`);
@@ -823,7 +821,10 @@ const metaBlock = (props: {
   if (props.streamsFailed) {
     textArray.push(`Streams Failed: ${props.streamsFailed}`);
   }
-  if (props.incidentStartedAt && Date.now() - new Date(props.incidentStartedAt).getTime() > 5 * 60 * 1000) {
+  if (
+    props.incidentStartedAt &&
+    (Date.now() - new Date(props.incidentStartedAt).getTime() > 5 * 60 * 1000 || props.recoveredFrom)
+  ) {
     textArray.push(`Incident started at: ${dayjs(props.incidentStartedAt).toLocaleString()}`);
   }
   if (props.queueSize) {
