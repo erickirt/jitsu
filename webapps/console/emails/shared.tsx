@@ -31,7 +31,7 @@ export const MetaList: React.FC<MetaListProps> = ({
       )}
       {recoveredFrom ? (
         <span>
-          <b>Recovered From: </b> {recoveredFrom}
+          <b>Recovered From: </b> {recoveredFrom.toLowerCase()}
           <br />
         </span>
       ) : (
@@ -53,7 +53,7 @@ export const MetaList: React.FC<MetaListProps> = ({
       ) : (
         <></>
       )}
-      {incidentStartedAt && Date.now() - new Date(incidentStartedAt).getTime() > 5 * 60 * 1000 ? (
+      {incidentStartedAt && (Date.now() - new Date(incidentStartedAt).getTime() > 5 * 60 * 1000 || recoveredFrom) ? (
         <span>
           <b>Incident Started At: </b> {dayjs(incidentStartedAt).toLocaleString()}
           <br />
