@@ -12,7 +12,7 @@ const AmplitudeDestination: JitsuFunction<AnalyticsServerEvent, AmplitudeDestina
   try {
     const deviceId = event.anonymousId;
     let sessionId: number | undefined = undefined;
-    if (deviceId || event.amplitudeEvent) {
+    if (deviceId) {
       const ttlStore = store;
       const ttlSec = 60 * (props.sessionWindow ?? 30);
       const sessionKey = `${ctx.source.id}_${deviceId}_sess`;
