@@ -424,7 +424,7 @@ export default async function(event, { log }) {
 
 export const mapClassicFunction = (funcCode: string) => {
   return `
-xport default async function(event, ctx) {
+export default async function(event, ctx) {
     event = toJitsuClassic(event, ctx)
     
     let res = classicFunction(event, ctx)
