@@ -10,7 +10,10 @@ const lookbackWindowDays = 30;
 const eventTypes = ["page", "track", "screen"];
 
 const UserRecognitionFunction: JitsuFunction<AnalyticsServerEvent, any> = async (event, ctx) => {
-  if (!ctx.connection.options.deduplicate || !ctx.connection.options.primaryKey) {
+  if (
+    (!ctx.connection.options.deduplicate || !ctx.connection.options.primaryKey) &&
+    ctx.destination.type !== "profiles"
+  ) {
     ctx.log.error(
       `User Recognition function requires connection to be configured with 'deduplicate' and 'primaryKey' options.`
     );
