@@ -226,7 +226,7 @@ async function migrateWorkspace(workspace: Workspace) {
   log.atInfo().log(`Migrating Destinations ...`);
   for (const dst of workspace.destinations) {
     const name = dst.displayName || dst._id;
-    const dstId = dst._uid.replace(/[^a-z0-9-]/g, "-");
+    const dstId = workspace.toId + "-" + hash("md5", dst._uid || dst._id);
     log.atInfo().log(`Migrating destination ${name} id: ${dstId}`);
     const mappedConfig = destinationMappings[dst._type];
     if (!mappedConfig) {
