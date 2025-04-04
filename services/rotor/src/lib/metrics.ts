@@ -1,7 +1,6 @@
 import { getLog, isTruish, requireDefined, stopwatch } from "juava";
-import { FunctionExecLog, FunctionExecRes, MetricsMeta, RotorMetrics } from "@jitsu/core-functions";
+import { FunctionExecLog, FunctionExecRes, RotorMetrics } from "@jitsu/core-functions";
 
-import omit from "lodash/omit";
 import type { Producer } from "kafkajs";
 import { getCompressionType } from "./rotor";
 import { Readable } from "stream";
@@ -9,8 +8,6 @@ import { Counter } from "prom-client";
 import { createClient } from "@clickhouse/client";
 
 const log = getLog("metrics");
-const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
-const bulkerAuthKey = requireDefined(process.env.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
 const metricsDestinationId = process.env.METRICS_DESTINATION_ID;
 const billingMetricsTable = "active_incoming";
 const metricsTable = "metrics";
@@ -18,7 +15,7 @@ const metricsTable = "metrics";
 const max_batch_size = 10000;
 const flush_interval_ms = 60000;
 
-const _Timestamp = 0;
+const _EpochTime = 0;
 const _MessageId = 1;
 const _WorkspaceId = 2;
 const _StreamId = 3;
@@ -29,7 +26,7 @@ const _Status = 7;
 const _Count = 8;
 const _EventIndex = 9;
 
-type MetricsEvent = [Date, string, string, string, string, string, string, string, number, number];
+type MetricsEvent = [number, string, string, string, string, string, string, string, number, number];
 
 export const DummyMetrics: RotorMetrics = {
   logMetrics: () => {},
@@ -65,11 +62,9 @@ export function createMetrics(
           messages: buf
             .filter(m => m[_FunctionId].startsWith("builtin.destination.") && m[_Status] !== "dropped")
             .map(m => {
-              const d = new Date(m[_Timestamp]);
-              d.setMilliseconds(0);
-              d.setSeconds(0);
-              d.setMinutes(0);
-              const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_Timestamp].getTime() - d.getTime());
+              const hourTrunc = Math.floor(m[_EpochTime] / 3600) * 3600;
+              const d = new Date(hourTrunc * 1000);
+              const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_EpochTime] - hourTrunc);
               return {
                 key: key,
                 value: JSON.stringify({
@@ -97,12 +92,9 @@ export function createMetrics(
         for (let i = 0; i < buf.length; i++) {
           const m = buf[i];
           if (m[_FunctionId].startsWith("builtin.destination.") && m[_Status] !== "dropped") {
-            const d = new Date(m[_Timestamp]);
-            d.setMilliseconds(0);
-            d.setSeconds(0);
-            d.setMinutes(0);
-            const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_Timestamp].getTime() - d.getTime());
-            billingStream.push([d, m[_WorkspaceId], key]);
+            const hourTrunc = Math.floor(m[_EpochTime] / 3600) * 3600;
+            const key = m[_MessageId] + "_" + m[_EventIndex] + "_" + (m[_EpochTime] - hourTrunc);
+            billingStream.push([hourTrunc, m[_WorkspaceId], key]);
           }
         }
         billingStream.push(null);
@@ -199,7 +191,7 @@ export function createMetrics(
           return prefix + status;
         })(el);
         buffer.push([
-          el.receivedAt || new Date(),
+          Math.floor((el.receivedAt ? el.receivedAt.getTime() : Date.now()) / 1000),
           el.metricsMeta.messageId,
           el.metricsMeta.workspaceId,
           el.metricsMeta.streamId,
