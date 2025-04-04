@@ -31,9 +31,7 @@ export type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { i
 
 type NotificationState = z.infer<typeof NotificationStateDbModel>;
 
-export type JobStatus = "FAILED" | "SUCCESS" | "FLAPPING";
-
-const flappingWindowHours = 2;
+const flappingWindowHours = 4;
 
 const flappingThreshold = 4;
 
@@ -846,7 +844,9 @@ const ConnectionStatusFailedSlack: SlackTemplate = {
   ],
   metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize")),
   footer: props =>
-    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+    props.recurringAlertsPeriodHours
+      ? `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`
+      : "",
 };
 
 const ConnectionStatusFirstRunSlack: SlackTemplate = {
@@ -873,7 +873,9 @@ const ConnectionStatusFlappingSlack: SlackTemplate = {
   ],
   metaBlock: props => metaBlock(pick(props, "tableName", "incidentStatus", "queueSize")),
   footer: props =>
-    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+    props.recurringAlertsPeriodHours
+      ? `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`
+      : "",
 };
 
 const ConnectionStatusOngoingSlack: SlackTemplate = {
@@ -893,7 +895,9 @@ const ConnectionStatusOngoingSlack: SlackTemplate = {
   metaBlock: props =>
     metaBlock(pick(props, "tableName", "incidentStatus", "incidentStartedAt", "queueSize", "streamsFailed")),
   footer: props =>
-    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+    props.recurringAlertsPeriodHours
+      ? `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`
+      : "",
 };
 
 const ConnectionStatusRecoveredSlack: SlackTemplate = {
@@ -925,7 +929,9 @@ const ConnectionStatusPartialSlack: SlackTemplate = {
   ],
   metaBlock: props => metaBlock(pick(props, "streamsFailed", "incidentStatus", "incidentStartedAt")),
   footer: props =>
-    `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`,
+    props.recurringAlertsPeriodHours
+      ? `No additional reports will be sent for this connection in ${props.recurringAlertsPeriodHours} hours unless the status changes.`
+      : "",
 };
 
 export async function sendSlackNotification(
