@@ -31,7 +31,7 @@ export type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { i
 
 type NotificationState = z.infer<typeof NotificationStateDbModel>;
 
-const flappingWindowHours = 4;
+const flappingWindowHours = 6;
 
 const flappingThreshold = 4;
 
