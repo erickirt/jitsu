@@ -361,7 +361,7 @@ function ConnectionEditor({
           defaultValue={10000}
           className="w-36"
           min={100}
-          max={destinationType.id === "mixpanel" ? 500 : 1000000}
+          max={destinationType.id === "mixpanel" ? 2000 : 1000000}
           onChange={batchSize => updateOptions({ batchSize: batchSize ?? 10000 })}
         />
       ),

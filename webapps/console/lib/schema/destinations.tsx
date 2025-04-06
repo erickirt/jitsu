@@ -763,7 +763,8 @@ export const coreDestinations: DestinationType<any>[] = [
     tags: "Product Analytics",
     connectionOptions: CloudDestinationsConnectionOptions.merge(BatchModeOptions).merge(
       z.object({
-        batchSize: z.number().min(1).max(500).default(500),
+        batchSize: z.number().min(1).max(2000).default(1000),
+        batchSizeBytes: z.number().min(1).max(2000000).default(2000000),
         mode: z.enum(["stream", "batch"]).default("stream"),
       })
     ),
