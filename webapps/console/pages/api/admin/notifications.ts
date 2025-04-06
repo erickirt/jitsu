@@ -31,7 +31,7 @@ export type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { i
 
 type NotificationState = z.infer<typeof NotificationStateDbModel>;
 
-const flappingWindowHours = 6;
+const flappingWindowHours = 4;
 
 const flappingThreshold = 4;
 
@@ -160,7 +160,7 @@ export default createRoute()
         "tableName",
         coalesce (
         sum (
-        case when "startedAt" >= current_timestamp - interval '2 hours' then 1 end), 0) as "changesPerHours",
+        case when "startedAt" >= current_timestamp - interval '${flappingWindowHours} hours' then 1 end), 0) as "changesPerHours",
         coalesce (
         sum (
         case when "startedAt" >= current_timestamp - interval '1 days' then 1 end), 0) as "changesPerDay"
