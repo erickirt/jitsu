@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "ee-api:dev": "next dev -p 3001 --turbopack",
+    "ee-api:dev": "next dev -p 3001",
     "email:dev": "email dev -p 3901",
     "build": "next build",
     "lint": "next lint",
