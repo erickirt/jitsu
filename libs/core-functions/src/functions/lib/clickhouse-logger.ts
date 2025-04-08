@@ -6,7 +6,7 @@ import { createClient } from "@clickhouse/client";
 import { EventsStore } from "./index";
 import { Readable } from "stream";
 
-type LogEntry = [Date, string, string, LogLevel, any];
+type LogEntry = [number, string, string, LogLevel, any];
 
 function clickhouseHost() {
   if (process.env.CLICKHOUSE_URL) {
@@ -75,7 +75,7 @@ export function createClickhouseLogger(): EventsStore {
 
   return {
     log: (connectionId: string, level: LogLevel, message) => {
-      const logEntry: LogEntry = [new Date(), connectionId, "function", level, message];
+      const logEntry: LogEntry = [Date.now(), connectionId, "function", level, message];
       buffer.push(logEntry);
     },
     close: () => {
