@@ -148,8 +148,8 @@ export async function getOrCreateCurrentSubscription(
         planId: "$custom",
         expiresAt: expiresAt.toISOString(),
         currentPeriod: {
-          start: dayjs(currentPeriodStart).utc().startOf('day').toISOString(),
-          end: dayjs(expiresAt).utc().endOf('day').toISOString()
+          start: dayjs(currentPeriodStart).utc().startOf("day").toISOString(),
+          end: dayjs(expiresAt).utc().endOf("day").toISOString(),
         },
         renewAfterExpiration: true,
         ...stripeOptions.customSettings,
@@ -251,8 +251,14 @@ export async function getActivePlan(customerId: string): Promise<null | Subscrip
       isLegacyPlan: product.metadata?.is_legacy === "true" || product.metadata?.is_legacy === "1",
       expiresAt: new Date(subscription.current_period_end * 1000).toISOString(),
       currentPeriod: {
-        start: dayjs(subscription.current_period_start * 1000).utc().startOf('day').toISOString(),
-        end: dayjs(subscription.current_period_end * 1000).utc().endOf('day').toISOString()
+        start: dayjs(subscription.current_period_start * 1000)
+          .utc()
+          .startOf("day")
+          .toISOString(),
+        end: dayjs(subscription.current_period_end * 1000)
+          .utc()
+          .endOf("day")
+          .toISOString(),
       },
       renewAfterExpiration: !subscription.cancel_at_period_end,
       pastDue: pastDueSubscription && !activeSubscription,
