@@ -96,6 +96,7 @@ function classicFunction(event, $context) {
 
 export const destinationMappings: Record<string, DestinationMapping> = {
   google_analytics: "skip",
+  dbtcloud: "skip",
   webhook: {
     credentialsFunc: _formData => {
       const url = new URL(_formData.url);
