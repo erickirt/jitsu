@@ -42,7 +42,7 @@ const WorkspaceDomainsComponent: React.FC<any> = () => {
   if (billing.loading) {
     return <LoadingAnimation />;
   }
-  if (billing.enabled && billing.settings?.planId === "free") {
+  if (billing.enabled && billing.settings?.planId === "free" && !workspace.featuresEnabled.includes("misc")) {
     return <UpgradeDialog featureDescription={"Workspace Domains"} />;
   }
 
