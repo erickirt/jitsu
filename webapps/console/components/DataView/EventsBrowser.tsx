@@ -910,7 +910,9 @@ const StreamEventsTable = ({ loadEvents, loading, streamType, entityType, actorI
       title: "Table name",
       width: "12em",
       ellipsis: true,
-      dataIndex: ["content", "representation", "name"],
+      key: "table_name",
+      dataIndex: ["content", "representation"],
+      render: (d: any) => d?.targetName || d?.name,
     },
     {
       title: "Summary",
@@ -975,7 +977,9 @@ const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, even
       title: "Table name",
       width: "20em",
       ellipsis: true,
-      dataIndex: ["content", "representation", "name"],
+      key: "table_name",
+      dataIndex: ["content", "representation"],
+      render: (d: any) => d?.targetName || d?.name,
     },
     {
       title: "Summary",

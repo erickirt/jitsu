@@ -354,14 +354,14 @@ async function migrateWorkspace(workspace: Workspace) {
     };
     await createConfigurationObject(workspace, "service", srcId, src.displayName || src.sourceId, serviceConfig);
     for (let dst of src.destinations) {
-      dst = dst.replace(/[^a-z0-9-]/g, "-");
-      log.atInfo().log(`Connecting Source ${src.displayName} id: ${src.sourceId} to Destination ${dst}`);
+      const dstId = workspace.toId + "_" + hash("md5", dst).substring(0, 6);
+      log.atInfo().log(`Connecting Source ${src.displayName} id: ${src.sourceId} to Destination ${dstId}`);
       const data: any = {
         namespace: "",
         addMeta: true,
         streams: mappingData.streams,
       };
-      await createConfigurationObjectLink(workspace, srcId, dst, "sync", data);
+      await createConfigurationObjectLink(workspace, srcId, dstId, "sync", data);
     }
     log.atInfo().log(`Done.`);
   }

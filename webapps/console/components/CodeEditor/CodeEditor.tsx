@@ -104,7 +104,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const editor = editorRef.current;
     if (editor && editor.getValue() !== value) {
       const positionShift = value.length - editor.getValue().length;
-      if (Math.abs(positionShift) > 2) {
+      if (Math.abs(positionShift) > 2 || monacoOptions?.readOnly) {
         // we respect prop.value change only if it's more than 2 characters
         // otherwise, it's probably user is typing, and we don't want to rollback what he typed due to delay in props update
         const position = editor.getPosition();
@@ -118,7 +118,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         }
       }
     }
-  }, [value, foldLevel]);
+  }, [value, foldLevel, monacoOptions?.readOnly]);
 
   return (
     <div className="w-full h-full">
