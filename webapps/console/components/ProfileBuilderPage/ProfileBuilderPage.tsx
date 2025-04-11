@@ -720,7 +720,7 @@ export function ProfileBuilderPage() {
             id: obj.id,
             name: obj.name,
             workspaceId: workspace.id,
-            version: enabled ? obj.version || 1 : obj.version ?? 0,
+            version: enabled ? (obj.version ?? 0) + 1 : obj.version ?? 0,
             destinationId: obj.settings.destinationId,
             intermediateStorageCredentials: obj.settings.storage || {},
             connectionOptions: {
