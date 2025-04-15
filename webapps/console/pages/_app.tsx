@@ -30,6 +30,7 @@ import { JitsuButton } from "../components/JitsuButton/JitsuButton";
 import { BillingProvider } from "../components/Billing/BillingProvider";
 import { useConfigObjectList, useConfigObjectsUpdater, useLoadedWorkspace } from "../lib/store";
 import { Redirect } from "../components/Redirect/Redirect";
+import { PreviousRouteContextProvider } from "../lib/previous-route";
 
 const log = getLog("app");
 
@@ -464,7 +465,7 @@ const WorkspaceLoader: React.FC<
   return (
     <WorkspaceContextProvider workspace={{ ...workspace, slugOrId: workspace?.slug || workspace?.id }}>
       <BillingProvider sendAnalytics={true} enabled={appConfig.billingEnabled}>
-        {children}
+        <PreviousRouteContextProvider>{children}</PreviousRouteContextProvider>
       </BillingProvider>
     </WorkspaceContextProvider>
   );
