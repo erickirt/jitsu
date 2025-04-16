@@ -109,8 +109,8 @@ from newjitsu.source_task where sync_id = ANY($1::text[])`,
       workspaceId: z.string(),
       syncId: z.string().optional(),
       taskId: z.string().optional(),
-      from: z.string().optional(),
-      to: z.string().optional(),
+      from: z.coerce.date().optional(),
+      to: z.coerce.date().optional(),
       status: z.string().optional(),
     }),
     result: tasksResultType,
@@ -154,10 +154,10 @@ from newjitsu.source_task where sync_id = ANY($1::text[])`,
         args.push(query.status);
       }
       if (query.from) {
-        args.push(dayjs(query.from, "YYYY-MM-DD").utc(true).toDate());
+        args.push(dayjs(query.from).utc().toDate());
       }
       if (query.to) {
-        args.push(dayjs(query.to, "YYYY-MM-DD").utc(true).add(1, "d").toDate());
+        args.push(dayjs(query.to).utc().toDate());
       }
       const tasks = await db.prisma().$queryRawUnsafe<source_task[]>(sql, ...args);
       if (query.taskId) {
