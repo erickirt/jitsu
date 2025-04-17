@@ -74,8 +74,8 @@ export default createRoute()
       //get latest source_tasks from db for provided sync ids grouped by sync id
       const rows = await db.pgPool().query(
         `select DISTINCT ON (sync_id) sync_id, task_id, status, error, description, started_at, updated_at
-         from newjitsu.source_task where sync_id = ANY($1::text[])
-         order by sync_id, case when status = 'SKIPPED' then '2020-01-01' else started_at end desc`,
+         from newjitsu.source_task where sync_id = ANY($1::text[]) and status != 'SKIPPED'
+         order by sync_id, started_at desc`,
         [syncsId]
       );
       const tasksRecord = rows.rows.reduce((acc, r) => {
