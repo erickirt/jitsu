@@ -73,14 +73,9 @@ export default createRoute()
     try {
       //get latest source_tasks from db for provided sync ids grouped by sync id
       const rows = await db.pgPool().query(
-        `select distinct sync_id as sync_id,
-       last_value(task_id) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as task_id,
-       last_value(status) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as status,
-       last_value(error) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as error,
-       last_value(description) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as description,
-       last_value(started_at) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as started_at,
-       last_value(updated_at) over ( partition by sync_id order by case when status = 'SKIPPED' then '2020-01-01' else started_at end RANGE BETWEEN unbounded preceding and unbounded following) as updated_at
-from newjitsu.source_task where sync_id = ANY($1::text[])`,
+        `select DISTINCT ON (sync_id) sync_id, task_id, status, error, description, started_at, updated_at
+         from newjitsu.source_task where sync_id = ANY($1::text[])
+         order by sync_id, case when status = 'SKIPPED' then '2020-01-01' else started_at end desc`,
         [syncsId]
       );
       const tasksRecord = rows.rows.reduce((acc, r) => {
