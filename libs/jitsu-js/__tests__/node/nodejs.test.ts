@@ -274,8 +274,8 @@ describe("Test Jitsu NodeJS client", () => {
       {
         userId: "myUserId",
         traits: {
-          email: "john.doe@gmail.com"
-        }
+          email: "john.doe@gmail.com",
+        },
       }
     );
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -318,5 +318,4 @@ describe("Test Jitsu NodeJS client", () => {
     expect(getTopLevelDomain("use.jitsu.com")).toBe("jitsu.com");
     //console.log(parse("http://localhost:3000"));
   });
-
 });
