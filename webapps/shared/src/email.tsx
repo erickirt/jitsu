@@ -89,7 +89,7 @@ export async function sendEmail<P extends UnsubscribeLinkProps>(
   let subject = template.subject(props);
   if (opts?.dryRun) {
     subject = `[Test - for ${to}] ${subject}`;
-    to = env.BCC_EMAIL;
+    to = env.BCC_EMAIL ?? "";
   }
   console.log(`Sending email to ${to} From: ${from}, replyTo: ${replyTo}. Subject: ${subject}`);
 
