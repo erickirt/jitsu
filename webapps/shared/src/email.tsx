@@ -33,7 +33,7 @@ export const EmailEnvSettings = z.object({
   EMAIL_TRANSACTIONAL_REPLY_TO: z.string(),
   EMAIL_MARKETING_SENDER: z.string(),
   EMAIL_MARKETING_REPLY_TO: z.string(),
-  BCC_EMAIL: z.string().email(),
+  BCC_EMAIL: z.string().email().optional(),
 });
 
 export type EmailEnvSettings = z.infer<typeof EmailEnvSettings>;
