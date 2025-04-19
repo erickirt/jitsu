@@ -113,7 +113,7 @@ export async function sendEmail<P extends UnsubscribeLinkProps>(
     text,
   };
 
-  const res = await transport.sendMail(options);
+  const res = await transport!.sendMail(options);
 
   return {
     sent: true,
