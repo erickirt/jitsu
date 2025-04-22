@@ -3,6 +3,6 @@
   "version": "0.0.0",
   "dependencies": {
     "isolated-vm": "5.0.1",
-    "@mongodb-js/zstd": "^1.2.2"
+    "@mongodb-js/zstd": "^2.0.1"
   }
 }
