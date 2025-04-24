@@ -402,11 +402,12 @@ const BuildProgress: React.FC<{
       items.push({
         key: "total",
         label: "Full Rebuild - Total Users",
-        children: state?.fullRebuildInfo?.profilesCount ? (
-          <Statistic valueStyle={{ fontSize: "1em" }} value={state?.fullRebuildInfo?.profilesCount} />
-        ) : (
-          <div>Initiating...</div>
-        ),
+        children:
+          typeof state?.fullRebuildInfo?.profilesCount !== "undefined" ? (
+            <Statistic valueStyle={{ fontSize: "1em" }} value={state?.fullRebuildInfo?.profilesCount} />
+          ) : (
+            <div>Initiating...</div>
+          ),
       });
     }
   }
