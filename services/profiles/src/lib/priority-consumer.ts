@@ -164,11 +164,18 @@ async function rateLimitedExecution(
   }
 }
 
-let previousOffsets: Record<string, Record<number, { highOffset: number; offset: number }>> | undefined = undefined;
+export type TopicsReport = Record<
+  string,
+  Record<number, { highOffset: number; offset: number; previousOffset?: number }>
+>;
 
-export async function reportQueueSize(profileBuilder: ProfileBuilder, priorityLevels: number) {
+export async function reportQueueSize(
+  profileBuilder: ProfileBuilder,
+  priorityLevels: number,
+  previousOffsets?: TopicsReport
+): Promise<TopicsReport> {
   log.atDebug().log(`Reporting queue size for ${profileBuilder.id}`);
-  const topics: Record<string, Record<number, { highOffset: number; offset: number; previousOffset?: number }>> = {};
+  const topics: TopicsReport = {};
   for (let i = 0; i < priorityLevels; i++) {
     const topic = topicName(profileBuilder.id, i);
     topics[topic] = {};
@@ -293,7 +300,7 @@ export async function reportQueueSize(profileBuilder: ProfileBuilder, priorityLe
     intervalSec: metricsInterval / 1000,
     queues,
   });
-  previousOffsets = topics;
+  return topics;
 }
 
 function createDeferred() {

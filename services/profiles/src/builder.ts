@@ -24,7 +24,7 @@ import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import { TableNameParameter, transfer } from "@jitsu/functions-lib";
 import { connectionsStore } from "./lib/repositories";
 import { HighLevelProducer } from "@confluentinc/kafka-javascript";
-import { createPriorityConsumer, reportQueueSize } from "./lib/priority-consumer";
+import { createPriorityConsumer, reportQueueSize, TopicsReport } from "./lib/priority-consumer";
 import { kafkaCredentials, topicName } from "./lib/kafka";
 import { promProfileStatuses } from "./lib/metrics";
 
@@ -152,10 +152,15 @@ export async function profileBuilder(
 
   let timer: NodeJS.Timeout | undefined;
   if (instanceIndex === 0) {
+    let previousOffsets: TopicsReport | undefined = undefined;
     timer = setInterval(async () => {
-      reportQueueSize(profileBuilder, priorityLevels).catch(e => {
-        log.atError().log(`Error while reporting queue size: ${e.message}`);
-      });
+      reportQueueSize(profileBuilder, priorityLevels, previousOffsets)
+        .then(r => {
+          previousOffsets = r;
+        })
+        .catch(e => {
+          log.atError().log(`Error while reporting queue size: ${e.message}`);
+        });
     }, metricsInterval);
   }
   const startConsumer = async () => {
