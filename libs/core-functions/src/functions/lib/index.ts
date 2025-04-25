@@ -89,9 +89,13 @@ export type FunctionExecRes = {
 
 export type FunctionExecLog = FunctionExecRes[];
 
-export interface RotorMetrics {
-  logMetrics: (execLog: FunctionExecLog) => void;
+export interface StoreMetrics {
   storeStatus: (namespace: string, operation: string, status: string) => void;
+  warehouseStatus: (id: string, table: string, status: string, timeMs: number) => void;
+}
+
+export interface RotorMetrics extends StoreMetrics {
+  logMetrics: (execLog: FunctionExecLog) => void;
   close: () => void;
 }
 

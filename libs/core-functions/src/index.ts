@@ -85,6 +85,7 @@ export { mongodb, mongoAnonymousEventsStore } from "./functions/lib/mongodb";
 export type {
   MetricsMeta,
   RotorMetrics,
+  StoreMetrics,
   FuncChainResult,
   FunctionExecLog,
   FunctionExecRes,

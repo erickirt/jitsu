@@ -4,7 +4,7 @@ import { FunctionExecLog, FunctionExecRes, RotorMetrics } from "@jitsu/core-func
 import type { Producer } from "kafkajs";
 import { getCompressionType } from "./rotor";
 import { Readable } from "stream";
-import { Counter } from "prom-client";
+import { Counter, Gauge, Histogram } from "prom-client";
 import { createClient } from "@clickhouse/client";
 
 const log = getLog("metrics");
@@ -14,6 +14,64 @@ const metricsTable = "metrics";
 
 const max_batch_size = 10000;
 const flush_interval_ms = 60000;
+
+export const promStoreStatuses = new Counter({
+  name: "rotor_store_statuses",
+  help: "rotor store statuses",
+  labelNames: ["namespace", "operation", "status"] as const,
+});
+export const promWarehouseStatuses = new Histogram({
+  name: "rotor_warehouse_statuses",
+  help: "rotor warehouse statuses",
+  labelNames: ["id", "table", "status"] as const,
+  buckets: [0.02, 0.05, 0.2, 0.5, 1, 2], // durations in seconds
+});
+export const promTopicOffsets = new Gauge({
+  name: "rotor_topic_offsets2",
+  help: "topic offsets",
+  // add `as const` here to enforce label names
+  labelNames: ["topic", "partition", "offset"] as const,
+});
+export const promMessagesConsumed = new Counter({
+  name: "rotor_messages_consumed",
+  help: "messages consumed",
+  // add `as const` here to enforce label names
+  labelNames: ["topic", "partition"] as const,
+});
+export const promMessagesProcessed = new Counter({
+  name: "rotor_messages_processed",
+  help: "messages processed",
+  labelNames: ["topic", "partition"] as const,
+});
+export const promMessagesRequeued = new Counter({
+  name: "rotor_messages_requeued",
+  help: "messages requeued",
+  labelNames: ["topic"] as const,
+});
+export const promMessagesDeadLettered = new Counter({
+  name: "rotor_messages_dead_lettered",
+  help: "messages dead lettered",
+  labelNames: ["topic"] as const,
+});
+export const promFunctionsInFlight = new Gauge({
+  name: "rotor_functions_in_flight",
+  help: "Functions in flight",
+  // add `as const` here to enforce label names
+  labelNames: ["connectionId", "functionId"] as const,
+});
+export const promFunctionsTime = new Histogram({
+  name: "rotor_functions_time",
+  help: "Functions execution time in ms",
+  buckets: [1, 10, 100, 200, 1000, 2000, 3000, 4000, 5000],
+  // add `as const` here to enforce label names
+  labelNames: ["connectionId", "functionId"] as const,
+});
+
+export const promHandlerMetric = new Counter({
+  name: "rotor_function_handler",
+  help: "function handler status",
+  labelNames: ["connectionId", "status"] as const,
+});
 
 const _EpochTime = 0;
 const _MessageId = 1;
@@ -31,13 +89,11 @@ type MetricsEvent = [number, string, string, string, string, string, string, str
 export const DummyMetrics: RotorMetrics = {
   logMetrics: () => {},
   storeStatus: () => {},
+  warehouseStatus: () => {},
   close: () => {},
 };
 
-export function createMetrics(
-  producer?: Producer,
-  storeCounter?: Counter<"namespace" | "operation" | "status">
-): RotorMetrics {
+export function createMetrics(producer?: Producer): RotorMetrics {
   const buffer: MetricsEvent[] = [];
   const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
@@ -217,9 +273,10 @@ export function createMetrics(
       }
     },
     storeStatus: (namespace: string, operation: string, status: string) => {
-      if (storeCounter) {
-        storeCounter.labels(namespace, operation, status).inc();
-      }
+      promStoreStatuses.labels(namespace, operation, status).inc();
+    },
+    warehouseStatus: (id: string, table: string, status: string, timeMs: number) => {
+      promWarehouseStatuses.labels(id, table, status).observe(timeMs / 1000);
     },
     close: () => {
       clearInterval(interval);

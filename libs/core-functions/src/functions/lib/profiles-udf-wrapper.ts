@@ -479,7 +479,7 @@ export async function ProfileUDFTestRun(
       store: storeImpl,
       query: async (conId: string, query: string, params: any) => {
         if (connStore) {
-          return warehouseQuery(connStore, conId, query, params);
+          return warehouseQuery(workspaceId, connStore, conId, query, params);
         } else {
           throw new Error("Connection store is not provided");
         }

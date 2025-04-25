@@ -11,6 +11,7 @@ import {
   FunctionConfig,
   FunctionContext,
   FunctionExecLog,
+  FunctionExecRes,
   getBuiltinFunction,
   isDropResult,
   JitsuFunctionWrapper,
@@ -18,21 +19,19 @@ import {
   makeLog,
   MetricsMeta,
   mongodb,
-  ProfilesConfig,
-  warehouseQuery,
   UDFWrapper,
   UserRecognitionParameter,
+  warehouseQuery,
   wrapperFunction,
-  FunctionExecRes,
 } from "@jitsu/core-functions";
-import Prometheus from "prom-client";
-import { RetryErrorName, DropRetryErrorName } from "@jitsu/functions-lib";
+import { DropRetryErrorName, RetryErrorName } from "@jitsu/functions-lib";
 
 import { getLog, newError, requireDefined, stopwatch } from "juava";
 import { retryObject } from "./retries";
 import NodeCache from "node-cache";
 import isEqual from "lodash/isEqual";
 import { MessageHandlerContext } from "./message-handler";
+import { promFunctionsInFlight, promFunctionsTime } from "./metrics";
 
 const fastStoreWorkspaceId = (process.env.FAST_STORE_WORKSPACE_ID ?? "").split(",").filter(x => x.length > 0);
 
@@ -53,20 +52,6 @@ export type FuncChainFilter = "all" | "udf-n-dst" | "dst-only";
 const log = getLog("functions-chain");
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
 const bulkerAuthKey = requireDefined(process.env.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
-
-const functionsInFlight = new Prometheus.Gauge({
-  name: "rotor_functions_in_flight",
-  help: "Functions in flight",
-  // add `as const` here to enforce label names
-  labelNames: ["connectionId", "functionId"] as const,
-});
-const functionsTime = new Prometheus.Histogram({
-  name: "rotor_functions_time",
-  help: "Functions execution time in ms",
-  buckets: [1, 10, 100, 200, 1000, 2000, 3000, 4000, 5000],
-  // add `as const` here to enforce label names
-  labelNames: ["connectionId", "functionId"] as const,
-});
 
 //cache compiled udfs for 5min
 const udfTTL = 60 * 10;
@@ -159,7 +144,7 @@ export function buildFunctionChain(
     log: makeLog(conId, rotorContext.eventsLogger),
     store,
     query: async (conId: string, query: string, params: any) => {
-      return warehouseQuery(connStore, conId, query, params);
+      return warehouseQuery(conWorkspaceId, connStore, conId, query, params, rotorContext.metrics);
     },
     anonymousEventsStore,
     connectionOptions: connectionData,
@@ -313,7 +298,7 @@ export async function runChain(
     const metricsLabels = { connectionId: eventContext.connection?.id ?? "", functionId: f.id };
     const newEvents: AnyEvent[] = [];
     for (let i = 0; i < events.length; i++) {
-      functionsInFlight.inc(metricsLabels);
+      promFunctionsInFlight.inc(metricsLabels);
       const event = events[i];
       let result: FuncReturn = undefined;
       const sw = stopwatch();
@@ -356,11 +341,11 @@ export async function runChain(
         }
       } finally {
         const ms = sw.elapsedMs();
-        functionsTime.observe(metricsLabels, ms);
+        promFunctionsTime.observe(metricsLabels, ms);
         execLogEvent.ms = ms;
         execLogEvent.dropped = isDropResult(result);
         execLog.push(execLogEvent as FunctionExecRes);
-        functionsInFlight.dec(metricsLabels);
+        promFunctionsInFlight.dec(metricsLabels);
       }
       if (!execLogEvent.dropped) {
         if (result) {
