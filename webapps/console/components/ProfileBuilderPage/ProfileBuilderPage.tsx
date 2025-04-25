@@ -411,25 +411,34 @@ const BuildProgress: React.FC<{
       });
     }
   }
-  items.push(
-    {
-      key: "queue",
-      label: "Queue Size",
+  items.push({
+    key: "queue",
+    label: "Queue Size",
+    children: (
+      <PriorityQueueBar
+        maxTotalSize={state?.fullRebuildInfo?.profilesCount}
+        queueSizes={Object.values(state?.queuesInfo.queues)
+          .sort((a: any, b: any) => a.priority - b.priority)
+          .map((q: any) => q.size)}
+      />
+    ),
+  });
+  if (state?.queuesInfo.intervalSec) {
+    items.push({
+      key: "speed",
+      label: "Processing Speed",
       children: (
-        <PriorityQueueBar
-          maxTotalSize={state?.fullRebuildInfo?.profilesCount}
-          queueSizes={Object.values(state?.queuesInfo.queues)
-            .sort((a: any, b: any) => a.priority - b.priority)
-            .map((q: any) => q.size)}
-        />
+        <div>
+          {(
+            (Object.values(state?.queuesInfo.queues)
+              .map((q: any) => q.processed)
+              .reduce((a: any, b: any) => a + b, 0) || 0) / state?.queuesInfo.intervalSec
+          ).toLocaleString()}{" "}
+          events/sec
+        </div>
       ),
-    }
-    // {
-    //   key: "errors",
-    //   label: "Errors",
-    //   children: <Statistic valueStyle={{ fontSize: "1em" }} value={state?.errorUsers} />,
-    // }
-  );
+    });
+  }
 
   return (
     <div className={styles.settingsTable}>
@@ -1224,8 +1233,4 @@ export function ProfileBuilderPage() {
       </div>
     </WorkspacePageLayout>
   );
-}
-
-function floorToTwo(num) {
-  return Math.floor(num * 100) / 100;
 }

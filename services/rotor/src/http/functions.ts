@@ -6,18 +6,11 @@ import { AnyEvent } from "@jitsu/protocols/functions";
 import isEqual from "lodash/isEqual";
 import { parse as semverParse } from "semver";
 import * as jsondiffpatch from "jsondiffpatch";
-
-import Prometheus from "prom-client";
 import { connectionsStore, functionsStore, streamsStore } from "../lib/repositories";
+import { promHandlerMetric } from "../lib/metrics";
 
 const jsondiffpatchInstance = jsondiffpatch.create();
 const log = getLog("functions_handler");
-
-const handlerMetric = new Prometheus.Counter({
-  name: "rotor_function_handler",
-  help: "function handler status",
-  labelNames: ["connectionId", "status"] as const,
-});
 
 export const FunctionsHandler =
   (rotorContext: Omit<MessageHandlerContext, "connectionStore" | "functionsStore" | "streamsStore">) =>
@@ -67,7 +60,7 @@ export const FunctionsHandlerMulti =
     await Promise.all(prom)
       .then(results => {
         connectionIds.forEach((id, i) => {
-          handlerMetric.inc({ connectionId: id, status: "success" }, 1);
+          promHandlerMetric.inc({ connectionId: id, status: "success" }, 1);
         });
         const events = Object.fromEntries(
           results.map(result => [result?.connectionId, mapDiff(message, result?.events)])
@@ -76,7 +69,7 @@ export const FunctionsHandlerMulti =
       })
       .catch(e => {
         connectionIds.forEach((id, i) => {
-          handlerMetric.inc({ connectionId: id, status: "error" }, 1);
+          promHandlerMetric.inc({ connectionId: id, status: "error" }, 1);
         });
         next(`[${connectionIds}] Error processing functions: ${e.name}: ${e.message}`);
       });

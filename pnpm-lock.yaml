@@ -352,6 +352,9 @@ importers:
       node-cache:
         specifier: ^5.1.2
         version: 5.1.2
+      node-sql-parser:
+        specifier: ^5.3.8
+        version: 5.3.8
       parse-duration:
         specifier: ^1.1.2
         version: 1.1.2
@@ -1099,8 +1102,8 @@ importers:
         specifier: ^3.3.2
         version: 3.3.2
       node-sql-parser:
-        specifier: ^4.6.5
-        version: 4.18.0
+        specifier: ^5.3.8
+        version: 5.3.8
       nodemailer:
         specifier: ^6.10.1
         version: 6.10.1
@@ -5569,6 +5572,9 @@ packages:
 
   '@types/parse-json@4.0.2':
     resolution: {integrity: sha512-dISoDXWWQwUquiKsyZ4Ng+HX2KsPL7LyHKHQwgGFEA3IaKac4Obd+h2a/a6waisAoepJlBcx9paWqjA8/HVjCw==}
+
+  '@types/pegjs@0.10.6':
+    resolution: {integrity: sha512-eLYXDbZWXh2uxf+w8sXS8d6KSoXTswfps6fvCUuVAGN8eRpfe7h9eSRydxiSJvo9Bf+GzifsDOr9TMQlmJdmkw==}
 
   '@types/pg-cursor@2.7.2':
     resolution: {integrity: sha512-m3xT8bVFCvx98LuzbvXyuCdT/Hjdd/v8ml4jL4K1QF70Y8clOfCFdgoaEB1FWdcSwcpoFYZTJQaMD9/GQ27efQ==}
@@ -10948,8 +10954,8 @@ packages:
   node-releases@2.0.18:
     resolution: {integrity: sha512-d9VeXT4SJ7ZeOqGX6R5EM022wpL+eWPooLI+5UpWn2jCT1aosUQEhQP214x33Wkwx3JQMvIm+tIoVOdodFS40g==}
 
-  node-sql-parser@4.18.0:
-    resolution: {integrity: sha512-2YEOR5qlI1zUFbGMLKNfsrR5JUvFg9LxIRVE+xJe962pfVLH0rnItqLzv96XVs1Y1UIR8FxsXAuvX/lYAWZ2BQ==}
+  node-sql-parser@5.3.8:
+    resolution: {integrity: sha512-aqGTzK8kPJAwQ6tqdS0l+vX358LXMmZDw902ePfiPn3PSDsg2HeR2tHFioXNHJW00YHoic6VVYY80waFb/zdxw==}
     engines: {node: '>=8'}
 
   nodemailer@6.10.1:
@@ -20626,6 +20632,8 @@ snapshots:
 
   '@types/parse-json@4.0.2': {}
 
+  '@types/pegjs@0.10.6': {}
+
   '@types/pg-cursor@2.7.2':
     dependencies:
       '@types/node': 18.19.61
@@ -21183,7 +21191,7 @@ snapshots:
       webpack: 5.95.0(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@5.1.4)
       webpack-cli: 5.1.4(@webpack-cli/generators@3.0.7)(webpack@5.95.0)
 
-  '@webpack-cli/configtest@3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)':
+  '@webpack-cli/configtest@3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)':
     dependencies:
       webpack: 5.99.5(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@6.0.1)
       webpack-cli: 6.0.1(webpack@5.99.5)
@@ -21221,7 +21229,7 @@ snapshots:
       webpack: 5.95.0(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@5.1.4)
       webpack-cli: 5.1.4(@webpack-cli/generators@3.0.7)(webpack@5.95.0)
 
-  '@webpack-cli/info@3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)':
+  '@webpack-cli/info@3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)':
     dependencies:
       webpack: 5.99.5(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@6.0.1)
       webpack-cli: 6.0.1(webpack@5.99.5)
@@ -21231,7 +21239,7 @@ snapshots:
       webpack: 5.95.0(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@5.1.4)
       webpack-cli: 5.1.4(@webpack-cli/generators@3.0.7)(webpack@5.95.0)
 
-  '@webpack-cli/serve@3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)':
+  '@webpack-cli/serve@3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)':
     dependencies:
       webpack: 5.99.5(@swc/core@1.11.10(@swc/helpers@0.5.15))(webpack-cli@6.0.1)
       webpack-cli: 6.0.1(webpack@5.99.5)
@@ -28388,8 +28396,9 @@ snapshots:
 
   node-releases@2.0.18: {}
 
-  node-sql-parser@4.18.0:
+  node-sql-parser@5.3.8:
     dependencies:
+      '@types/pegjs': 0.10.6
       big-integer: 1.6.52
 
   nodemailer@6.10.1: {}
@@ -32997,9 +33006,9 @@ snapshots:
   webpack-cli@6.0.1(webpack@5.99.5):
     dependencies:
       '@discoveryjs/json-ext': 0.6.3
-      '@webpack-cli/configtest': 3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)
-      '@webpack-cli/info': 3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)
-      '@webpack-cli/serve': 3.0.1(webpack-cli@6.0.1)(webpack@5.99.5)
+      '@webpack-cli/configtest': 3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)
+      '@webpack-cli/info': 3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)
+      '@webpack-cli/serve': 3.0.1(webpack-cli@6.0.1(webpack@5.99.5))(webpack@5.99.5)
       colorette: 2.0.20
       commander: 12.1.0
       cross-spawn: 7.0.6

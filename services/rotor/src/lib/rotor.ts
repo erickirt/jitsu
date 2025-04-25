@@ -1,18 +1,25 @@
-import { getLog, requireDefined, parseNumber } from "juava";
+import { getLog, parseNumber, requireDefined } from "juava";
 import { connectToKafka, deatLetterTopic, KafkaCredentials, retryTopic } from "./kafka-config";
-import Prometheus from "prom-client";
 import PQueue from "p-queue";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-dayjs.extend(utc);
 import { getRetryPolicy, retryBackOffTime, retryLogMessage } from "./retries";
-import { createMetrics } from "./metrics";
+import {
+  createMetrics,
+  promMessagesConsumed,
+  promMessagesDeadLettered,
+  promMessagesProcessed,
+  promMessagesRequeued,
+  promTopicOffsets,
+} from "./metrics";
 import { FuncChainFilter } from "./functions-chain";
-import type { Admin, Consumer, Producer, KafkaMessage } from "kafkajs";
+import type { Admin, Consumer, KafkaMessage, Producer } from "kafkajs";
 import { CompressionTypes } from "kafkajs";
 import { functionFilter, MessageHandlerContext } from "./message-handler";
 import { connectionsStore, functionsStore, streamsStore } from "./repositories";
-import { RotorMetrics, FuncChainResult } from "@jitsu/core-functions";
+import { FuncChainResult, RotorMetrics } from "@jitsu/core-functions";
+
+dayjs.extend(utc);
 
 const log = getLog("kafka-rotor");
 
@@ -71,41 +78,8 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
 
       producer = kafka.producer({ allowAutoTopicCreation: false });
       await producer.connect();
-      const storeErrors = new Prometheus.Counter({
-        name: "rotor_store_statuses",
-        help: "rotor store statuses",
-        labelNames: ["namespace", "operation", "status"] as const,
-      });
-      metrics = createMetrics(producer, storeErrors);
+      metrics = createMetrics(producer);
       admin = kafka.admin();
-
-      const topicOffsets = new Prometheus.Gauge({
-        name: "rotor_topic_offsets2",
-        help: "topic offsets",
-        // add `as const` here to enforce label names
-        labelNames: ["topic", "partition", "offset"] as const,
-      });
-      const messagesConsumed = new Prometheus.Counter({
-        name: "rotor_messages_consumed",
-        help: "messages consumed",
-        // add `as const` here to enforce label names
-        labelNames: ["topic", "partition"] as const,
-      });
-      const messagesProcessed = new Prometheus.Counter({
-        name: "rotor_messages_processed",
-        help: "messages processed",
-        labelNames: ["topic", "partition"] as const,
-      });
-      const messagesRequeued = new Prometheus.Counter({
-        name: "rotor_messages_requeued",
-        help: "messages requeued",
-        labelNames: ["topic"] as const,
-      });
-      const messagesDeadLettered = new Prometheus.Counter({
-        name: "rotor_messages_dead_lettered",
-        help: "messages dead lettered",
-        labelNames: ["topic"] as const,
-      });
 
       if (rotorIndex === 0) {
         interval = setInterval(async () => {
@@ -113,14 +87,14 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
             for (const topic of kafkaTopics) {
               const watermarks = await admin.fetchTopicOffsets(topic);
               for (const o of watermarks) {
-                topicOffsets.set({ topic: topic, partition: o.partition, offset: "high" }, parseInt(o.high));
-                topicOffsets.set({ topic: topic, partition: o.partition, offset: "low" }, parseInt(o.low));
+                promTopicOffsets.set({ topic: topic, partition: o.partition, offset: "high" }, parseInt(o.high));
+                promTopicOffsets.set({ topic: topic, partition: o.partition, offset: "low" }, parseInt(o.low));
               }
             }
             const offsets = await admin.fetchOffsets({ groupId: consumerGroupId, topics: kafkaTopics });
             for (const o of offsets) {
               for (const p of o.partitions) {
-                topicOffsets.set({ topic: o.topic, partition: p.partition, offset: "offset" }, parseInt(p.offset));
+                promTopicOffsets.set({ topic: o.topic, partition: p.partition, offset: "offset" }, parseInt(p.offset));
               }
             }
           } catch (e) {
@@ -130,7 +104,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
       }
 
       async function onMessage(message: KafkaMessage, topic: string, partition: number) {
-        messagesConsumed.inc({ topic, partition });
+        promMessagesConsumed.inc({ topic, partition });
         const value = message.value;
         if (!value) {
           return;
@@ -159,7 +133,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
             retries,
             fetchTimeoutMs
           )
-            .then(() => messagesProcessed.inc({ topic, partition }))
+            .then(() => promMessagesProcessed.inc({ topic, partition }))
             .catch(async e => {
               const retryPolicy = getRetryPolicy(e);
               const retryTime = retryBackOffTime(retryPolicy, retries + 1);
@@ -175,9 +149,9 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
                   }. ${retryLogMessage(retryPolicy, retries)}`
                 );
               if (!retryTime) {
-                messagesDeadLettered.inc({ topic });
+                promMessagesDeadLettered.inc({ topic });
               } else {
-                messagesRequeued.inc({ topic });
+                promMessagesRequeued.inc({ topic });
               }
               const requeueTopic = retryTime ? retryTopic() : deatLetterTopic();
               try {

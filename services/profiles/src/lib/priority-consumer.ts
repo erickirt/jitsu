@@ -4,6 +4,8 @@ import PQueue from "p-queue";
 import { getLog, parseNumber } from "juava";
 import { KafkaJS, TopicPartitionOffsetSpec, OffsetSpec } from "@confluentinc/kafka-javascript";
 import { db, ProfileBuilderQueueInfo } from "./db";
+import { metricsInterval } from "../builder";
+import { promQueueProcessed, promQueueSize } from "./metrics";
 const concurrency = parseNumber(process.env.CONCURRENCY, 10);
 const instancesCount = parseNumber(process.env.INSTANCES_COUNT, 1);
 
@@ -24,7 +26,7 @@ const rateLimitWindows: Record<ProfileId, RateLimitWindow> = {};
 export function createPriorityConsumer(
   profileBuilder: ProfileBuilder,
   priorityLevels: number,
-  profileTask: (profileId: string) => () => Promise<void>
+  profileTask: (profileId: string, priority: number) => () => Promise<void>
 ): PriorityConsumer {
   let consumers: KafkaJS.Consumer[] = [];
   const queue = new PQueue({ concurrency });
@@ -98,7 +100,7 @@ export function createPriorityConsumer(
             queue
               .add(
                 async () => {
-                  await rateLimitedExecution(profileId, profileTask(profileId), 1000 * 30);
+                  await rateLimitedExecution(profileId, profileTask(profileId, i), 1000 * 30);
                 },
                 { priority: priorityLevels - i }
               )
@@ -162,9 +164,11 @@ async function rateLimitedExecution(
   }
 }
 
+let previousOffsets: Record<string, Record<number, { highOffset: number; offset: number }>> | undefined = undefined;
+
 export async function reportQueueSize(profileBuilder: ProfileBuilder, priorityLevels: number) {
   log.atDebug().log(`Reporting queue size for ${profileBuilder.id}`);
-  const topics: Record<string, Record<number, { highOffset: number; offset: number }>> = {};
+  const topics: Record<string, Record<number, { highOffset: number; offset: number; previousOffset?: number }>> = {};
   for (let i = 0; i < priorityLevels; i++) {
     const topic = topicName(profileBuilder.id, i);
     topics[topic] = {};
@@ -194,11 +198,13 @@ export async function reportQueueSize(profileBuilder: ProfileBuilder, priorityLe
         if (!topic) {
           continue;
         }
+        const previousOffset = previousOffsets?.[partition.topic]?.[partition.partition]?.offset;
         const partitionInfo = topic[partition.partition];
         if (!partitionInfo) {
-          topic[partition.partition] = { offset: partition.offset, highOffset: 0 };
+          topic[partition.partition] = { offset: partition.offset, highOffset: 0, previousOffset };
         } else {
           partitionInfo.offset = partition.offset;
+          partitionInfo.previousOffset = previousOffset;
         }
       }
     }
@@ -261,21 +267,33 @@ export async function reportQueueSize(profileBuilder: ProfileBuilder, priorityLe
   for (let i = 0; i < priorityLevels; i++) {
     const name = topicName(profileBuilder.id, i);
     const topic = topics[name];
+    const size = Object.values(topic).reduce((acc, partition) => {
+      if (partition.highOffset) {
+        return acc + (partition.highOffset - partition.offset);
+      }
+      return acc;
+    }, 0);
+    const processed = Object.values(topic).reduce((acc, partition) => {
+      if (partition.previousOffset) {
+        return acc + (partition.offset - partition.previousOffset);
+      }
+      return acc;
+    }, 0);
+    promQueueSize.labels({ builderId: profileBuilder.id, priority: i }).set(size);
+    promQueueProcessed.labels({ builderId: profileBuilder.id, priority: i }).inc(processed);
     queues[i] = {
       priority: i,
-      size: Object.values(topic).reduce((acc, partition) => {
-        if (partition.highOffset) {
-          return acc + (partition.highOffset - partition.offset);
-        }
-        return acc;
-      }, 0),
+      size,
+      processed,
     };
   }
   log.atDebug().log(`Queue size: ${JSON.stringify(queues)}`);
   await db.pgHelper().updateProfileBuilderQueuesInfo(profileBuilder.id, {
     timestamp: new Date(),
+    intervalSec: metricsInterval / 1000,
     queues,
   });
+  previousOffsets = topics;
 }
 
 function createDeferred() {

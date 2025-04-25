@@ -81,7 +81,7 @@
     "next": "^15.3.0",
     "next-auth": "^4.24.11",
     "node-fetch-commonjs": "^3.3.2",
-    "node-sql-parser": "^4.6.5",
+    "node-sql-parser": "^5.3.8",
     "nodemailer": "^6.10.1",
     "object-hash": "^3.0.0",
     "pg": "~8.11.3",

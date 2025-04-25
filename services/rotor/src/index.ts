@@ -149,12 +149,7 @@ async function main() {
       });
     });
   } else {
-    const storeErrors = new Prometheus.Counter({
-      name: "rotor_store_statuses",
-      help: "rotor store statuses",
-      labelNames: ["namespace", "operation", "status"] as const,
-    });
-    const metrics = createMetrics(undefined, storeErrors);
+    const metrics = createMetrics();
     httpServer = initHTTP({ eventsLogger, metrics: metrics, geoResolver, redisClient });
     signalTraps.forEach(type => {
       process.once(type, () => {

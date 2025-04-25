@@ -23,6 +23,7 @@ import { getLog, newError } from "juava";
 import NodeCache from "node-cache";
 import isEqual from "lodash/isEqual";
 import { ProfileResult } from "@jitsu/protocols/profile";
+import { metrics } from "./metrics";
 
 export type Func = {
   id: string;
@@ -66,14 +67,14 @@ export function buildFunctionChain(
   fetchTimeoutMs: number = 2000
 ): FuncChain {
   const pbLongId = `${profileBuilder.workspaceId}-${profileBuilder.id}-v${profileBuilder.version}`;
-  const store = createMongoStore(profileBuilder.workspaceId, mongodb, false, true);
+  const store = createMongoStore(profileBuilder.workspaceId, mongodb, false, true, metrics);
 
   const chainCtx: FunctionChainContext = {
     fetch: makeFetch(profileBuilder.id, eventsLogger, "info", fetchTimeoutMs),
     log: makeLog(profileBuilder.id, eventsLogger, true),
     store,
     query: async (conId: string, query: string, params: any) => {
-      return warehouseQuery(connStore, conId, query, params);
+      return warehouseQuery(profileBuilder.workspaceId, connStore, conId, query, params, metrics);
     },
   };
   const funcCtx = {
@@ -182,5 +183,4 @@ export async function runChain(
   } catch (err: any) {
     throw newError(`Function execution failed`, err);
   }
-  return undefined;
 }

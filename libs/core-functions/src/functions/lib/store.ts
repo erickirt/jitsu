@@ -4,7 +4,7 @@ import parse from "parse-duration";
 import { MongoClient, ReadPreference, Collection } from "mongodb";
 import { RetryError } from "@jitsu/functions-lib";
 import { getLog, Singleton } from "juava";
-import { RotorMetrics } from "./index";
+import { StoreMetrics } from "./index";
 
 export const defaultTTL = 60 * 60 * 24 * 31; // 31 days
 export const maxAllowedTTL = 2147483647; // max allowed value for ttl in redis (68years)
@@ -29,7 +29,7 @@ function getTtlSec(opts?: SetOpts): number {
   return Math.min(seconds, maxAllowedTTL);
 }
 
-function success(namespace: string, operation: "get" | "set" | "del" | "ttl", metrics?: RotorMetrics) {
+function success(namespace: string, operation: "get" | "set" | "del" | "ttl", metrics?: StoreMetrics) {
   if (metrics) {
     metrics.storeStatus(namespace, operation, "success");
   }
@@ -40,7 +40,7 @@ function storeErr(
   operation: "get" | "set" | "del" | "ttl",
   err: any,
   text: string,
-  metrics?: RotorMetrics
+  metrics?: StoreMetrics
 ) {
   log.atError().log(`${text}: ${err.message}`);
   if (metrics) {
@@ -52,7 +52,7 @@ function storeErr(
   return new RetryError(text + ": " + err.message);
 }
 
-export const createRedisStore = (namespace: string, redisClient: Redis, metrics?: RotorMetrics): TTLStore => ({
+export const createRedisStore = (namespace: string, redisClient: Redis, metrics?: StoreMetrics): TTLStore => ({
   get: async (key: string) => {
     try {
       const res = await redisClient.get(`store:${namespace}:${key}`);
@@ -120,7 +120,7 @@ export const createMongoStore = (
   mongo: Singleton<MongoClient>,
   useLocalCache: boolean,
   fast: boolean,
-  metrics?: RotorMetrics
+  metrics?: StoreMetrics
 ): TTLStore => {
   const localCache: Record<string, StoreValue> = {};
   const readOptions = fast ? { readPreference: ReadPreference.NEAREST } : {};

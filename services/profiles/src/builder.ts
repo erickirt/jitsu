@@ -26,11 +26,13 @@ import { connectionsStore } from "./lib/repositories";
 import { HighLevelProducer } from "@confluentinc/kafka-javascript";
 import { createPriorityConsumer, reportQueueSize } from "./lib/priority-consumer";
 import { kafkaCredentials, topicName } from "./lib/kafka";
+import { promProfileStatuses } from "./lib/metrics";
 
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
 const bulkerAuthKey = requireDefined(process.env.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
 
 const fetchTimeoutMs = parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
+export const metricsInterval = parseNumber(process.env.METRICS_INTERVAL_MS, 5000);
 
 const instanceIndex = parseNumber(process.env.INSTANCE_INDEX, 0);
 const priorityLevels = parseNumber(process.env.PRIORITY_LEVELS, 3);
@@ -140,9 +142,13 @@ export async function profileBuilder(
     true
   );
 
-  const priorityConsumer = createPriorityConsumer(profileBuilder, priorityLevels, (profileId: string) => {
-    return () => processProfile(profileBuilder, funcChain!, mongo, log, config, profileId);
-  });
+  const priorityConsumer = createPriorityConsumer(
+    profileBuilder,
+    priorityLevels,
+    (profileId: string, priority: number) => {
+      return () => processProfile(profileBuilder, funcChain!, mongo, log, config, profileId, priority);
+    }
+  );
 
   let timer: NodeJS.Timeout | undefined;
   if (instanceIndex === 0) {
@@ -150,7 +156,7 @@ export async function profileBuilder(
       reportQueueSize(profileBuilder, priorityLevels).catch(e => {
         log.atError().log(`Error while reporting queue size: ${e.message}`);
       });
-    }, 10000);
+    }, metricsInterval);
   }
   const startConsumer = async () => {
     log.atInfo().log("Starting consumer");
@@ -170,8 +176,8 @@ export async function profileBuilder(
       const loadedState = await db.pgHelper().getProfileBuilderState(profileBuilder.id);
 
       if (typeof loadedState?.fullRebuildInfo?.profilesCount !== "undefined") {
-        // sleep 15 sec
-        await new Promise(resolve => setTimeout(resolve, 10 * 1000));
+        // sleep 5 sec
+        await new Promise(resolve => setTimeout(resolve, 5 * 1000));
         continue;
       }
       try {
@@ -223,9 +229,11 @@ async function processProfile(
   mongo: MongoClient,
   log: LogFactory,
   config: ProfilesConfig,
-  profileId: string
+  profileId: string,
+  priority: number = 0
 ) {
   const ms = stopwatch();
+  let status = "success";
   let cursor: FindCursor<WithId<Document>>;
   try {
     const metrics = { db_events: 0 } as any;
@@ -270,10 +278,12 @@ async function processProfile(
       );
     }
   } catch (e: any) {
+    status = "error";
     funcChain.context.log.error(funcCtx, `Error while processing user ${profileId}: ${e.message}`);
   } finally {
     // @ts-ignore
     cursor?.close();
+    promProfileStatuses.labels({ builderId: profileBuilder.id, priority, status }).observe(ms.elapsedMs() / 1000);
   }
 }
 
