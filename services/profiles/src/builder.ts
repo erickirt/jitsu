@@ -85,10 +85,7 @@ export async function profileBuilder(
   const log = getLog(`pb-${pbLongId}`);
 
   let closed = false;
-  let closeResolve;
-  const closePromise = new Promise((resolve, reject) => {
-    closeResolve = resolve;
-  });
+  let closePromise: Promise<void> | undefined = undefined;
 
   const cacheKey = pbLongId;
   let funcChain: FuncChain | undefined = funcsChainCache.get(cacheKey);
@@ -120,7 +117,6 @@ export async function profileBuilder(
         },
         {
           optional: true,
-          ttlSec: 60 * 60 * 24,
           cleanupFunc: client => client.close(),
         }
       )
@@ -169,6 +165,10 @@ export async function profileBuilder(
   };
   const startFullRebuilder = async () => {
     log.atInfo().log("Starting full rebuilder");
+    let closeResolve;
+    closePromise = new Promise((resolve, reject) => {
+      closeResolve = resolve;
+    });
     const producer = new HighLevelProducer({
       "bootstrap.servers": kafkaCredentials.brokers.join(","),
       "allow.auto.create.topics": false,
@@ -206,7 +206,6 @@ export async function profileBuilder(
       } catch (e: any) {
         funcChain?.context.log.error(funcCtx, `Error while running profile builder: ${e.message}`);
       }
-      await new Promise(resolve => setTimeout(resolve, 15 * 1000));
     }
     closeResolve();
   };
@@ -215,7 +214,11 @@ export async function profileBuilder(
     close: async () => {
       closed = true;
       clearInterval(timer);
-      await Promise.all([priorityConsumer.close(), closePromise]);
+      const promises: Promise<void>[] = [priorityConsumer.close()];
+      if (closePromise) {
+        promises.push(closePromise);
+      }
+      await Promise.all(promises);
       log.atInfo().log("Closed");
     },
     version: () => profileBuilder.version,

@@ -134,11 +134,15 @@ function refreshLoop(eventsLogger: EventsStore) {
             const currentPb = profileBuilders.get(pb.id);
             if (currentPb) {
               if (pb.version != currentPb.version()) {
+                log
+                  .atInfo()
+                  .log(`Profile builder version changed for: ${pb.id} v: ${pb.version} old: ${currentPb.version()}`);
                 await currentPb.close();
                 profileBuilders.delete(pb.id);
                 profileBuilders.set(pb.id, await profileBuilder(workspaceId, pb, eventsLogger));
               }
             } else {
+              log.atInfo().log(`Starting profile builder for: ${pb.id} v: ${pb.version}`);
               profileBuilders.set(pb.id, await profileBuilder(workspaceId, pb, eventsLogger));
             }
             actualProfileBuilders.add(pb.id);
@@ -150,6 +154,7 @@ function refreshLoop(eventsLogger: EventsStore) {
       for (const [pbId, pb] of profileBuilders) {
         if (!actualProfileBuilders.has(pbId)) {
           try {
+            log.atInfo().log(`Deleting profile builder for: ${pbId} v: ${pb.version}`);
             await pb.close();
             profileBuilders.delete(pbId);
           } catch (e) {
@@ -163,7 +168,7 @@ function refreshLoop(eventsLogger: EventsStore) {
       }
     }
   })().catch(async e => {
-    log.atError().withCause(e).log("Failed");
+    log.atError().withCause(e).log("Failed refresh loop");
     process.kill(process.pid, "SIGTERM");
   });
 }

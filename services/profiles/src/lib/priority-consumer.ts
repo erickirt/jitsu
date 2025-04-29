@@ -21,14 +21,13 @@ type RateLimitWindow = {
   activated: boolean;
 };
 
-const rateLimitWindows: Record<ProfileId, RateLimitWindow> = {};
-
 export function createPriorityConsumer(
   profileBuilder: ProfileBuilder,
   priorityLevels: number,
   profileTask: (profileId: string, priority: number) => () => Promise<void>
 ): PriorityConsumer {
   let consumers: KafkaJS.Consumer[] = [];
+  const rateLimitWindows: Record<ProfileId, RateLimitWindow> = {};
   const queue = new PQueue({ concurrency });
 
   const onSizeLessThan = async (limit: number) => {
@@ -50,6 +49,47 @@ export function createPriorityConsumer(
     log.atInfo().log("Closing queue...");
     await queue.onIdle();
   };
+
+  async function rateLimitedExecution(
+    key: string,
+    task: () => Promise<void>,
+    intervalMs: number = 1000 * 30
+  ): Promise<void> {
+    const rateLimitWindow = rateLimitWindows[key];
+    // First event for key or event after a long pause (more than intervalMs)
+    if (!rateLimitWindow) {
+      const newRateLimitWindow: RateLimitWindow = {
+        activated: false,
+      };
+      rateLimitWindows[key] = newRateLimitWindow;
+      let timeout: NodeJS.Timeout;
+      // The newRateLimitWindow collapses all events received for a key in the last intervalMs into the one
+      // timer will execute the one in that case
+      timeout = setTimeout(() => {
+        if (!newRateLimitWindow.activated) {
+          // No events received in the last intervalMs. Removing the rate limit window
+          log.atDebug().log(`Deactivating rate limit window for ${key}`);
+          clearTimeout(timeout);
+          delete rateLimitWindows[key];
+        } else {
+          // reset the timer and newRateLimitWindow state
+          timeout.refresh();
+          newRateLimitWindow.activated = false;
+          // execute the task
+          task();
+        }
+      }, intervalMs);
+      // First event for key or event after a long pause (more than intervalMs). Execute the task right away
+      await task();
+    } else if (!rateLimitWindow.activated) {
+      // Event received for key during the intervalMs. Activate the rate limit window
+      // Task will be executed after interval ends
+      log.atDebug().log(`Activating rate limit window for ${key}`);
+      rateLimitWindow.activated = true;
+    } else {
+      log.atDebug().log(`Rate limit window for ${key} is already activated`);
+    }
+  }
 
   return {
     async start(): Promise<void> {
@@ -121,47 +161,6 @@ export function createPriorityConsumer(
       await closeQueue();
     },
   };
-}
-
-async function rateLimitedExecution(
-  key: string,
-  task: () => Promise<void>,
-  intervalMs: number = 1000 * 30
-): Promise<void> {
-  const rateLimitWindow = rateLimitWindows[key];
-  // First event for key or event after a long pause (more than intervalMs)
-  if (!rateLimitWindow) {
-    const newRateLimitWindow: RateLimitWindow = {
-      activated: false,
-    };
-    rateLimitWindows[key] = newRateLimitWindow;
-    let timeout: NodeJS.Timeout;
-    // The newRateLimitWindow collapses all events received for a key in the last intervalMs into the one
-    // timer will execute the one in that case
-    timeout = setTimeout(() => {
-      if (!newRateLimitWindow.activated) {
-        // No events received in the last intervalMs. Removing the rate limit window
-        log.atDebug().log(`Deactivating rate limit window for ${key}`);
-        clearTimeout(timeout);
-        delete rateLimitWindows[key];
-      } else {
-        // reset the timer and newRateLimitWindow state
-        timeout.refresh();
-        newRateLimitWindow.activated = false;
-        // execute the task
-        task();
-      }
-    }, intervalMs);
-    // First event for key or event after a long pause (more than intervalMs). Execute the task right away
-    await task();
-  } else if (!rateLimitWindow.activated) {
-    // Event received for key during the intervalMs. Activate the rate limit window
-    // Task will be executed after interval ends
-    log.atDebug().log(`Activating rate limit window for ${key}`);
-    rateLimitWindow.activated = true;
-  } else {
-    log.atDebug().log(`Rate limit window for ${key} is already activated`);
-  }
 }
 
 export type TopicsReport = Record<
