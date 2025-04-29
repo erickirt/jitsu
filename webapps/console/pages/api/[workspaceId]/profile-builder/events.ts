@@ -63,7 +63,7 @@ export default createRoute()
             },
             {
               optional: true,
-              ttlSec: 60 * 60 * 24,
+              ttlSec: 60 * 60,
               cleanupFunc: client => client.close(),
             }
           )
