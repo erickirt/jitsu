@@ -12,7 +12,7 @@ FROM base as builder
 
 RUN apt-get update -y
 RUN apt-get install git openssl1.1 procps python3 make g++ -y
-RUN npm -g install pnpm
+RUN npm -g install pnpm@^9.0.0
 
 # Create app directory
 WORKDIR /app
