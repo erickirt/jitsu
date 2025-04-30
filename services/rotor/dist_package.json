@@ -6,5 +6,10 @@
     "isolated-vm": "5.0.1",
     "@sensejs/kafkajs-zstd-support": "^0.11.0",
     "@mongodb-js/zstd": "^2.0.1"
+  },
+  "overrides": {
+    "@sensejs/kafkajs-zstd-support": {
+      "zstd-napi": "^0.0.10"
+    }
   }
 }
