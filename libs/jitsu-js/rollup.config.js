@@ -29,4 +29,19 @@ module.exports = [
       { file: "dist/jitsu.cjs.js", format: "cjs" },
     ],
   },
+  {
+    plugins: [multi(), commonjs(), rollupJson()],
+    input: ["./compiled/src/destination-plugins/no-destination-plugins.js"],
+    output: [
+      { file: "compiled/src/destination-plugins.js", format: "es" },
+    ],
+  },
+  {
+    plugins: [multi(), resolve({ preferBuiltins: false }), commonjs(), rollupJson()],
+    input: ["./compiled/src/index.js", "./compiled/src/jitsu.js", "./compiled/src/analytics-plugin.js"],
+    output: [
+      { file: "dist/jitsu-no-ext.es.js", format: "es" },
+      { file: "dist/jitsu-no-ext.cjs.js", format: "cjs" },
+    ],
+  },
 ];

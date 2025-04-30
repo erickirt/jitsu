@@ -13,12 +13,12 @@
   "license": "MIT",
   "private": false,
   "scripts": {
-    "clean": "rm -rf ./dist",
+    "clean": "rm -rf ./dist ./compiled",
     "test:node": "jest",
     "test:playwright": "playwright test ./__tests__/playwright",
     "test": "pnpm run test:node && pnpm run test:playwright",
     "compile": "tsc -p .",
-    "build": "tsc -p . && rollup -c && cp compiled/src/*.d.ts dist"
+    "build": "pnpm run clean && pnpm run compile && rollup -c && cp compiled/src/*.d.ts dist"
   },
   "devDependencies": {
     "tslib": "^2.6.3",
