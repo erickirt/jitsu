@@ -169,7 +169,7 @@ export type SingleObjectEditorProps = ConfigEditorProps & {
 export const AdvancedConfiguration: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className={`w-full h-full mb-6`}>
+    <div className="w-full h-full mb-6">
       <div
         className={`text-lg flex items-center cursor-pointer ${!expanded && "border-b border-backgroundDark pb-3"}`}
         onClick={() => setExpanded(!expanded)}
