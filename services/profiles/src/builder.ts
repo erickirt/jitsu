@@ -15,7 +15,7 @@ import {
   Profile,
 } from "@jitsu/core-functions";
 import { FindCursor, AggregationCursor, MongoClient, WithId, Document, ReadPreference } from "mongodb";
-import { db } from "./lib/db";
+import { db, ProfileBuilderQueueInfo } from "./lib/db";
 import { getLog, getSingleton, hash, LogFactory, parseNumber, requireDefined, stopwatch } from "juava";
 import NodeCache from "node-cache";
 import { buildFunctionChain, FuncChain, runChain } from "./lib/functions-chain";
@@ -23,10 +23,10 @@ import { FullContext } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import { TableNameParameter, transfer } from "@jitsu/functions-lib";
 import { connectionsStore } from "./lib/repositories";
-import { HighLevelProducer } from "@confluentinc/kafka-javascript";
-import { createPriorityConsumer, reportQueueSize, TopicsReport } from "./lib/priority-consumer";
-import { kafkaCredentials, topicName } from "./lib/kafka";
-import { promProfileStatuses } from "./lib/metrics";
+import { HighLevelProducer, OffsetSpec, TopicPartitionOffsetSpec } from "@confluentinc/kafka-javascript";
+import { createPriorityConsumer, TopicsReport } from "./lib/priority-consumer";
+import { kafkaAdmin, kafkaCredentials, topicName } from "./lib/kafka";
+import { promProfileStatuses, promQueueProcessed, promQueueSize } from "./lib/metrics";
 
 const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
 const bulkerAuthKey = requireDefined(process.env.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
@@ -165,49 +165,193 @@ export async function profileBuilder(
   };
   const startFullRebuilder = async () => {
     log.atInfo().log("Starting full rebuilder");
-    let closeResolve;
+    let closeResolve: ((value: void | PromiseLike<void>) => void) | undefined;
+    let producer: HighLevelProducer | undefined;
     closePromise = new Promise((resolve, reject) => {
       closeResolve = resolve;
     });
-    const producer = new HighLevelProducer({
-      "bootstrap.servers": kafkaCredentials.brokers.join(","),
-      "allow.auto.create.topics": false,
-      "linger.ms": 200,
-    });
-    producer.connect();
-    const topic = topicName(profileBuilder.id, priorityLevels - 1);
-    while (!closed) {
-      const started = Date.now();
-      const loadedState = await db.pgHelper().getProfileBuilderState(profileBuilder.id);
+    try {
+      producer = new HighLevelProducer({
+        "bootstrap.servers": kafkaCredentials.brokers.join(","),
+        "allow.auto.create.topics": false,
+        "linger.ms": 200,
+      });
+      producer.connect();
+      const topic = topicName(profileBuilder.id, priorityLevels - 1);
+      while (!closed) {
+        const started = Date.now();
+        const loadedState = await db.pgHelper().getProfileBuilderState(profileBuilder.id);
 
-      if (typeof loadedState?.fullRebuildInfo?.profilesCount !== "undefined") {
-        // sleep 5 sec
-        await new Promise(resolve => setTimeout(resolve, 5 * 1000));
-        continue;
+        if (typeof loadedState?.fullRebuildInfo?.profilesCount !== "undefined") {
+          // sleep 5 sec
+          await new Promise(resolve => setTimeout(resolve, 5 * 1000));
+          continue;
+        }
+        log.atInfo().log(`Starting full rebuild for ${profileBuilder.id}`);
+        try {
+          let processed = 0;
+          const producerCallback = (err, offset) => {
+            if (err) {
+              log.atError().log(`Error while producing message to Kafka: ${err.message}`);
+            }
+          };
+          await processProfileIds(mongo, config, profileId => {
+            producer!.produce(topic, null, null, profileId, Date.now(), producerCallback);
+            processed++;
+          });
+
+          log.atInfo().log(`Processed ${processed} users in ${Date.now() - started}ms`);
+          await db.pgHelper().updateProfileBuilderFullRebuildInfo(profileBuilder.id, {
+            version: profileBuilder.version,
+            timestamp: new Date(),
+            profilesCount: processed,
+          });
+        } catch (e: any) {
+          funcChain?.context.log.error(funcCtx, `Error while running profile builder: ${e.message}`);
+        }
       }
-      try {
-        let processed = 0;
-        const producerCallback = (err, offset) => {
-          if (err) {
-            log.atError().log(`Error while producing message to Kafka: ${err.message}`);
-          }
-        };
-        await processProfileIds(mongo, config, profileId => {
-          producer.produce(topic, null, null, profileId, Date.now(), producerCallback);
-          processed++;
-        });
-
-        log.atInfo().log(`Processed ${processed} users in ${Date.now() - started}ms`);
-        await db.pgHelper().updateProfileBuilderFullRebuildInfo(profileBuilder.id, {
-          version: profileBuilder.version,
-          timestamp: new Date(),
-          profilesCount: processed,
-        });
-      } catch (e: any) {
-        funcChain?.context.log.error(funcCtx, `Error while running profile builder: ${e.message}`);
+    } finally {
+      if (producer) {
+        producer.disconnect();
+      }
+      if (closeResolve) {
+        closeResolve();
       }
     }
-    closeResolve();
+  };
+
+  const reportQueueSize = async function (
+    profileBuilder: ProfileBuilder,
+    priorityLevels: number,
+    previousOffsets?: TopicsReport
+  ): Promise<TopicsReport> {
+    log.atDebug().log(`Reporting queue size for ${profileBuilder.id}`);
+    const topics: TopicsReport = {};
+    for (let i = 0; i < priorityLevels; i++) {
+      const topic = topicName(profileBuilder.id, i);
+      topics[topic] = {};
+    }
+    const { promise, resolve, reject } = createDeferred();
+
+    kafkaAdmin.listConsumerGroupOffsets([{ groupId: "profile-builder-" + profileBuilder.id }], undefined, (e, data) => {
+      if (e) {
+        log
+          .atError()
+          .withCause(e)
+          .log(`Failed to describe topics ${JSON.stringify(topics)}`);
+        reject(e);
+        return;
+      }
+      for (const group of data) {
+        const partitions = group.partitions;
+        for (const partition of partitions) {
+          if (partition.error) {
+            log
+              .atError()
+              .log(`Failed to get partition ${partition.topic}:${partition.partition} offset: ${partition.error}`);
+            reject(partition.error);
+            return;
+          }
+          const topic = topics[partition.topic];
+          if (!topic) {
+            continue;
+          }
+          const previousOffset = previousOffsets?.[partition.topic]?.[partition.partition]?.offset;
+          const partitionInfo = topic[partition.partition];
+          if (!partitionInfo) {
+            topic[partition.partition] = { offset: partition.offset, highOffset: 0, previousOffset };
+          } else {
+            partitionInfo.offset = partition.offset;
+            partitionInfo.previousOffset = previousOffset;
+          }
+        }
+      }
+      resolve();
+    });
+    await promise;
+
+    const { promise: promise2, resolve: resolve2, reject: reject2 } = createDeferred();
+
+    kafkaAdmin.describeTopics(Object.keys(topics), undefined, (e, data) => {
+      if (e) {
+        log
+          .atError()
+          .withCause(e)
+          .log(`Failed to describe topics ${JSON.stringify(topics)}`);
+        reject2(e);
+        return;
+      }
+      const specs: TopicPartitionOffsetSpec[] = [];
+      for (const topic of data) {
+        if (topic.error) {
+          log.atError().log(`Failed to describe topic ${topic.name} : ${topic.error}`);
+          reject2(topic.error);
+          return;
+        }
+        const partitions = topic.partitions;
+        for (const partition of partitions) {
+          specs.push({
+            topic: topic.name,
+            partition: partition.partition,
+            offset: OffsetSpec.LATEST,
+          });
+        }
+      }
+      kafkaAdmin.listOffsets(specs, undefined, (e, data) => {
+        if (e) {
+          log
+            .atError()
+            .withCause(e)
+            .log(`Failed to list offsets ${JSON.stringify(topics)}`);
+          reject2(e);
+          return;
+        }
+        for (const partition of data) {
+          const topic = topics[partition.topic];
+          const partitionInfo = topic[partition.partition];
+          if (!partitionInfo) {
+            topic[partition.partition] = { highOffset: partition.offset, offset: 0 };
+          } else {
+            partitionInfo.highOffset = partition.offset;
+          }
+        }
+        resolve2();
+      });
+    });
+
+    await promise2;
+
+    const queues: ProfileBuilderQueueInfo["queues"] = {};
+    for (let i = 0; i < priorityLevels; i++) {
+      const name = topicName(profileBuilder.id, i);
+      const topic = topics[name];
+      const size = Object.values(topic).reduce((acc, partition) => {
+        if (partition.highOffset) {
+          return acc + (partition.highOffset - partition.offset);
+        }
+        return acc;
+      }, 0);
+      const processed = Object.values(topic).reduce((acc, partition) => {
+        if (partition.previousOffset) {
+          return acc + (partition.offset - partition.previousOffset);
+        }
+        return acc;
+      }, 0);
+      promQueueSize.labels({ builderId: profileBuilder.id, priority: i }).set(size);
+      promQueueProcessed.labels({ builderId: profileBuilder.id, priority: i }).inc(processed);
+      queues[i] = {
+        priority: i,
+        size,
+        processed,
+      };
+    }
+    log.atDebug().log(`Queue size: ${JSON.stringify(queues)}`);
+    await db.pgHelper().updateProfileBuilderQueuesInfo(profileBuilder.id, {
+      timestamp: new Date(),
+      intervalSec: metricsInterval / 1000,
+      queues,
+    });
+    return topics;
   };
 
   const pb = {
@@ -413,4 +557,15 @@ async function processProfileIds(mongo: MongoClient, config: ProfilesConfig, cb:
     // @ts-ignore
     cursor?.close();
   }
+}
+
+function createDeferred() {
+  let resolve, reject;
+
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
 }

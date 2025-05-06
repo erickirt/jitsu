@@ -1,4 +1,4 @@
-import { checkHash, checkRawToken, disableService, getLog, setServerJsonFormat } from "juava";
+import { checkHash, checkRawToken, getLog, setServerJsonFormat } from "juava";
 import express from "express";
 import Prometheus from "prom-client";
 import { Server } from "node:net";
