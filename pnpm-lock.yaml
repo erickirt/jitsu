@@ -268,9 +268,6 @@ importers:
       '@jitsu/jitsu-react':
         specifier: workspace:*
         version: link:../../libs/jitsu-react
-      '@jitsu/js':
-        specifier: workspace:*
-        version: link:../../libs/jitsu-js
       '@types/node':
         specifier: ^18.15.3
         version: 18.19.61
@@ -658,11 +655,11 @@ importers:
         specifier: ^6.6.2
         version: 6.6.2
       pg:
-        specifier: ^8.12.0
-        version: 8.13.1
+        specifier: ~8.11.6
+        version: 8.11.6
       pg-cursor:
         specifier: ^2.11.0
-        version: 2.12.1(pg@8.13.1)
+        version: 2.12.1(pg@8.11.6)
       prom-client:
         specifier: ^15.1.3
         version: 15.1.3
@@ -701,8 +698,8 @@ importers:
         specifier: ^18.15.3
         version: 18.19.61
       '@types/pg':
-        specifier: ^8.11.6
-        version: 8.11.10
+        specifier: ~8.11.15
+        version: 8.11.15
       '@types/pg-cursor':
         specifier: ^2.7.2
         version: 2.7.2
@@ -827,11 +824,11 @@ importers:
         specifier: ^6.6.2
         version: 6.6.2
       pg:
-        specifier: ^8.12.0
-        version: 8.13.1
+        specifier: ~8.11.6
+        version: 8.11.6
       pg-cursor:
         specifier: ^2.11.0
-        version: 2.12.1(pg@8.13.1)
+        version: 2.12.1(pg@8.11.6)
       prom-client:
         specifier: ^15.1.3
         version: 15.1.3
@@ -879,8 +876,8 @@ importers:
         specifier: ^18.15.3
         version: 18.19.61
       '@types/pg':
-        specifier: ^8.11.6
-        version: 8.11.10
+        specifier: ~8.11.15
+        version: 8.11.15
       '@types/web':
         specifier: ^0.0.152
         version: 0.0.152
@@ -1019,7 +1016,7 @@ importers:
         specifier: ^5.22.4
         version: 5.22.4(@rjsf/utils@5.22.4(react@18.3.1))
       '@tanstack/react-query':
-        specifier: ^4.2.1
+        specifier: ^4.36.1
         version: 4.36.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/cookie':
         specifier: ^1.0.0
@@ -1118,7 +1115,7 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       pg:
-        specifier: ~8.11.3
+        specifier: ~8.11.6
         version: 8.11.6
       pg-cursor:
         specifier: ~2.10.1
@@ -1224,8 +1221,8 @@ importers:
         specifier: ^6.4.17
         version: 6.4.17
       '@types/pg':
-        specifier: ^8.6.5
-        version: 8.11.10
+        specifier: ~8.11.15
+        version: 8.11.15
       '@types/pg-query-stream':
         specifier: ^3.4.0
         version: 3.4.0(pg@8.11.6)
@@ -1359,8 +1356,8 @@ importers:
         specifier: ^3.3.2
         version: 3.3.2
       pg:
-        specifier: ^8.11.3
-        version: 8.13.1
+        specifier: ~8.11.6
+        version: 8.11.6
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1390,8 +1387,8 @@ importers:
         specifier: ^4.14.185
         version: 4.17.13
       '@types/pg':
-        specifier: ^8.6.5
-        version: 8.11.10
+        specifier: ~8.11.15
+        version: 8.11.15
       '@types/stripe':
         specifier: ^8.0.417
         version: 8.0.417
@@ -5598,8 +5595,8 @@ packages:
     resolution: {integrity: sha512-oqGAu+5CMPAVNqemN9xYT3LBDy2qXBke15cstEuVYIvJL6lcKSNKeG61fONlVrxTYIFi9sPuGVtIweanrEZcJw==}
     deprecated: This is a stub types definition. pg-query-stream provides its own type definitions, so you do not need this installed.
 
-  '@types/pg@8.11.10':
-    resolution: {integrity: sha512-LczQUW4dbOQzsH2RQ5qoeJ6qJPdrcM/DcMLoqWQkMLMsq83J5lAX3LXjdkWdpscFy67JSOWDnh7Ny/sPFykmkg==}
+  '@types/pg@8.11.15':
+    resolution: {integrity: sha512-vtxIjQ/s9HxJAkGrYha6nQEeBZn+P4q0KUAOlUmXX4nJ9niX5hSE3x3wEigLJhklEfM6jmPh3wWPOR3zot8v3g==}
 
   '@types/prettier@2.7.3':
     resolution: {integrity: sha512-+68kP9yzs4LMp7VNh8gdzMSPZFL44MLGqiHWvttYJe+6qnuVr4Ek9wSBQoveqY/r+LwjCcU29kNVkidwim+kYA==}
@@ -11424,15 +11421,6 @@ packages:
 
   pg@8.13.0:
     resolution: {integrity: sha512-34wkUTh3SxTClfoHB3pQ7bIMvw9dpFU1audQQeZG837fmHfHpr14n/AELVDoOYVDW2h5RDWU78tFjkD+erSBsw==}
-    engines: {node: '>= 8.0.0'}
-    peerDependencies:
-      pg-native: '>=3.0.1'
-    peerDependenciesMeta:
-      pg-native:
-        optional: true
-
-  pg@8.13.1:
-    resolution: {integrity: sha512-OUir1A0rPNZlX//c7ksiu7crsGZTKSOXJPgtNiHGIlC9H0lO+NC6ZDYksSgBYY/thSWhnSRBv8w1lieNNGATNQ==}
     engines: {node: '>= 8.0.0'}
     peerDependencies:
       pg-native: '>=3.0.1'
@@ -20608,7 +20596,7 @@ snapshots:
   '@types/pg-cursor@2.7.2':
     dependencies:
       '@types/node': 18.19.61
-      '@types/pg': 8.11.10
+      '@types/pg': 8.11.15
 
   '@types/pg-promise@5.4.3(pg-query-stream@4.7.1(pg@8.11.6))':
     dependencies:
@@ -20623,7 +20611,7 @@ snapshots:
     transitivePeerDependencies:
       - pg
 
-  '@types/pg@8.11.10':
+  '@types/pg@8.11.15':
     dependencies:
       '@types/node': 18.19.61
       pg-protocol: 1.7.0
@@ -28859,10 +28847,6 @@ snapshots:
     dependencies:
       pg: 8.11.6
 
-  pg-cursor@2.12.1(pg@8.13.1):
-    dependencies:
-      pg: 8.13.1
-
   pg-int8@1.0.1: {}
 
   pg-minify@1.6.5: {}
@@ -28876,10 +28860,6 @@ snapshots:
   pg-pool@3.7.0(pg@8.13.0):
     dependencies:
       pg: 8.13.0
-
-  pg-pool@3.7.0(pg@8.13.1):
-    dependencies:
-      pg: 8.13.1
 
   pg-promise@11.10.1(pg-query-stream@4.7.1(pg@8.11.6)):
     dependencies:
@@ -28930,16 +28910,6 @@ snapshots:
     dependencies:
       pg-connection-string: 2.7.0
       pg-pool: 3.7.0(pg@8.13.0)
-      pg-protocol: 1.7.0
-      pg-types: 2.2.0
-      pgpass: 1.0.5
-    optionalDependencies:
-      pg-cloudflare: 1.1.1
-
-  pg@8.13.1:
-    dependencies:
-      pg-connection-string: 2.7.0
-      pg-pool: 3.7.0(pg@8.13.1)
       pg-protocol: 1.7.0
       pg-types: 2.2.0
       pgpass: 1.0.5
