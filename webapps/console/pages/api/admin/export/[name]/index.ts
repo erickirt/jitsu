@@ -106,6 +106,9 @@ const exports: Export[] = [
                 );
                 credentials.parameters = { ...(credentials.parameters || {}), ...extraParams };
               }
+              if (!credentials.provisioned) {
+                credentials.loadAsJson = false;
+              }
               if (credentials.loadAsJson && !credentials.provisioned && clickhouseS3Configured) {
                 credentials.s3Region = s3Region;
                 credentials.s3AccessKeyId = s3AccessKeyId;
