@@ -27,7 +27,6 @@ import { Bug, Globe, RefreshCw, Server } from "lucide-react";
 import { JitsuButton } from "../JitsuButton/JitsuButton";
 import { ConnectionTitle, ProfileBuilderTitle } from "../../pages/[workspaceId]/connections";
 import { StreamTitle } from "../../pages/[workspaceId]/streams";
-import { trimMiddle } from "../../lib/shared/strings";
 import { countries } from "../../lib/shared/countries";
 import type { RefSelectProps } from "antd/es/select";
 
@@ -41,6 +40,7 @@ import {
 } from "../../lib/store";
 import { coreDestinationsMap } from "../../lib/schema/destinations";
 import debounce from "lodash/debounce";
+import { trimMiddle } from "juava";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
