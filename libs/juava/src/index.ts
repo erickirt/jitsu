@@ -14,3 +14,4 @@ export * from "./boolean";
 export * from "./number";
 export * from "./throttle";
 export * from "./objects";
+export * from "./strings";

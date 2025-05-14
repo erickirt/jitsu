@@ -6,7 +6,7 @@ import { NotificationStateDbModel, StatusChangeDbModel } from "../../../prisma/s
 import { z } from "zod";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { stopwatch } from "juava";
+import { stopwatch, trimMiddle } from "juava";
 import { getAppEndpoint, PublicEndpoint } from "../../../lib/domains";
 import { NotificationChannel } from "../../../lib/schema";
 import omit from "lodash/omit";
@@ -988,7 +988,7 @@ export async function sendSlackNotification(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: [`*Details*:`, "```", `${props.incidentDetails}`, "```"].join("\n"),
+        text: [`*Details*:`, "```", `${trimMiddle(props.incidentDetails, 2000)}`, "```"].join("\n"),
       },
     });
   }
