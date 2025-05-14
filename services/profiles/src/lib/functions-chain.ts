@@ -71,7 +71,7 @@ export function buildFunctionChain(
 
   const chainCtx: FunctionChainContext = {
     fetch: makeFetch(profileBuilder.id, eventsLogger, "info", fetchTimeoutMs),
-    log: makeLog(profileBuilder.id, eventsLogger, true),
+    log: makeLog(profileBuilder.id, eventsLogger, false),
     store,
     query: async (conId: string, query: string, params: any) => {
       return warehouseQuery(profileBuilder.workspaceId, connStore, conId, query, params, metrics);
