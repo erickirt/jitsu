@@ -10,6 +10,7 @@ import {
   promMessagesDeadLettered,
   promMessagesProcessed,
   promMessagesRequeued,
+  promConnectionMessageStatuses,
   promTopicOffsets,
 } from "./metrics";
 import { FuncChainFilter } from "./functions-chain";
@@ -133,7 +134,9 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
             retries,
             fetchTimeoutMs
           )
-            .then(() => promMessagesProcessed.inc({ topic, partition }))
+            .then(() => {
+              promMessagesProcessed.inc({ topic, partition });
+            })
             .catch(async e => {
               const retryPolicy = getRetryPolicy(e);
               const retryTime = retryBackOffTime(retryPolicy, retries + 1);
@@ -150,6 +153,11 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
                 );
               if (!retryTime) {
                 promMessagesDeadLettered.inc({ topic });
+                promConnectionMessageStatuses.inc({
+                  destinationId: connectionId,
+                  tableName: "_all_",
+                  status: "deadLettered",
+                });
               } else {
                 promMessagesRequeued.inc({ topic });
               }

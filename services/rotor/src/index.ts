@@ -257,11 +257,11 @@ function initHTTP(rotorContext: Omit<MessageHandlerContext, "connectionStore" | 
 
 function initMetricsServer() {
   metricsHttp.get("/metrics", async (req, res) => {
-    res.set("Content-Type", Prometheus.register.contentType);
+    res.writeHead(200, { "Content-Type": Prometheus.register.contentType });
     const result = await Prometheus.register.metrics();
     res.end(result);
   });
-  const metricsServer = metricsHttp.listen(rotorMetricsPort, () => {
+  const metricsServer = metricsHttp.listen(parseInt(rotorMetricsPort + ""), () => {
     log.atInfo().log(`Listening metrics on port ${rotorMetricsPort}`);
   });
   metricsServer.on("error", e => {
