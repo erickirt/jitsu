@@ -53,6 +53,11 @@ export const promMessagesDeadLettered = new Counter({
   help: "messages dead lettered",
   labelNames: ["topic"] as const,
 });
+export const promConnectionMessageStatuses = new Counter({
+  name: "connection_message_statuses",
+  help: "connection message statuses",
+  labelNames: ["destinationId", "tableName", "status"] as const,
+});
 export const promFunctionsInFlight = new Gauge({
   name: "rotor_functions_in_flight",
   help: "Functions in flight",
@@ -227,6 +232,13 @@ export function createMetrics(producer?: Producer): RotorMetrics {
           continue;
         }
         const status = ((el: FunctionExecRes) => {
+          if (el.metricsMeta?.retries) {
+            promConnectionMessageStatuses.inc({
+              destinationId: el.metricsMeta!.connectionId,
+              tableName: "_all_",
+              status: "retry",
+            });
+          }
           let prefix = el.functionId.startsWith("builtin.destination.")
             ? ""
             : el.functionId.startsWith("builtin.transformation.")
@@ -237,12 +249,35 @@ export function createMetrics(producer?: Producer): RotorMetrics {
             if (el.metricsMeta?.retries) {
               prefix = prefix + "retry_";
             }
+            promConnectionMessageStatuses.inc({
+              destinationId: el.metricsMeta!.connectionId,
+              tableName: "_all_",
+              status: "error",
+            });
             status = "error";
+            if (el.dropped) {
+              promConnectionMessageStatuses.inc({
+                destinationId: el.metricsMeta!.connectionId,
+                tableName: "_all_",
+                status: "drop",
+              });
+            }
           } else if (el.dropped) {
             prefix = "";
             status = "dropped";
+            promConnectionMessageStatuses.inc({
+              destinationId: el.metricsMeta!.connectionId,
+              tableName: "_all_",
+              status: "drop",
+            });
           } else if (el.functionId === "builtin.destination.bulker") {
             status = "processed";
+          } else {
+            promConnectionMessageStatuses.inc({
+              destinationId: el.metricsMeta!.connectionId,
+              tableName: "_all_",
+              status: "success",
+            });
           }
           return prefix + status;
         })(el);
