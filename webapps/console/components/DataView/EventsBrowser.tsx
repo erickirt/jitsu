@@ -184,6 +184,7 @@ const EventsBrowser0 = ({
   const destinations = useConfigObjectList("destination");
   const destinationsMap = useMap(destinations);
   const profileBuilders = useProfileBuilders();
+  const hasActiveProfileBuilder = profileBuilders.some(p => p.version > 0);
   const mappedConnections = useMemo(
     () =>
       connections
@@ -223,21 +224,23 @@ const EventsBrowser0 = ({
         ]
       : [
           ...mappedConnections.filter(link => link.usesBulker || link.hybrid),
-          ...destinations
-            .filter(dst => {
-              const destinationType = coreDestinationsMap[dst?.destinationType];
-              return destinationType?.usesBulker;
-            })
-            .map(dst => {
-              return {
-                id: dst.id,
-                name: "Profile Builder",
-                mode: "batch",
-                destination: dst,
-                usesBulker: true,
-                type: "profile-builder",
-              };
-            }),
+          ...(hasActiveProfileBuilder
+            ? destinations
+                .filter(dst => {
+                  const destinationType = coreDestinationsMap[dst?.destinationType];
+                  return destinationType?.usesBulker;
+                })
+                .map(dst => {
+                  return {
+                    id: dst.id,
+                    name: "Profile Builder",
+                    mode: "batch",
+                    destination: dst,
+                    usesBulker: true,
+                    type: "profile-builder",
+                  };
+                })
+            : []),
         ];
   }, [destinations, destinationsMap, mappedConnections, profileBuilders, streamType, streams]);
 
