@@ -212,12 +212,14 @@ const EventsBrowser0 = ({
       : streamType == "function"
       ? [
           ...mappedConnections,
-          ...profileBuilders.map(p => {
-            return {
-              ...p,
-              type: "profile-builder",
-            };
-          }),
+          ...profileBuilders
+            .filter(p => p.version > 0)
+            .map(p => {
+              return {
+                ...p,
+                type: "profile-builder",
+              };
+            }),
         ]
       : [
           ...mappedConnections.filter(link => link.usesBulker || link.hybrid),
