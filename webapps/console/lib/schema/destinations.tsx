@@ -17,6 +17,7 @@ import ga4Icon from "./icons/ga4";
 import gtmIcon from "./icons/gtm";
 import postgresIcon from "./icons/postgres";
 import mysqlIcon from "./icons/mysql";
+import motherduckIcon from "./icons/motherduck";
 import redshiftIcon from "./icons/redshift";
 import posthogIcon from "./icons/posthog";
 import segmentIcon from "./icons/segment";
@@ -639,6 +640,25 @@ export const coreDestinations: DestinationType<any>[] = [
     },
     description:
       "Amazon Redshift is a cloud data warehouse that is optimized for the analytical workloads of business intelligence (BI) and data warehousing (DWH). Jitsu supports both Serverless and Classic Redshift",
+  },
+  {
+    id: "duckdb",
+    usesBulker: true,
+    icon: motherduckIcon,
+    title: "MotherDuck (DuckDB)",
+    tags: "Datawarehouse",
+    connectionOptions: BaseBulkerConnectionOptions,
+    credentials: z.object({
+      database: z.string().describe("MotherDuck database"),
+      motherduckToken: z.string().describe("MotherDuck token"),
+      defaultSchema: z.string().default("main").describe("Schema::Database schema"),
+    }),
+    credentialsUi: {
+      motherduckToken: {
+        password: true,
+      },
+    },
+    description: "DuckDB-powered cloud data warehouse scaling to terabytes with ease.",
   },
   {
     id: "mysql",
