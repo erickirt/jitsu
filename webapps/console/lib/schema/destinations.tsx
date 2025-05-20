@@ -649,8 +649,12 @@ export const coreDestinations: DestinationType<any>[] = [
     tags: "Datawarehouse",
     connectionOptions: BaseBulkerConnectionOptions,
     credentials: z.object({
-      database: z.string().describe("MotherDuck database"),
-      motherduckToken: z.string().describe("MotherDuck token"),
+      database: z.string().describe("MotherDuck database name"),
+      motherduckToken: z
+        .string()
+        .describe(
+          "MotherDuck token::MotherDuck token can be obtained in the MotherDuck's <a target='_blank' rel='noopener noreferrer' href='https://app.motherduck.com/settings/tokens'>Settings -> Access Tokens</a> section"
+        ),
       defaultSchema: z.string().default("main").describe("Schema::Database schema"),
     }),
     credentialsUi: {
