@@ -988,7 +988,9 @@ export async function sendSlackNotification(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: [`*Details*:`, "```", `${trimMiddle(props.incidentDetails, 2000)}`, "```"].join("\n"),
+        text: [`*Details*:`, "```", `${trimMiddle(props.incidentDetails, 2000, "\n... TRUNCATED ...\n")}`, "```"].join(
+          "\n"
+        ),
       },
     });
   }
