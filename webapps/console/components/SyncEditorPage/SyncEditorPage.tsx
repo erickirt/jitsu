@@ -263,6 +263,7 @@ function SyncEditor({
     (catalog: any) => {
       const streams: Record<string, SelectedStreamSettings> = {};
       const currentStreams = syncOptions.streams || {};
+      const hasIncremental = Object.values(currentStreams).some((s: any) => s.sync_mode === "incremental");
       const disabledStreams = { ...syncOptions.disabledStreams };
       const newSync = typeof syncOptions.streams === "undefined";
       for (const stream of catalog?.streams ?? []) {
@@ -275,7 +276,7 @@ function SyncEditor({
           streams[name] = initStream(stream);
         } else if (!disabledStream) {
           if (syncOptions.schemaChanges === "streams") {
-            streams[name] = initStream(stream);
+            streams[name] = initStream(stream, hasIncremental ? "incremental" : "full_refresh");
           } else {
             disabledStreams[name] = initStream(stream);
           }
