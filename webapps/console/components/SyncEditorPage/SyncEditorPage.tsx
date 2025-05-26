@@ -278,7 +278,7 @@ function SyncEditor({
           if (syncOptions.schemaChanges === "streams") {
             streams[name] = initStream(stream, hasIncremental ? "incremental" : "full_refresh");
           } else {
-            disabledStreams[name] = initStream(stream);
+            disabledStreams[name] = initStream(stream, hasIncremental ? "incremental" : "full_refresh");
           }
         }
       }
