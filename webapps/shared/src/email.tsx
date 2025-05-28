@@ -81,7 +81,7 @@ export async function sendEmail<P extends UnsubscribeLinkProps>(
   const replyTo =
     template.replyTo || (isMarketingEmail ? env.EMAIL_MARKETING_REPLY_TO : env.EMAIL_TRANSACTIONAL_REPLY_TO);
 
-  const domain = getDomainFromEmail(from);
+  const domain = getDomainFromEmail(from!);
 
   // const scheduledAt = template.scheduleAt ? template.scheduleAt(new Date()) : undefined;
 
