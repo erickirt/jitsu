@@ -1,4 +1,4 @@
-import { Api, inferUrl, nextJsApiHandler } from "../../../lib/api";
+import { Api, inferUrl, nextJsApiHandler, verifyAccess } from "../../../lib/api";
 import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
@@ -53,6 +53,32 @@ const api: Api = {
       await db.prisma().workspaceAccess.create({ data: { userId: user.internalId, workspaceId: newWorkspace.id } });
       await withProductAnalytics(p => p.track("workspace_created"), { user, workspace: newWorkspace, req });
       return { id: newWorkspace.id };
+    },
+  },
+  DELETE: {
+    auth: true,
+    types: {
+      body: z.object({ workspaceId: z.string() }),
+    },
+    handle: async ({ body, user }) => {
+      const workspaceId = body.workspaceId;
+
+      await verifyAccess(user, workspaceId);
+
+      const workspace = await db.prisma().workspace.findUnique({
+        where: { id: workspaceId, deleted: false },
+      });
+
+      if (!workspace) {
+        return { message: `Error Workspace ${workspaceId} not found`, status: 404 };
+      }
+
+      await db.prisma().workspace.update({
+        where: { id: workspaceId },
+        data: { deleted: true },
+      });
+
+      return { message: `${workspace.name} deleted successfully`, status: 200 };
     },
   },
 };

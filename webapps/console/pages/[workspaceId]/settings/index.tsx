@@ -2,7 +2,7 @@ import { WorkspacePageLayout } from "../../../components/PageLayout/WorkspacePag
 import { Button, Input } from "antd";
 import { useAppConfig, useUser, useWorkspace } from "../../../lib/context";
 import React, { useState } from "react";
-import { confirmOp, feedbackError } from "../../../lib/ui";
+import { confirmOp, feedbackError, feedbackSuccess, confirmOpWithInput } from "../../../lib/ui";
 import { get, useApi } from "../../../lib/useApi";
 import { QueryResponse } from "../../../components/QueryResponse/QueryResponse";
 import { SafeUserProfile, UserWorkspaceRelation } from "../../../lib/schema";
@@ -16,6 +16,7 @@ import { AntdModal, useAntdModal } from "../../../lib/modal";
 import { FiMail } from "react-icons/fi";
 import { ArrowRight, Copy } from "lucide-react";
 import { JitsuButton, WJitsuButton } from "../../../components/JitsuButton/JitsuButton";
+import { useRouter } from "next/router";
 
 const InviteUserForm: React.FC<{ invite: (email: string) => Promise<void> }> = ({ invite }) => {
   const [inputVisible, setInputVisible] = useState(false);
@@ -40,7 +41,7 @@ const InviteUserForm: React.FC<{ invite: (email: string) => Promise<void> }> = (
   };
   return (
     <>
-      <div className="flex transition-all duration-1000 mr-4">
+      <div className="flex flex-auto gap-4">
         <Input
           onChange={e => setEmail(e.target.value)}
           placeholder="Enter email"
@@ -52,11 +53,11 @@ const InviteUserForm: React.FC<{ invite: (email: string) => Promise<void> }> = (
           disabled={pending}
           className={`${inputVisible ? "opacity-100 w-full mr-4" : "opacity-0 w-0 m-0 p-0 invisible"}`}
         />
-        <Button className="ml-5" loading={pending} type="primary" onClick={onSubmit}>
+        <Button loading={pending} type="primary" onClick={onSubmit}>
           {inputVisible ? "Send invitation" : "Add user to the workspace"}
         </Button>
       </div>
-      <div className={`text-error ${errorMessage ? "visible" : "invisible"}`}>{errorMessage || "-"}</div>
+      {errorMessage && <div className="text-error">{errorMessage || "-"}</div>}
     </>
   );
 };
@@ -125,151 +126,191 @@ const Members: React.FC<any> = () => {
   const m = useAntdModal();
 
   return (
-    <div className="px-8 py-6 border border-textDisabled rounded-lg mt-12">
-      <QueryResponse
-        result={remote}
-        errorTitle="Failed to load users"
-        render={(relations: UserWorkspaceRelation[]) => {
-          return (
-            <>
-              <div className="text-lg font-bold pb-6">Users</div>
-              <div className="flex flex-col">
-                {relations.map(r => (
-                  <div
-                    key={r.user?.id || r.invitationLink}
-                    className="flex items-center hover:bg-backgroundDark px-4 py-2 rounded-lg"
-                  >
-                    <div className="flex-grow flex items-center">
-                      <div className="font-bold">
-                        {r.invitationEmail ? r.invitationEmail : <Member user={requireDefined(r.user)} />}
-                        {r.invitationEmail && (
-                          <span className="font-bold text-textDisabled pl-2">Invitation pending</span>
+    <>
+      <div className="px-6 py-6 border-x border-t border-textDisabled rounded-t-lg mt-12">
+        <QueryResponse
+          result={remote}
+          errorTitle="Failed to load users"
+          render={(relations: UserWorkspaceRelation[]) => {
+            return (
+              <>
+                <div className="text-lg font-bold pb-6">Users</div>
+                <div className="flex flex-col">
+                  {relations.map(r => (
+                    <div
+                      key={r.user?.id || r.invitationLink}
+                      className="flex items-center hover:bg-backgroundDark py-2 rounded-lg"
+                    >
+                      <div className="flex-grow flex items-center">
+                        <div className="font-bold">
+                          {r.invitationEmail ? r.invitationEmail : <Member user={requireDefined(r.user)} />}
+                          {r.invitationEmail && (
+                            <span className="font-bold text-textDisabled pl-2">Invitation pending</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-grow text-right">
+                        {r.invitationEmail && r.canSendEmail && (
+                          <>
+                            <AsyncButton
+                              errorMessage="Failed to resend invitation"
+                              successMessage="Invitation has been resent"
+                              type="link"
+                              className="mr-2"
+                              onClick={() =>
+                                get(`/api/workspace/${workspace.id}/users`, {
+                                  body: {
+                                    email: r.invitationEmail,
+                                    resend: true,
+                                  },
+                                })
+                              }
+                            >
+                              Resend Invitation Email
+                            </AsyncButton>
+                          </>
+                        )}
+                        {r.invitationLink && (
+                          <>
+                            <Button
+                              type="link"
+                              className="mr-2"
+                              onClick={() => showInvitationLink(m, r.invitationLink || "")}
+                            >
+                              Show Invitation Link
+                            </Button>
+                          </>
+                        )}
+                        {r.user?.id === user.internalId ? (
+                          <Button type="text" disabled={true}>
+                            <span className="font-bold">You</span>
+                          </Button>
+                        ) : (
+                          <AsyncButton
+                            danger
+                            onClick={async () => {
+                              if (
+                                await confirmOp(
+                                  r.user
+                                    ? `Are you sure you want to remove ${getUserDescription(r.user)} from the project?`
+                                    : `Are you sure you want to cancel ${r.invitationEmail} invitation?`
+                                )
+                              ) {
+                                await get(`/api/workspace/${workspace.id}/users`, {
+                                  method: "DELETE",
+                                  query: r.user ? { userId: r.user.id } : { email: r.invitationEmail },
+                                });
+                              }
+                            }}
+                            onSuccess={() => remote.reload()}
+                          >
+                            {r.invitationEmail ? "Revoke" : "Remove"}
+                          </AsyncButton>
                         )}
                       </div>
                     </div>
-                    <div className="flex-grow text-right">
-                      {r.invitationEmail && r.canSendEmail && (
-                        <>
-                          <AsyncButton
-                            errorMessage="Failed to resend invitation"
-                            successMessage="Invitation has been resent"
-                            type="link"
-                            className="mr-2"
-                            onClick={() =>
-                              get(`/api/workspace/${workspace.id}/users`, {
-                                body: {
-                                  email: r.invitationEmail,
-                                  resend: true,
-                                },
-                              })
-                            }
-                          >
-                            Resend Invitation Email
-                          </AsyncButton>
-                        </>
-                      )}
-                      {r.invitationLink && (
-                        <>
-                          <Button
-                            type="link"
-                            className="mr-2"
-                            onClick={() => showInvitationLink(m, r.invitationLink || "")}
-                          >
-                            Show Invitation Link
-                          </Button>
-                        </>
-                      )}
-                      {r.user?.id === user.internalId ? (
-                        <Button type="text" disabled={true}>
-                          <span className="font-bold">You</span>
-                        </Button>
-                      ) : (
-                        <AsyncButton
-                          danger
-                          onClick={async () => {
-                            if (
-                              await confirmOp(
-                                r.user
-                                  ? `Are you sure you want to remove ${getUserDescription(r.user)} from the project?`
-                                  : `Are you sure you want to cancel ${r.invitationEmail} invitation?`
-                              )
-                            ) {
-                              await get(`/api/workspace/${workspace.id}/users`, {
-                                method: "DELETE",
-                                query: r.user ? { userId: r.user.id } : { email: r.invitationEmail },
-                              });
-                            }
-                          }}
-                          onSuccess={() => remote.reload()}
-                        >
-                          {r.invitationEmail ? "Revoke" : "Remove"}
-                        </AsyncButton>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="pl-3 mt-6">
-                <InviteUserForm
-                  invite={async email => {
-                    const { invitationLink } = await get(`/api/workspace/${workspace.id}/users`, {
-                      method: "POST",
-                      body: { email: email },
-                    });
-                    await remote.reload();
-                    showInvitationLink(m, invitationLink);
-                  }}
-                />
-              </div>
-            </>
-          );
-        }}
-      />
-    </div>
+                  ))}
+                </div>
+              </>
+            );
+          }}
+        />
+      </div>
+      <div className="px-6 py-4 border border-textDisabled bg-gray-100 rounded-b-lg flex flex-col gap-2 justify-end">
+        <InviteUserForm
+          invite={async email => {
+            const { invitationLink } = await get(`/api/workspace/${workspace.id}/users`, {
+              method: "POST",
+              body: { email: email },
+            });
+            await remote.reload();
+            showInvitationLink(m, invitationLink);
+          }}
+        />
+      </div>
+    </>
   );
 };
 
 const WorkspaceSettingsComponent: React.FC<any> = () => {
   const config = useAppConfig();
   const workspace = useWorkspace();
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const router = useRouter();
+
+  const handleDeleteWorkspace = async () => {
+    setDeleteLoading(true);
+    try {
+      if (await confirmOp(`This will delete ${workspace.name}. I understand the consequences of this action.`)) {
+        if (await confirmOpWithInput(`To confirm, type "${workspace.name}" in the box below`, workspace.name)) {
+          const res = await get("/api/workspace", {
+            method: "DELETE",
+            body: {
+              workspaceId: workspace.id,
+            },
+          });
+          if (res.status != 200) {
+            feedbackError(`Failed to delete workspace ${res.message}`);
+          } else {
+            feedbackSuccess(`Workspace ${workspace.name} deleted successfully`);
+            router.push("/workspaces");
+          }
+        }
+      }
+    } catch (e) {
+      feedbackError(`Failed to delete workspace ${e}`);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   return (
     <div className="flex justify-center">
       <div className="w-full max-w-4xl grow">
-        {config.billingEnabled && (
-          <div className="px-8 py-6 border border-textDisabled rounded-lg mt-6 mb-12">
-            <div className="text-lg font-bold pb-6">Plans & Billing</div>
-            <div className="flex justify-center">
+        <div className="px-6 py-6 border border-textDisabled rounded-lg mt-4 mb-12 flex flex-col gap-8 justify-between items-center">
+          {config.billingEnabled && (
+            <div className="flex flex-row justify-between items-center w-full">
+              <div className="text-lg font-bold">Plans & Billing</div>
               <WJitsuButton
                 iconPosition="end"
                 icon={<ArrowRight className="-rotate-45 w-4 h-4" />}
-                href={"/settings/billing"}
+                href="/settings/billing"
                 size="large"
                 type="primary"
               >
-                Manage Billing {"&"} Plan
+                Manage Billing & Plan
               </WJitsuButton>
             </div>
-          </div>
-        )}
-
-        <WorkspaceNameAndSlugEditor
-          displayId={true}
-          onSuccess={({ slug }) => (window.location.href = `/${slug}/settings`)}
-        />
-        <Members />
-        <div className="px-8 py-6 border border-textDisabled rounded-lg mt-12 mb-12">
-          <div className="text-lg font-bold pb-6">API Access</div>
-          <div className="flex justify-center">
+          )}
+          <div className="flex flex-row justify-between items-center w-full">
+            <div className="text-lg font-bold">API Access</div>
             <JitsuButton
               iconPosition="end"
               icon={<ArrowRight className="-rotate-45 w-4 h-4" />}
-              href={"/user"}
+              href="/user"
               size="large"
               type="primary"
             >
               Manage API Keys in user settings
             </JitsuButton>
           </div>
+        </div>
+
+        <WorkspaceNameAndSlugEditor
+          displayId={true}
+          onSuccess={({ slug }) => (window.location.href = `/${slug}/settings`)}
+        />
+
+        <Members />
+
+        <div className="px-6 py-6 border-x border-t border-red-200 rounded-t-lg mt-12">
+          <p className="text-lg mb-4 font-bold">Delete Project</p>
+          <p className="text-mg">This workspace will be deleted and will no longer be available.</p>
+        </div>
+        <div className="px-6 py-3 border border-red-200 bg-red-50 rounded-b-lg flex justify-end">
+          <JitsuButton type="primary" danger={true} onClick={handleDeleteWorkspace} loading={deleteLoading}>
+            Delete
+          </JitsuButton>
         </div>
       </div>
     </div>
