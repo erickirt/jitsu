@@ -78,8 +78,6 @@ ConnectionStatusRecoveredEmail.subject = ({ workspaceName, entityType, entityNam
   )} job processing restored: ${entityName}`;
 };
 
-ConnectionStatusRecoveredEmail.from = "Jitsu Support <support@use.jitsu.com>";
-ConnectionStatusRecoveredEmail.replyTo = "Jitsu Support <support@jitsu.com>";
 ConnectionStatusRecoveredEmail.isMarketingEmail = false;
 
 ConnectionStatusRecoveredEmail.PreviewProps = {

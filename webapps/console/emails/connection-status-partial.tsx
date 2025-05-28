@@ -80,8 +80,6 @@ ConnectionStatusPartialEmail.subject = ({ workspaceName, entityType, entityName 
   return `[${workspaceName || "Your Jitsu Workspace"}] ⚠️ ${capitalize(entityType)} had partial success: ${entityName}`;
 };
 
-ConnectionStatusPartialEmail.from = "Jitsu Support <support@use.jitsu.com>";
-ConnectionStatusPartialEmail.replyTo = "Jitsu Support <support@jitsu.com>";
 ConnectionStatusPartialEmail.isMarketingEmail = false;
 
 ConnectionStatusPartialEmail.PreviewProps = {
