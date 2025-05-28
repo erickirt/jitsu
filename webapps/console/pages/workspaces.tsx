@@ -14,7 +14,7 @@ import { feedbackError } from "../lib/ui";
 import { JitsuButton } from "../components/JitsuButton/JitsuButton";
 import { Badge, Input, Tag } from "antd";
 import { useQueryStringState } from "../lib/useQueryStringState";
-import { Redirect } from "../components/Redirect/Redirect";
+import { branding } from "../lib/branding";
 
 const log = getLog("worspaces");
 
@@ -51,61 +51,84 @@ const WorkspacesList = () => {
     );
   } else if (data) {
     if (data.length === 0) {
-      return <Redirect href="/" />;
+      return (
+        <div className="flex flex-col gap-5 items-center h-full mb-6 mt-12">
+          <div className="text-3xl flex items-center justify-center gap-2">
+            <span className="w-8 h-8 inline-block">{branding.logo}</span> No workspaces found.
+          </div>
+          <JitsuButton
+            size="large"
+            type="primary"
+            onClick={async () => {
+              try {
+                const { id } = await get("/api/workspace", { method: "POST", body: {} });
+                await router.push(`/${id}`);
+              } catch (e) {
+                feedbackError(`Can't create new workspace`, { error: e });
+              }
+            }}
+          >
+            Create New Workspace
+          </JitsuButton>
+        </div>
+      );
     }
     return (
-      <div className="flex flex-col space-y-4 w-full mx-auto">
-        {data.length > 5 && (
-          <div key={"filter"}>
-            <Input
-              allowClear
-              placeholder="Search"
-              onChange={e => {
-                setFilter(e.target.value);
-              }}
-              className="w-full border border-textDisabled rounded-lg px-4 py-4"
-            />
-          </div>
-        )}
-        {data
-          .filter(
-            w =>
-              w.id.toLowerCase().includes(filter.toLowerCase()) ||
-              w.name?.toLowerCase().includes(filter.toLowerCase()) ||
-              w.slug?.toLowerCase().includes(filter.toLowerCase())
-          )
-          .map(workspace => (
-            <Link
-              className="border border-textDisabled rounded px-4 py-4 shadow hover:border-primaryDark hover:shadow-primaryLighter flex justify-between items-center hover:text-textPrimary group"
-              key={workspace.slug || workspace.id}
-              href={`/${workspace.slug || workspace.id}`}
-            >
-              <div className="flex items-center justify-start gap-2">
-                <div>{workspace.name || workspace.slug || workspace.id}</div>
-                <div className="text-textLight">/{workspace.slug || workspace.id}</div>
-                {<Tag className="text-xs text-textLight">{workspace.id}</Tag>}
-                {!workspace.slug && (
-                  <Tag color="lime" className="text-xs text-textLight">
-                    Not configured
-                  </Tag>
-                )}
-                {userData?.admin && workspace["entities"] > 0 && (
-                  <Tag color="blue" className="text-xs text-textLight">
-                    objects: {workspace["entities"]}
-                  </Tag>
-                )}
-                {userData?.admin && workspace["active"] && (
-                  <Tag color="green-inverse" className="text-xs text-textLight">
-                    active
-                  </Tag>
-                )}
-              </div>
-              <div className="invisible group-hover:visible">
-                <ArrowRight className="text-primary" />
-              </div>
-            </Link>
-          ))}
-      </div>
+      <>
+        <h1 className="flex-grow text-center text-3xl py-6">👋 Select workspace</h1>
+        <div className="flex flex-col space-y-4 w-full mx-auto">
+          {data.length > 5 && (
+            <div key={"filter"}>
+              <Input
+                allowClear
+                placeholder="Search"
+                onChange={e => {
+                  setFilter(e.target.value);
+                }}
+                className="w-full border border-textDisabled rounded-lg px-4 py-4"
+              />
+            </div>
+          )}
+          {data
+            .filter(
+              w =>
+                w.id.toLowerCase().includes(filter.toLowerCase()) ||
+                w.name?.toLowerCase().includes(filter.toLowerCase()) ||
+                w.slug?.toLowerCase().includes(filter.toLowerCase())
+            )
+            .map(workspace => (
+              <Link
+                className="border border-textDisabled rounded px-4 py-4 shadow hover:border-primaryDark hover:shadow-primaryLighter flex justify-between items-center hover:text-textPrimary group"
+                key={workspace.slug || workspace.id}
+                href={`/${workspace.slug || workspace.id}`}
+              >
+                <div className="flex items-center justify-start gap-2">
+                  <div>{workspace.name || workspace.slug || workspace.id}</div>
+                  <div className="text-textLight">/{workspace.slug || workspace.id}</div>
+                  {<Tag className="text-xs text-textLight">{workspace.id}</Tag>}
+                  {!workspace.slug && (
+                    <Tag color="lime" className="text-xs text-textLight">
+                      Not configured
+                    </Tag>
+                  )}
+                  {userData?.admin && workspace["entities"] > 0 && (
+                    <Tag color="blue" className="text-xs text-textLight">
+                      objects: {workspace["entities"]}
+                    </Tag>
+                  )}
+                  {userData?.admin && workspace["active"] && (
+                    <Tag color="green-inverse" className="text-xs text-textLight">
+                      active
+                    </Tag>
+                  )}
+                </div>
+                <div className="invisible group-hover:visible">
+                  <ArrowRight className="text-primary" />
+                </div>
+              </Link>
+            ))}
+        </div>
+      </>
     );
   }
   return <></>;
@@ -144,7 +167,6 @@ const WorkspaceSelectionPage = (props: any) => {
             </JitsuButton>
           </div>
           <div className="w-full grow">
-            <h1 className="flex-grow text-center text-3xl py-6">👋 Select workspace</h1>
             <WorkspacesList />
           </div>
         </div>
