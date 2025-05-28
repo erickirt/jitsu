@@ -82,8 +82,6 @@ ConnectionStatusFailedEmail.subject = ({ workspaceName, entityType, entityName }
   return `[${workspaceName || "Your Jitsu Workspace"}] 🚨 ${capitalize(entityType)} job failed: ${entityName}`;
 };
 
-ConnectionStatusFailedEmail.from = "Jitsu Support <support@use.jitsu.com>";
-ConnectionStatusFailedEmail.replyTo = "Jitsu Support <support@jitsu.com>";
 ConnectionStatusFailedEmail.isMarketingEmail = false;
 
 ConnectionStatusFailedEmail.PreviewProps = {

@@ -78,8 +78,6 @@ ConnectionStatusFlappingEmail.subject = ({ workspaceName, entityType, entityName
   return `[${workspaceName || "Your Jitsu Workspace"}] ⚠️ Intermittent failures of ${entityType} job: ${entityName}`;
 };
 
-ConnectionStatusFlappingEmail.from = "Jitsu Support <support@use.jitsu.com>";
-ConnectionStatusFlappingEmail.replyTo = "Jitsu Support <support@jitsu.com>";
 ConnectionStatusFlappingEmail.isMarketingEmail = false;
 
 ConnectionStatusFlappingEmail.PreviewProps = {

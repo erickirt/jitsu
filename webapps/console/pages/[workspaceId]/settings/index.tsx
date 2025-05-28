@@ -127,20 +127,17 @@ const Members: React.FC<any> = () => {
 
   return (
     <>
-      <div className="px-6 py-6 border-x border-t border-textDisabled rounded-t-lg mt-12">
+      <div className="px-0 py-6 border-x border-t border-textDisabled rounded-t-lg mt-12">
         <QueryResponse
           result={remote}
           errorTitle="Failed to load users"
           render={(relations: UserWorkspaceRelation[]) => {
             return (
               <>
-                <div className="text-lg font-bold pb-6">Users</div>
+                <div className="text-lg px-6 font-bold pb-6">Users</div>
                 <div className="flex flex-col">
                   {relations.map(r => (
-                    <div
-                      key={r.user?.id || r.invitationLink}
-                      className="flex items-center hover:bg-backgroundDark py-2 rounded-lg"
-                    >
+                    <div key={r.user?.id || r.invitationLink} className="flex items-center hover:bg-gray-100 px-6 py-2">
                       <div className="flex-grow flex items-center">
                         <div className="font-bold">
                           {r.invitationEmail ? r.invitationEmail : <Member user={requireDefined(r.user)} />}
@@ -182,9 +179,9 @@ const Members: React.FC<any> = () => {
                           </>
                         )}
                         {r.user?.id === user.internalId ? (
-                          <Button type="text" disabled={true}>
-                            <span className="font-bold">You</span>
-                          </Button>
+                          <div className="pr-4">
+                            <span className="font-bold text-textLight">You</span>
+                          </div>
                         ) : (
                           <AsyncButton
                             danger

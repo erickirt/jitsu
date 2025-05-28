@@ -85,8 +85,6 @@ ConnectionStatusOngoingEmail.subject = ({ workspaceName, entityType, entityName,
   } Ongoing ${entityType} processing issues: ${entityName}`;
 };
 
-ConnectionStatusOngoingEmail.from = "Jitsu Support <support@use.jitsu.com>";
-ConnectionStatusOngoingEmail.replyTo = "Jitsu Support <support@jitsu.com>";
 ConnectionStatusOngoingEmail.isMarketingEmail = false;
 
 ConnectionStatusOngoingEmail.PreviewProps = {

@@ -27,12 +27,10 @@ function parseEmailAddress(input: string): { name?: string; email: string } {
 }
 
 export const EmailEnvSettings = z.object({
-  EMAIL_MARKETING_DOMAIN: z.string(),
-  EMAIL_TRANSACTIONAL_DOMAIN: z.string(),
   EMAIL_TRANSACTIONAL_SENDER: z.string(),
-  EMAIL_TRANSACTIONAL_REPLY_TO: z.string(),
-  EMAIL_MARKETING_SENDER: z.string(),
-  EMAIL_MARKETING_REPLY_TO: z.string(),
+  EMAIL_TRANSACTIONAL_REPLY_TO: z.string().optional(),
+  EMAIL_MARKETING_SENDER: z.string().optional(),
+  EMAIL_MARKETING_REPLY_TO: z.string().optional(),
   BCC_EMAIL: z.string().email().optional(),
 });
 
@@ -80,7 +78,8 @@ export async function sendEmail<P extends UnsubscribeLinkProps>(
 
   const isMarketingEmail = firstDefined(template.isMarketingEmail, false);
   const from = template.from || (isMarketingEmail ? env.EMAIL_MARKETING_SENDER : env.EMAIL_TRANSACTIONAL_SENDER);
-  const replyTo = template.replyTo || (isMarketingEmail ? env.EMAIL_MARKETING_SENDER : env.EMAIL_TRANSACTIONAL_SENDER);
+  const replyTo =
+    template.replyTo || (isMarketingEmail ? env.EMAIL_MARKETING_REPLY_TO : env.EMAIL_TRANSACTIONAL_REPLY_TO);
 
   const domain = getDomainFromEmail(from);
 
