@@ -307,8 +307,12 @@ export async function getAvailableProducts(opts: { custom?: boolean } = {}): Pro
         if (opts.custom) {
           return true; // include everything
         } else {
-          const meta = p.metadata?.plan_data ? JSON.parse(p.metadata?.plan_data) : undefined;
-          return !meta?.custom; // exclude custom priced products if opts.custom is not set
+          try {
+            const meta = p.metadata?.plan_data ? JSON.parse(p.metadata?.plan_data) : undefined;
+            return !meta?.custom; // exclude custom priced products if opts.custom is not set
+          } catch (e) {
+            throw new Error(`Malformed plan_data for product ${p.id}`);
+          }
         }
       });
 

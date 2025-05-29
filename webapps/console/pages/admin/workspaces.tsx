@@ -12,6 +12,7 @@ import { WorkspaceDbModel } from "../../prisma/schema";
 import { z } from "zod";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import { requireDefined } from "juava";
 
 dayjs.extend(utc);
 
@@ -224,19 +225,24 @@ export const WorkspacesAdminPage = () => {
       const [report, billing, workspaceList] = await Promise.all([
         get("/api/$all/ee/report/workspace-stat?extended=true", { signal }) as Promise<{ data: ReportRow[] }>,
         get("/api/$all/ee/billing/workspaces", { signal }) as Promise<Record<string, any>>,
-        get("/api/workspace", { signal }) as Promise<z.infer<typeof WorkspaceDbModel>[]>,
+        get("/api/workspace", { signal }) as Promise<{ workspaces: z.infer<typeof WorkspaceDbModel>[] }>,
       ]);
-      const workspaceDict = workspaceList.reduce((acc, w) => {
+      console.log("workspaceList.workspaces", workspaceList.workspaces);
+      const workspaceDict = workspaceList.workspaces.reduce((acc, w) => {
         acc[w.id] = w;
         return acc;
       }, {});
+      console.log("workspaceDict", workspaceDict);
       const joinedData: Record<string, ReportRow> = {};
       const days = [...new Set(report.data.map(w => w.period.split("T")[0]))].sort();
       const usageAlertsCache = {};
       console.log(`Populating usage from days ${days.length} days X ${Object.keys(billing).length} workspaces`);
       for (const day of days) {
         for (const [workspaceId, billingEntry] of Object.entries(billing)) {
-          const workspace = workspaceDict[workspaceId];
+          const workspace = requireDefined(
+            workspaceDict[workspaceId],
+            `Workspace ${workspaceId} not found in workspaceList`
+          );
           joinedData[`${day.split("T")[0]}/${workspaceId}`] = {
             period: day,
             workspaceId: workspaceId,

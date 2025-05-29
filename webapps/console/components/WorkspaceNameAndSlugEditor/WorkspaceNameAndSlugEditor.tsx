@@ -46,54 +46,64 @@ export function WorkspaceNameAndSlugEditor({
   const [loading, setLoading] = useState(false);
   const [slugError, setSlugError] = useState<string | undefined>();
   return (
-    <>
-      <div className="px-6 py-6 border-t border-x border-textDisabled rounded-t-lg">
-        <div className="text-lg font-bold text-textLight pb-2">Workspace Name</div>
-        <Input
-          value={name}
-          size="large"
-          onChange={e => {
-            setName(e.target.value);
-            setChanged(true);
-          }}
-        />
-        <div className="text-lg text-textLight font-bold pt-4 pb-2">Workspace Slug</div>
-        <Input
-          value={slug}
-          size="large"
-          onChange={e => {
-            //setSlug(e.target.value ? e.target.value.toLowerCase().replaceAll(/[^a-z0-9-]/g, "") : "");
-            setSlug(e.target.value);
-            setChanged(true);
-          }}
-        />
-        <div className={"text-sm text-red-600 p-0.5"}>{slugError}</div>
+    <div className="bg-backgroundLight border border-textDisabled rounded-lg overflow-hidden">
+      <div className="px-6 py-4 bg-background border-b border-textDisabled">
+        <h3 className="text-lg font-semibold text-textDark">Workspace Configuration</h3>
+      </div>
+
+      <div className="px-6 py-6 space-y-6">
+        <div>
+          <label className="block text-base font-medium text-textDark mb-2">Workspace Name</label>
+          <Input
+            value={name}
+            size="large"
+            onChange={e => {
+              setName(e.target.value);
+              setChanged(true);
+            }}
+          />
+        </div>
+
+        <div>
+          <label className="block text-base font-medium text-textDark mb-2">Workspace Slug</label>
+          <Input
+            value={slug}
+            size="large"
+            onChange={e => {
+              setSlug(e.target.value);
+              setChanged(true);
+            }}
+          />
+          {slugError && <div className="text-sm text-error mt-1">{slugError}</div>}
+        </div>
+
         {displayId && (
-          <>
-            <div className="text-lg text-textLight font-bold pt-4 pb-2">Workspace Id</div>
+          <div>
+            <label className="block text-base font-medium text-textDark mb-2">Workspace ID</label>
             <div
-              className="cursor-pointer bg-textInverted text-textLight px-2 py-2 rounded-lg border border-textDisabled font-mono"
+              className="cursor-pointer bg-background text-textDark px-3 py-2 rounded-lg border border-textDisabled font-mono hover:bg-backgroundLight transition-colors"
               onClick={() => {
                 copyTextToClipboard(workspace.id);
-                feedbackSuccess("Workspace id copied to clipboard");
+                feedbackSuccess("Workspace ID copied to clipboard");
               }}
             >
               {workspace.id}
             </div>
-            <div key="workspace-hint" className="text-xs text-textLight ml-0.5 pt-1">
-              You'll need this id for making{" "}
+            <p className="text-xs text-text mt-1">
+              You'll need this ID for making{" "}
               <a className="underline" href="https://docs.jitsu.com/api">
                 API calls
-              </a>{" "}
-            </div>
-          </>
+              </a>
+            </p>
+          </div>
         )}
       </div>
-      <div className="px-6 py-4 border border-textDisabled bg-gray-100 rounded-b-lg flex justify-end">
+
+      <div className="px-6 py-4 bg-background border-t border-textDisabled flex justify-end">
         <Button
           type="primary"
           loading={loading}
-          className="w-20"
+          disabled={!changed}
           onClick={async () => {
             if (!slug) {
               feedbackError("Slug cannot be empty");
@@ -115,20 +125,21 @@ export function WorkspaceNameAndSlugEditor({
                 method: "PUT",
                 body: { name, slug },
               });
-              feedbackSuccess("Workspace name has been saved");
+              feedbackSuccess("Workspace settings have been saved");
+              setChanged(false);
               if (onSuccess) {
                 onSuccess({ name, slug });
               }
             } catch (e) {
-              feedbackError(`Failed to save workspace name`, { error: e });
+              feedbackError(`Failed to save workspace settings`, { error: e });
             } finally {
               setLoading(false);
             }
           }}
         >
-          Save
+          Save Changes
         </Button>
       </div>
-    </>
+    </div>
   );
 }

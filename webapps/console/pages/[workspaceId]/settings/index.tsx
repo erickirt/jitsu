@@ -1,11 +1,11 @@
 import { WorkspacePageLayout } from "../../../components/PageLayout/WorkspacePageLayout";
-import { Button, Input } from "antd";
+import { Alert, Button, Input, Spin, Tooltip } from "antd";
 import { useAppConfig, useUser, useWorkspace } from "../../../lib/context";
 import React, { useState } from "react";
-import { confirmOp, feedbackError, feedbackSuccess, confirmOpWithInput } from "../../../lib/ui";
-import { get, useApi } from "../../../lib/useApi";
-import { QueryResponse } from "../../../components/QueryResponse/QueryResponse";
+import { confirmOp, confirmOpWithInput, feedbackError, feedbackSuccess } from "../../../lib/ui";
+import { get } from "../../../lib/useApi";
 import { SafeUserProfile, UserWorkspaceRelation } from "../../../lib/schema";
+import { useQuery } from "@tanstack/react-query";
 import { AsyncButton } from "../../../components/AsyncButton/AsyncButton";
 import { CopyButton } from "../../../components/CopyButton/CopyButton";
 import { WorkspaceNameAndSlugEditor } from "../../../components/WorkspaceNameAndSlugEditor/WorkspaceNameAndSlugEditor";
@@ -14,7 +14,7 @@ import { FaExternalLinkAlt, FaGithub, FaGoogle, FaUser } from "react-icons/fa";
 import Link from "next/link";
 import { AntdModal, useAntdModal } from "../../../lib/modal";
 import { FiMail } from "react-icons/fi";
-import { ArrowRight, Copy } from "lucide-react";
+import { ArrowRight, Copy, Trash2 } from "lucide-react";
 import { JitsuButton, WJitsuButton } from "../../../components/JitsuButton/JitsuButton";
 import { useRouter } from "next/router";
 
@@ -121,111 +121,136 @@ function getUserDescription(user: SafeUserProfile): string {
 
 const Members: React.FC<any> = () => {
   const workspace = useWorkspace();
-  const remote = useApi<UserWorkspaceRelation[]>(`/api/workspace/${workspace.id}/users`);
   const user = useUser();
   const m = useAntdModal();
 
+  const {
+    data: relations,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<UserWorkspaceRelation[], Error>({
+    queryKey: ["workspace-users", workspace.id],
+    queryFn: async () => {
+      return (await get(`/api/workspace/${workspace.id}/users`)) as UserWorkspaceRelation[];
+    },
+  });
+
+  const handleRemoveUser = async (relation: UserWorkspaceRelation) => {
+    if (
+      await confirmOp(
+        relation.user
+          ? `Are you sure you want to remove ${getUserDescription(relation.user)} from the project?`
+          : `Are you sure you want to cancel ${relation.invitationEmail} invitation?`
+      )
+    ) {
+      await get(`/api/workspace/${workspace.id}/users`, {
+        method: "DELETE",
+        query: relation.user ? { userId: relation.user.id } : { email: relation.invitationEmail },
+      });
+      refetch();
+    }
+  };
+
+  const handleResendInvitation = async (email: string) => {
+    await get(`/api/workspace/${workspace.id}/users`, {
+      body: { email, resend: true },
+    });
+    refetch();
+  };
+
+  const handleInviteUser = async (email: string) => {
+    const { invitationLink } = await get(`/api/workspace/${workspace.id}/users`, {
+      method: "POST",
+      body: { email },
+    });
+    refetch();
+    showInvitationLink(m, invitationLink);
+  };
+
   return (
-    <>
-      <div className="px-0 py-6 border-x border-t border-textDisabled rounded-t-lg mt-12">
-        <QueryResponse
-          result={remote}
-          errorTitle="Failed to load users"
-          render={(relations: UserWorkspaceRelation[]) => {
-            return (
-              <>
-                <div className="text-lg px-6 font-bold pb-6">Users</div>
-                <div className="flex flex-col">
-                  {relations.map(r => (
-                    <div key={r.user?.id || r.invitationLink} className="flex items-center hover:bg-gray-100 px-6 py-2">
-                      <div className="flex-grow flex items-center">
-                        <div className="font-bold">
-                          {r.invitationEmail ? r.invitationEmail : <Member user={requireDefined(r.user)} />}
-                          {r.invitationEmail && (
-                            <span className="font-bold text-textDisabled pl-2">Invitation pending</span>
-                          )}
-                        </div>
+    <div className="bg-backgroundLight border border-textDisabled rounded-lg overflow-hidden">
+      <div className="px-6 py-4 bg-background border-b border-textDisabled">
+        <h3 className="text-lg font-semibold text-textDark">Team Members</h3>
+      </div>
+
+      {error && (
+        <div className="p-6">
+          <Alert
+            message="Failed to load users"
+            description={error instanceof Error ? error.message : "An unexpected error occurred"}
+            type="error"
+            showIcon
+          />
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex justify-center py-12">
+          <Spin size="large" />
+        </div>
+      )}
+
+      {!isLoading && !error && relations && (
+        <>
+          <div className="divide-y divide-textDisabled">
+            {relations.map(r => (
+              <div
+                key={r.user?.id || r.invitationLink}
+                className="flex items-center justify-between px-6 py-4 hover:bg-background"
+              >
+                <div className="flex items-center space-x-3">
+                  <div>
+                    {r.invitationEmail ? (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium">{r.invitationEmail}</span>
+                        <span className="px-2 py-1 text-xs bg-warning/20 text-warning rounded-full">Pending</span>
                       </div>
-                      <div className="flex-grow text-right">
-                        {r.invitationEmail && r.canSendEmail && (
-                          <>
-                            <AsyncButton
-                              errorMessage="Failed to resend invitation"
-                              successMessage="Invitation has been resent"
-                              type="link"
-                              className="mr-2"
-                              onClick={() =>
-                                get(`/api/workspace/${workspace.id}/users`, {
-                                  body: {
-                                    email: r.invitationEmail,
-                                    resend: true,
-                                  },
-                                })
-                              }
-                            >
-                              Resend Invitation Email
-                            </AsyncButton>
-                          </>
-                        )}
-                        {r.invitationLink && (
-                          <>
-                            <Button
-                              type="link"
-                              className="mr-2"
-                              onClick={() => showInvitationLink(m, r.invitationLink || "")}
-                            >
-                              Show Invitation Link
-                            </Button>
-                          </>
-                        )}
-                        {r.user?.id === user.internalId ? (
-                          <div className="pr-4">
-                            <span className="font-bold text-textLight">You</span>
-                          </div>
-                        ) : (
-                          <AsyncButton
-                            danger
-                            onClick={async () => {
-                              if (
-                                await confirmOp(
-                                  r.user
-                                    ? `Are you sure you want to remove ${getUserDescription(r.user)} from the project?`
-                                    : `Are you sure you want to cancel ${r.invitationEmail} invitation?`
-                                )
-                              ) {
-                                await get(`/api/workspace/${workspace.id}/users`, {
-                                  method: "DELETE",
-                                  query: r.user ? { userId: r.user.id } : { email: r.invitationEmail },
-                                });
-                              }
-                            }}
-                            onSuccess={() => remote.reload()}
-                          >
-                            {r.invitationEmail ? "Revoke" : "Remove"}
-                          </AsyncButton>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    ) : (
+                      <Member user={requireDefined(r.user)} />
+                    )}
+                  </div>
                 </div>
-              </>
-            );
-          }}
-        />
-      </div>
-      <div className="px-6 py-4 border border-textDisabled bg-gray-100 rounded-b-lg flex flex-col gap-2 justify-end">
-        <InviteUserForm
-          invite={async email => {
-            const { invitationLink } = await get(`/api/workspace/${workspace.id}/users`, {
-              method: "POST",
-              body: { email: email },
-            });
-            await remote.reload();
-            showInvitationLink(m, invitationLink);
-          }}
-        />
-      </div>
-    </>
+                <div className="flex items-center space-x-2">
+                  {r.invitationEmail && r.canSendEmail && (
+                    <AsyncButton
+                      errorMessage="Failed to resend invitation"
+                      successMessage="Invitation has been resent"
+                      type="link"
+                      size="small"
+                      onClick={() => handleResendInvitation(r.invitationEmail!)}
+                    >
+                      Resend
+                    </AsyncButton>
+                  )}
+                  {r.invitationLink && (
+                    <Button type="link" size="small" onClick={() => showInvitationLink(m, r.invitationLink || "")}>
+                      Show Link
+                    </Button>
+                  )}
+                  {r.user?.id === user.internalId ? (
+                    <span className="px-2 py-1 text-xs bg-primary/20 text-primary rounded-full">You</span>
+                  ) : (
+                    <Tooltip title="Remove member">
+                      <AsyncButton
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<Trash2 className="w-5 h-5" />}
+                        onClick={() => handleRemoveUser(r)}
+                      />
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="px-6 py-4 bg-background border-t border-textDisabled">
+            <InviteUserForm invite={handleInviteUser} />
+          </div>
+        </>
+      )}
+    </div>
   );
 };
 
@@ -263,51 +288,75 @@ const WorkspaceSettingsComponent: React.FC<any> = () => {
 
   return (
     <div className="flex justify-center">
-      <div className="w-full max-w-4xl grow">
-        <div className="px-6 py-6 border border-textDisabled rounded-lg mt-4 mb-12 flex flex-col gap-8 justify-between items-center">
-          {config.billingEnabled && (
-            <div className="flex flex-row justify-between items-center w-full">
-              <div className="text-lg font-bold">Plans & Billing</div>
-              <WJitsuButton
+      <div className="w-full max-w-4xl space-y-6">
+        {/* Quick Actions Section */}
+        <div className="border border-textDisabled rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-background border-b border-textDisabled">
+            <h2 className="text-lg font-semibold text-textDark">Quick Actions</h2>
+          </div>
+          <div className="divide-y divide-textDisabled">
+            {config.billingEnabled && (
+              <div className="flex items-center justify-between px-6 py-5 hover:bg-background/50 transition-colors">
+                <div className="flex-1">
+                  <h3 className="text-base font-semibold text-textDark mb-1">Plans & Billing</h3>
+                  <p className="text-sm font-normal text-text">Manage your subscription and billing details</p>
+                </div>
+                <WJitsuButton
+                  iconPosition="end"
+                  icon={<ArrowRight className="-rotate-45 w-4 h-4" />}
+                  href="/settings/billing"
+                  type="primary"
+                >
+                  Manage Billing
+                </WJitsuButton>
+              </div>
+            )}
+            <div className="flex items-center justify-between px-6 py-5 hover:bg-background/50 transition-colors">
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-textDark mb-1">API Access</h3>
+                <p className="text-sm font-normal text-text">Configure API keys and access tokens</p>
+              </div>
+              <JitsuButton
                 iconPosition="end"
                 icon={<ArrowRight className="-rotate-45 w-4 h-4" />}
-                href="/settings/billing"
-                size="large"
+                href="/user"
                 type="primary"
               >
-                Manage Billing & Plan
-              </WJitsuButton>
+                Manage API Keys
+              </JitsuButton>
             </div>
-          )}
-          <div className="flex flex-row justify-between items-center w-full">
-            <div className="text-lg font-bold">API Access</div>
-            <JitsuButton
-              iconPosition="end"
-              icon={<ArrowRight className="-rotate-45 w-4 h-4" />}
-              href="/user"
-              size="large"
-              type="primary"
-            >
-              Manage API Keys in user settings
-            </JitsuButton>
           </div>
         </div>
 
-        <WorkspaceNameAndSlugEditor
-          displayId={true}
-          onSuccess={({ slug }) => (window.location.href = `/${slug}/settings`)}
-        />
+        {/* Workspace Configuration */}
+        <div>
+          <WorkspaceNameAndSlugEditor
+            displayId={true}
+            onSuccess={({ slug }) => (window.location.href = `/${slug}/settings`)}
+          />
+        </div>
 
+        {/* Members Section */}
         <Members />
 
-        <div className="px-6 py-6 border-x border-t border-red-200 rounded-t-lg mt-12">
-          <p className="text-lg mb-4 font-bold">Delete Project</p>
-          <p className="text-mg">This workspace will be deleted and will no longer be available.</p>
-        </div>
-        <div className="px-6 py-3 border border-red-200 bg-red-50 rounded-b-lg flex justify-end">
-          <JitsuButton type="primary" danger={true} onClick={handleDeleteWorkspace} loading={deleteLoading}>
-            Delete
-          </JitsuButton>
+        {/* Danger Zone */}
+        <div className="bg-backgroundLight border border-error/50 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-error/5">
+            <h3 className="text-lg font-semibold text-error">Danger Zone</h3>
+          </div>
+          <div className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="font-medium text-error mb-1">Delete Project</h4>
+                <p className="text-sm text-textLight">
+                  This workspace will be permanently deleted and cannot be recovered.
+                </p>
+              </div>
+              <JitsuButton type="primary" danger={true} onClick={handleDeleteWorkspace} loading={deleteLoading}>
+                Delete Workspace
+              </JitsuButton>
+            </div>
+          </div>
         </div>
       </div>
     </div>

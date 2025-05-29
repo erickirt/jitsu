@@ -3,19 +3,78 @@ import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
 import { withProductAnalytics } from "../../../lib/server/telemetry";
+import { WorkspaceDbModel } from "../../../prisma/schema";
+
+const MAX_LIMIT = 1_000_000;
 
 const api: Api = {
   url: inferUrl(__filename),
   GET: {
     auth: true,
-    handle: async ({ user }) => {
+    types: {
+      query: z.object({
+        page: z
+          .string()
+          .transform(val => parseInt(val) || 0)
+          .optional(),
+        limit: z
+          .string()
+          .transform(val => parseInt(val) || MAX_LIMIT)
+          .optional(),
+        search: z.string().optional(),
+      }),
+      result: z.object({
+        // Array of workspace objects with user-specific properties
+        workspaces: z.array(
+          WorkspaceDbModel.extend({
+            lastUsed: z.date().optional(), // Last time user accessed this workspace
+            entities: z.number().optional(), // Number of configuration objects (admin only)
+          })
+        ),
+        // Pagination metadata for infinite loading
+        pagination: z.object({
+          page: z.number(), // Current page number (starts from 0)
+          limit: z.number(), // Number of items per page
+          totalCount: z.number(), // Total number of workspaces available to user
+          hasMore: z.boolean(), // Whether more pages are available
+        }),
+      }),
+    },
+    handle: async ({ user, query }) => {
+      const { page = 0, limit = MAX_LIMIT, search } = query;
+      const offset = page * limit;
+
       const userModel = requireDefined(
         await db.prisma().userProfile.findUnique({ where: { id: user.internalId } }),
         `User ${user.internalId} does not exist`
       );
+
+      // Build search conditions
+      const searchCondition = search
+        ? {
+            OR: [
+              { id: { contains: search, mode: "insensitive" as const } },
+              { name: { contains: search, mode: "insensitive" as const } },
+              { slug: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
+        : {};
+
+      // Get total count of all available workspaces (without search filter)
+      const totalCount = userModel.admin
+        ? await db.prisma().workspace.count({
+            where: { deleted: false },
+          })
+        : await db.prisma().workspaceAccess.count({
+            where: {
+              userId: user.internalId,
+              workspace: { deleted: false },
+            },
+          });
+
       const baseList = userModel.admin
         ? await db.prisma().workspace.findMany({
-            where: { deleted: false },
+            where: { deleted: false, ...searchCondition },
             include: {
               workspaceUserProperties: { where: { userId: userModel.id } },
               _count: {
@@ -23,22 +82,39 @@ const api: Api = {
               },
             },
             orderBy: { createdAt: "asc" },
+            skip: offset,
+            take: limit,
           })
         : (
             await db.prisma().workspaceAccess.findMany({
-              where: { userId: user.internalId },
+              where: {
+                userId: user.internalId,
+                workspace: { deleted: false, ...searchCondition },
+              },
               include: { workspace: { include: { workspaceUserProperties: true } } },
               orderBy: { createdAt: "asc" },
+              skip: offset,
+              take: limit,
             })
           ).map(({ workspace }) => workspace);
 
-      return baseList
+      const workspaces = baseList
         .map(({ workspaceUserProperties, ...workspace }) => ({
           ...workspace,
           lastUsed: workspaceUserProperties?.[0]?.lastUsed || undefined,
           entities: userModel.admin ? workspace["_count"]?.configurationObject : undefined,
         }))
         .sort((a, b) => (b.lastUsed?.getTime() || 0) - (a.lastUsed?.getTime() || 0));
+
+      return {
+        workspaces,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          hasMore: (page + 1) * limit < totalCount,
+        },
+      };
     },
   },
   POST: {
