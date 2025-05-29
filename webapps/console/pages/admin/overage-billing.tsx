@@ -136,7 +136,7 @@ export const FakeProgressBar: React.FC<{ durationSeconds: number }> = ({ duratio
 
 export const OverageBillingPage = () => {
   const { data, isLoading, error } = useApi(`/api/$all/ee/report/overage`);
-  const workspacesLoader = useApi<z.infer<typeof WorkspaceDbModel>[]>(`/api/workspace`);
+  const workspacesLoader = useApi<{ workspaces: z.infer<typeof WorkspaceDbModel>[] }>(`/api/workspace`);
   if (isLoading || workspacesLoader.isLoading) {
     return (
       <div className="w-full h-full flex justify-center items-center">
@@ -156,7 +156,7 @@ export const OverageBillingPage = () => {
       </div>
     );
   }
-  return <View data={data.result} workspaces={workspacesLoader.data} />;
+  return <View data={data.result} workspaces={workspacesLoader.data.workspaces} />;
 };
 
 export default OverageBillingPage;
