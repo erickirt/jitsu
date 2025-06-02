@@ -188,6 +188,7 @@ model ConfigurationObjectLink {
   to   ConfigurationObject @relation(fields: [toId], references: [id], name: "from")
 
   @@index(updatedAt(sort: Desc))
+  @@index(workspaceId)
 }
 
 model ConnectorPackage {
