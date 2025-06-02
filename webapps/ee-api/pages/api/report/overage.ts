@@ -39,7 +39,7 @@ async function getSyncsStat(periodStart: Date, periodEnd: Date, workspaceId: str
                       and started_at >= :periodStart and started_at < :periodEnd
                     limit 1)                    as "taskId"
             from newjitsu."ConfigurationObjectLink" sync
-            where "workspaceId" = :workspaceId and deleted = false and type = 'sync') a
+            where "workspaceId" = :workspaceId and type = 'sync') a
       where a."taskId" is not null`,
     { periodStart, periodEnd, workspaceId }
   );
