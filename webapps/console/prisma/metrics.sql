@@ -7,6 +7,37 @@ create table newjitsu_metrics.active_incoming on cluster jitsu_cluster
 )
     engine = Null;
 
+CREATE TABLE newjitsu_metrics.active_incoming_agg on cluster jitsu_cluster
+    (
+     `workspaceId` LowCardinality(String),
+     `timestamp` DateTime,
+     `insertedAt` DateTime DEFAULT now(),
+     `count` UInt64
+        )
+    ENGINE = ReplacingMergeTree() ORDER BY (workspaceId, timestamp)
+    PARTITION BY toYYYYMM(timestamp)
+;
+
+CREATE MATERIALIZED VIEW newjitsu_metrics.mv_active_incoming_agg on cluster jitsu_cluster
+    REFRESH EVERY 5 MINUTE APPEND TO newjitsu_metrics.active_incoming_agg AS
+select
+    workspaceId,
+    timestamp,
+    now() as insertedAt,
+    uniqMerge(count) as "count"
+from newjitsu_metrics.mv_active_incoming2
+where
+    timestamp >= date_trunc('day', now() - interval 3 day)
+group by workspaceId, timestamp order by workspaceId, timestamp;
+
+CREATE VIEW newjitsu_metrics.active_incoming_agg_view ON CLUSTER jitsu_cluster as select
+    timestamp,
+    workspaceId,
+    count
+from newjitsu_metrics.active_incoming_agg
+ORDER BY workspaceId, timestamp DESC, insertedAt DESC
+LIMIT 1 BY workspaceId, timestamp;
+
 CREATE MATERIALIZED VIEW newjitsu_metrics.mv_active_incoming2 on cluster jitsu_cluster
         (
          `workspaceId` LowCardinality(String),

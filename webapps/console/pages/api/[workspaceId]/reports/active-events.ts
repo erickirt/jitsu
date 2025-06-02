@@ -39,9 +39,9 @@ export default createRoute()
     const sql = `
         select
             date_trunc({granularity:String}, timestamp) as period,
-            uniqMerge(count) as "activeEvents",
+            sum(count) as "activeEvents",
             count(*) as "srcSize"
-        from ${metricsSchema}.mv_active_incoming2
+        from ${metricsSchema}.active_incoming_agg_view
         where 
             timestamp >= toDateTime({start:String}, 'UTC') and
             timestamp <= toDateTime({end:String}, 'UTC') and 
