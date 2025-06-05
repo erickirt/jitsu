@@ -23,22 +23,30 @@ const api: Api = {
           .optional(),
         search: z.string().optional(),
       }),
-      result: z.object({
-        // Array of workspace objects with user-specific properties
-        workspaces: z.array(
+      result: z.union([
+        z.object({
+          // Array of workspace objects with user-specific properties
+          workspaces: z.array(
+            WorkspaceDbModel.extend({
+              lastUsed: z.date().optional(), // Last time user accessed this workspace
+              entities: z.number().optional(), // Number of configuration objects (admin only)
+            })
+          ),
+          // Pagination metadata for infinite loading
+          pagination: z.object({
+            page: z.number(), // Current page number (starts from 0)
+            limit: z.number(), // Number of items per page
+            totalCount: z.number(), // Total number of workspaces available to user
+            hasMore: z.boolean(), // Whether more pages are available
+          }),
+        }),
+        z.array(
           WorkspaceDbModel.extend({
             lastUsed: z.date().optional(), // Last time user accessed this workspace
             entities: z.number().optional(), // Number of configuration objects (admin only)
           })
         ),
-        // Pagination metadata for infinite loading
-        pagination: z.object({
-          page: z.number(), // Current page number (starts from 0)
-          limit: z.number(), // Number of items per page
-          totalCount: z.number(), // Total number of workspaces available to user
-          hasMore: z.boolean(), // Whether more pages are available
-        }),
-      }),
+      ]),
     },
     handle: async ({ user, query }) => {
       const { page, limit = MAX_LIMIT, search } = query;
