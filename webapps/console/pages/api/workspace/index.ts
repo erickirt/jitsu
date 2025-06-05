@@ -41,8 +41,8 @@ const api: Api = {
       }),
     },
     handle: async ({ user, query }) => {
-      const { page = 0, limit = MAX_LIMIT, search } = query;
-      const offset = page * limit;
+      const { page, limit = MAX_LIMIT, search } = query;
+      const offset = (page ?? 0) * limit;
 
       const userModel = requireDefined(
         await db.prisma().userProfile.findUnique({ where: { id: user.internalId } }),
@@ -106,15 +106,19 @@ const api: Api = {
         }))
         .sort((a, b) => (b.lastUsed?.getTime() || 0) - (a.lastUsed?.getTime() || 0));
 
-      return {
-        workspaces,
-        pagination: {
-          page,
-          limit,
-          totalCount,
-          hasMore: (page + 1) * limit < totalCount,
-        },
-      };
+      if (typeof page !== "undefined") {
+        return {
+          workspaces,
+          pagination: {
+            page,
+            limit,
+            totalCount,
+            hasMore: (page + 1) * limit < totalCount,
+          },
+        };
+      } else {
+        return workspaces;
+      }
     },
   },
   POST: {
