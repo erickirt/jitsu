@@ -225,14 +225,12 @@ export const WorkspacesAdminPage = () => {
       const [report, billing, workspaceList] = await Promise.all([
         get("/api/$all/ee/report/workspace-stat?extended=true", { signal }) as Promise<{ data: ReportRow[] }>,
         get("/api/$all/ee/billing/workspaces", { signal }) as Promise<Record<string, any>>,
-        get("/api/workspace", { signal }) as Promise<{ workspaces: z.infer<typeof WorkspaceDbModel>[] }>,
+        get("/api/workspace", { signal }) as Promise<z.infer<typeof WorkspaceDbModel>[]>,
       ]);
-      console.log("workspaceList.workspaces", workspaceList.workspaces);
-      const workspaceDict = workspaceList.workspaces.reduce((acc, w) => {
+      const workspaceDict = workspaceList.reduce((acc, w) => {
         acc[w.id] = w;
         return acc;
       }, {});
-      console.log("workspaceDict", workspaceDict);
       const joinedData: Record<string, ReportRow> = {};
       const days = [...new Set(report.data.map(w => w.period.split("T")[0]))].sort();
       const usageAlertsCache = {};
