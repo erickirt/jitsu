@@ -30,7 +30,6 @@ function pickSlug(email, name): string {
 export function WorkspaceNameAndSlugEditor({
   onSuccess,
   displayId,
-  offerClassic,
   onboarding,
 }: {
   onSuccess?: (newVals: { name: string; slug: string }) => void;
@@ -103,7 +102,7 @@ export function WorkspaceNameAndSlugEditor({
         <Button
           type="primary"
           loading={loading}
-          disabled={!changed}
+          disabled={!changed && !onboarding}
           onClick={async () => {
             if (!slug) {
               feedbackError("Slug cannot be empty");
