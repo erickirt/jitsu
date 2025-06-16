@@ -666,6 +666,7 @@ export async function scheduleSync({
           namespace: typeof sync.data?.["namespace"] !== "undefined" ? sync.data?.["namespace"] : "${LEGACY}",
           toSameCase: sync.data?.["toSameCase"] ? "true" : "false",
           addMeta: sync.data?.["addMeta"] ? "true" : "false",
+          deduplicate: sync.data?.["deduplicate"] ?? true ? "true" : "false",
           nodelay: nodelay ? "true" : "false",
           tableNamePrefix: sync.data?.["tableNamePrefix"] ?? "",
         },
