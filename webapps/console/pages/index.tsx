@@ -14,6 +14,7 @@ const log = getLog("index");
 function WorkspaceRedirect() {
   const router = useRouter();
   const projectName = localStorage.getItem("projectName");
+
   const params = {
     projectName: projectName || undefined,
     invite: (router.query.invite as string) || undefined,
