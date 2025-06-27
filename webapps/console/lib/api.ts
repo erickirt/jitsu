@@ -504,7 +504,7 @@ export async function verifyAccessWithRole(
 
   if (!hasPermission(role, requiredPermission)) {
     throw new ApiError(
-      `User ${userId} doesn't have permission '${requiredPermission}' in workspace ${workspaceId}. Required role: owner or editor`,
+      `User ${userId} doesn't have permission '${requiredPermission}' in workspace ${workspaceId}`,
       { workspaceId, userId, role, requiredPermission },
       { status: 403 }
     );
