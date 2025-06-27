@@ -1,4 +1,4 @@
-import { Api, inferUrl, nextJsApiHandler, verifyAccess } from "../../../lib/api";
+import { Api, inferUrl, nextJsApiHandler, verifyAccessWithRole } from "../../../lib/api";
 import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
@@ -138,7 +138,9 @@ const api: Api = {
       const newWorkspace = await db.prisma().workspace.create({
         data: { name: body.name || `${user.name || user.email || user.externalId}'s new workspace` },
       });
-      await db.prisma().workspaceAccess.create({ data: { userId: user.internalId, workspaceId: newWorkspace.id } });
+      await db.prisma().workspaceAccess.create({
+        data: { userId: user.internalId, workspaceId: newWorkspace.id, role: "owner" },
+      });
       await withProductAnalytics(p => p.track("workspace_created"), { user, workspace: newWorkspace, req });
       return { id: newWorkspace.id };
     },
@@ -150,8 +152,8 @@ const api: Api = {
     },
     handle: async ({ body, user }) => {
       const workspaceId = body.workspaceId;
-
-      await verifyAccess(user, workspaceId);
+      // "manageUsers" permission belongs to owners. Owners can delete the workspace.
+      await verifyAccessWithRole(user, workspaceId, "manageUsers");
 
       const workspace = await db.prisma().workspace.findUnique({
         where: { id: workspaceId, deleted: false },

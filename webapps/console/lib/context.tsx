@@ -4,20 +4,31 @@ import { AppConfig, ContextApiResponse } from "./schema";
 import { WorkspaceDbModel } from "../prisma/schema";
 import omit from "lodash/omit";
 import { Analytics } from "../pages/_app";
+import { WorkspacePermissionsType, WorkspaceRoleType } from "./workspace-roles";
 
 export type WorkspaceContext = z.infer<typeof WorkspaceDbModel> & {
   slugOrId: string;
   oidcLoginGroups?: any[];
 };
 
-const WorkspaceContext0 = createContext<WorkspaceContext | null>(null);
+export type UserWorkspaceRole = {
+  role: WorkspaceRoleType;
+} & Record<WorkspacePermissionsType, boolean>;
 
-export const WorkspaceContextProvider: React.FC<{ workspace: WorkspaceContext; children: React.ReactNode }> = ({
-  children,
-  workspace,
-}) => {
+const WorkspaceContext0 = createContext<WorkspaceContext | null>(null);
+const WorkspaceRoleContext0 = createContext<UserWorkspaceRole | null>(null);
+
+export const WorkspaceContextProvider: React.FC<{
+  workspace: WorkspaceContext;
+  userRole: UserWorkspaceRole;
+  children: React.ReactNode;
+}> = ({ children, workspace, userRole }) => {
   const Context = WorkspaceContext0;
-  return <Context.Provider value={workspace}>{children}</Context.Provider>;
+  return (
+    <Context.Provider value={workspace}>
+      <WorkspaceRoleContext0.Provider value={userRole}>{children}</WorkspaceRoleContext0.Provider>
+    </Context.Provider>
+  );
 };
 
 export function useWorkspace(): WorkspaceContext {
@@ -81,6 +92,20 @@ export function useUser(): ContextApiResponse["user"] {
     throw new Error(`No current user`);
   }
   return props.user;
+}
+
+export function useWorkspaceRole(): UserWorkspaceRole {
+  const context = useContext(WorkspaceRoleContext0);
+  if (!context) {
+    return {
+      role: "analyst",
+      createEntities: false,
+      editEntities: false,
+      deleteEntities: false,
+      manageUsers: false,
+    };
+  }
+  return context;
 }
 
 export function useUserSafe(): ContextApiResponse["user"] | undefined | null {
