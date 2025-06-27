@@ -465,6 +465,7 @@ const OidcProviders: React.FC<any> = () => {
 const WorkspaceSettingsComponent: React.FC<any> = () => {
   const config = useAppConfig();
   const workspace = useWorkspace();
+  const userRole = useWorkspaceRole();
   const [deleteLoading, setDeleteLoading] = useState(false);
   const router = useRouter();
 
@@ -551,24 +552,26 @@ const WorkspaceSettingsComponent: React.FC<any> = () => {
         <Members />
 
         {/* Danger Zone */}
-        <div className="bg-backgroundLight border border-error/50 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-error/5">
-            <h3 className="text-lg font-semibold text-error">Danger Zone</h3>
-          </div>
-          <div className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h4 className="font-medium text-error mb-1">Delete Project</h4>
-                <p className="text-sm text-textLight">
-                  This workspace will be permanently deleted and cannot be recovered.
-                </p>
+        {userRole.role === "owner" && (
+          <div className="bg-backgroundLight border border-error/50 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-error/5">
+              <h3 className="text-lg font-semibold text-error">Danger Zone</h3>
+            </div>
+            <div className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-medium text-error mb-1">Delete Project</h4>
+                  <p className="text-sm text-textLight">
+                    This workspace will be permanently deleted and cannot be recovered.
+                  </p>
+                </div>
+                <JitsuButton type="primary" danger={true} onClick={handleDeleteWorkspace} loading={deleteLoading}>
+                  Delete Workspace
+                </JitsuButton>
               </div>
-              <JitsuButton type="primary" danger={true} onClick={handleDeleteWorkspace} loading={deleteLoading}>
-                Delete Workspace
-              </JitsuButton>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
