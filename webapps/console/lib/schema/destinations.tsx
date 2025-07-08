@@ -11,6 +11,7 @@ import mixpanelIcon from "./icons/mixpanel";
 import facebookIcon from "./icons/facebook";
 import juneIcon from "./icons/june";
 import blazeIcon from "./icons/blaze";
+import salesforceIcon from "./icons/salesforce";
 import mongodbIcon from "./icons/mongodb";
 
 import ga4Icon from "./icons/ga4";
@@ -871,6 +872,26 @@ export const coreDestinations: DestinationType<any>[] = [
     connectionOptions: CloudDestinationsConnectionOptions,
     credentials: meta.BrazeCredentials,
     description: "Braze is a customer engagement platform used by businesses for multichannel marketing.",
+  },
+  {
+    id: "salesforce",
+    icon: salesforceIcon,
+    title: "Salesforce",
+    tags: "Product Analytics",
+    connectionOptions: CloudDestinationsConnectionOptions,
+    credentials: meta.SalesforceCredentials,
+    credentialsUi: {
+      authorized: {
+        hidden: true,
+      },
+      oauthIntegrationId: {
+        hidden: true,
+      },
+      oauthConnectionId: {
+        hidden: true,
+      },
+    },
+    description: "Salesforce is the world's leading customer relationship management technology.",
   },
   {
     id: "mongodb",
