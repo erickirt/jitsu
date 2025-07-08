@@ -324,7 +324,7 @@ const SalesforceDestination: JitsuFunction<AnalyticsServerEvent, SalesforceCrede
             log.info(`Retrying Salesforce ${method} ${httpRequest.path} after re-authentication`);
             continue; // Retry once after re-authentication
           }
-        } else if (result.status === 400) {
+        } else if (result.status === 400 || result.status === 404) {
           ctx.log.error(
             `Salesforce ${method} ${httpRequest.path}:${
               httpRequest.payload ? `${JSON.stringify(httpRequest.payload)} --> ` : ""
