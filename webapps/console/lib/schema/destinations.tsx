@@ -425,10 +425,24 @@ export const coreDestinations: DestinationType<any>[] = [
     tags: "Datawarehouse",
     connectionOptions: BaseBulkerConnectionOptions,
     credentials: z.object({
-      host: z.string().describe("Postgres host"),
-      port: z.number().default(5432).describe("Postgres port"),
+      authenticationMethod: z
+        .enum(["password", "google-psc"])
+        .optional()
+        .default("password")
+        .describe(
+          "Authentication Method::Standard username/password or Private Service connect for Google-managed postgres instances only."
+        ),
+      instanceConnectionName: z
+        .string()
+        .optional()
+        .describe(
+          "Instance Connection Name::Google SQL instance Connection Name in format <code>project-name:region:instance-name</code>"
+        ),
+      host: z.string().optional().describe("Postgres host"),
+      port: z.number().optional().default(5432).describe("Postgres port"),
       sslMode: z
         .enum(["disable", "require", "verify-ca", "verify-full"])
+        .optional()
         .default("require")
         .describe(
           "SSL Mode::SSL mode for Postgres connection: <code>disable</code>,<code>require</code>,<code>verify-ca</code>,<code>verify-full</code>"
@@ -437,13 +451,32 @@ export const coreDestinations: DestinationType<any>[] = [
       sslClientCert: z.string().optional().describe("SSL Client Cert::"),
       sslClientKey: z.string().optional().describe("SSL Client Key::"),
       database: z.string().describe("Postgres database name"),
-      username: z.string().describe("Postgres username"),
-      password: z.string().describe("Postgres password"),
+      username: z.string().optional().describe("Postgres username"),
+      password: z.string().optional().describe("Postgres password"),
       defaultSchema: z.string().default("public").describe("Schema::Postgres schema"),
     }),
     credentialsUi: {
+      authenticationMethod: {
+        correction: obj => obj.authenticationMethod || "password",
+      },
+      instanceConnectionName: {
+        hidden: obj => obj.authenticationMethod !== "google-psc",
+      },
+      username: {
+        hidden: obj => obj.authenticationMethod === "google-psc",
+      },
       password: {
         password: true,
+        hidden: obj => obj.authenticationMethod === "google-psc",
+      },
+      host: {
+        hidden: obj => obj.authenticationMethod === "google-psc",
+      },
+      port: {
+        hidden: obj => obj.authenticationMethod === "google-psc",
+      },
+      sslMode: {
+        hidden: obj => obj.authenticationMethod === "google-psc",
       },
       sslServerCA: {
         textarea: true,
