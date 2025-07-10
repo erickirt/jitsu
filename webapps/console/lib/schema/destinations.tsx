@@ -430,13 +430,13 @@ export const coreDestinations: DestinationType<any>[] = [
         .optional()
         .default("password")
         .describe(
-          "Authentication Method::Standard username/password or Private Service connect for Google-managed postgres instances only."
+          "Authentication Method::Standard username/password or <a target='_blank' rel='noreferrer noopener' href='https://docs.jitsu.com/destinations/warehouse/postgres#advanced-private-service-connect-for-google-cloud-sql'>Private Service Connect</a> for Google-managed postgres instances only."
         ),
       instanceConnectionName: z
         .string()
         .optional()
         .describe(
-          "Instance Connection Name::Google SQL instance Connection Name in format <code>project-name:region:instance-name</code>"
+          "Instance Connection Name::Google SQL instance Connection Name in the format <code>project-name:region:instance-name</code>. <a target='_blank' rel='noreferrer noopener' href='https://docs.jitsu.com/destinations/warehouse/postgres#provide-jitsu-with-cloud-sql-instance-details'>How to obtain</a>."
         ),
       host: z.string().optional().describe("Postgres host"),
       port: z.number().optional().default(5432).describe("Postgres port"),
