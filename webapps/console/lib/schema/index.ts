@@ -132,6 +132,7 @@ export const ConfigEntityBase = z.object({
   type: z.string(),
   workspaceId: z.string(),
   name: z.string(),
+  cloneId: z.string().optional(),
 });
 export type ConfigEntityBase = z.infer<typeof ConfigEntityBase>;
 
@@ -254,12 +255,12 @@ export type ConfigObjectType<T = any> = {
   /**
    * Custom merge logic. By default, it's just shallow merge - {...original, ...patch}.
    */
-  merge?: (original: T, patch: Partial<T>) => T;
+  merge?: (original: T, patch: Partial<T>) => T | Promise<T>;
 
   /**
    * Clean object before sending to client. Can remove fields, hide values etc
    */
-  outputFilter?: OutputFilter<T>;
+  outputFilter?: OutputFilter<T> | ((original: T) => Promise<T>);
 };
 
 const SafeUserProfile = UserProfileDbModel.pick({
