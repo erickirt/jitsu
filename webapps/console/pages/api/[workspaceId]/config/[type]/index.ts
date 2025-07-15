@@ -7,6 +7,10 @@ import { ApiError } from "../../../../../lib/shared/errors";
 import { isReadOnly } from "../../../../../lib/server/read-only-mode";
 import { enableAuditLog } from "../../../../../lib/server/audit-log";
 import { trackTelemetryEvent, withProductAnalytics } from "../../../../../lib/server/telemetry";
+import { containsMaskedSecrets, unmaskSecretsFromOriginal } from "../../../../../lib/schema/secrets";
+import { getServerLog } from "../../../../../lib/server/log";
+
+const log = getServerLog("api");
 
 export const config = {
   api: {
@@ -31,15 +35,17 @@ export const api: Api = {
         where: { workspaceId: workspaceId, type, deleted: false },
         orderBy: { createdAt: "asc" },
       });
+      const mappedObjects = objects.map(({ id, workspaceId, config }) => ({
+        ...(config as any),
+        id,
+        workspaceId,
+        type,
+      }));
+
+      const filteredObjects = await Promise.all(mappedObjects.map(obj => configObjectType.outputFilter(obj)));
+
       return {
-        objects: objects
-          .map(({ id, workspaceId, config }) => ({
-            ...(config as any),
-            id,
-            workspaceId,
-            type,
-          }))
-          .map(configObjectType.outputFilter),
+        objects: filteredObjects,
       };
     },
   },
@@ -50,7 +56,7 @@ export const api: Api = {
       body: z.any(),
     },
     handle: async ({ req, body, user, query: { workspaceId, type } }) => {
-      await verifyAccessWithRole(user, workspaceId, "createEntities");
+      await verifyAccessWithRole(user, workspaceId, "editEntities");
       if (isReadOnly) {
         throw new ApiError("Console is in read-only mode. Modifications of objects are not allowed");
       }
@@ -59,10 +65,25 @@ export const api: Api = {
         `Workspace ${workspaceId} not found`
       );
       const configObjectTypes = getConfigObjectType(type);
-      const object = await configObjectTypes.inputFilter(parseObject(type, body), "create", workspace);
+      let object = parseObject(type, body);
+      if (body.cloneId) {
+        log.atInfo().log(`Unmasking secrets for ${type} clone: ${body.id}`);
+        // restore masked secrets from clone's original
+        if (containsMaskedSecrets(object)) {
+          const clonesOriginal = await db.prisma().configurationObject.findFirst({
+            where: { id: body.cloneId, workspaceId },
+          });
+          if (clonesOriginal?.config) {
+            const dbConfig = clonesOriginal.config as any;
+            object = unmaskSecretsFromOriginal(object, dbConfig);
+          }
+        }
+      }
+      object = await configObjectTypes.inputFilter(object, "create", workspace);
       const id = object.id;
       delete object.id;
       delete object.workspaceId;
+      delete object.cloneId;
       const created = await db.prisma().configurationObject.create({
         data: { id, workspaceId: workspaceId, config: object, type },
       });
