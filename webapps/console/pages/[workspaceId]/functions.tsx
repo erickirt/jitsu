@@ -36,7 +36,7 @@ export const FunctionTitle: React.FC<{
       titleNode = (
         <>
           <h2>{f?.name}</h2>
-          <div className="pt-1.5 text-xs text-gray-500 font-normal whitespace-break-spaces">{f?.description}</div>
+          <div className="pt-0.5 text-xs text-gray-500 font-normal whitespace-break-spaces">{f?.description}</div>
         </>
       );
     } else {
@@ -86,7 +86,7 @@ const FunctionsList: React.FC<{}> = () => {
                       )}
                     </div>
                     {f.description && (
-                      <div className="pt-1.5 text-xs text-gray-500 font-normal whitespace-break-spaces">
+                      <div className="pt-0.5 text-xs text-gray-500 font-normal whitespace-break-spaces">
                         {f.description}
                       </div>
                     )}
