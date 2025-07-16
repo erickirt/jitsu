@@ -78,7 +78,7 @@ const FunctionsList: React.FC<{}> = () => {
                   <>
                     <div className={"flex gap-1"}>
                       <h2>{f.name}</h2>
-                      {f.origin !== "jitsu-cli" && (
+                      {f.origin === "jitsu-cli" && (
                         <div className="bg-background border border-backgroundDark px-0.5 py-0.2 rounded textLight flex items-center gap-1 ml-2 text-text">
                           <HardDrive className="w-3 h-3" />
                           <span className="font-mono text-xxs text-text font-light">deployed from CLI</span>
