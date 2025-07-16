@@ -164,30 +164,28 @@ const FunctionCard: React.FC<{
   const functionId = "udf." + func.id;
 
   return (
-    <div key={functionId} className={`w-full flex flex-row px-3 border rounded h-14 items-center gap-3`}>
-      <div className="flex-grow">
-        <FunctionTitle
-          f={func}
-          title={() => (
-            <>
-              <h2>{func.name}</h2>
-              <div className="text-xs text-gray-500 font-normal">{func.description}</div>
-            </>
-          )}
-        />
+    <div key={functionId} className={`w-full flex flex-row px-3 border rounded min-h-14 items-center gap-3`}>
+      <div className="flex-auto py-3">
+        <FunctionTitle f={func} showDescription={true} />
       </div>
       {/*{enabled && <JitsuButton icon={<Braces className={"w-4 h-4"} />} />}*/}
       {!disabled && funcEnabled && (
         <JitsuButton
           type={"text"}
+          className={"flex-shrink-0"}
           danger
           onClick={() => (onDelete ? onDelete(func) : undefined)}
           icon={<X className={"w-5 h-5"} />}
         />
       )}
-      {!disabled && funcEnabled && <GripVertical {...listeners} className={"text-gray-700 w-5 h-5"} />}
+      {!disabled && funcEnabled && <GripVertical {...listeners} className={"flex-shrink-0 text-gray-700 w-5 h-5"} />}
       {!disabled && !funcEnabled && (
-        <JitsuButton ghost type={"primary"} onClick={() => (onAdd ? onAdd(func) : undefined)}>
+        <JitsuButton
+          className={"flex-shrink-0"}
+          ghost
+          type={"primary"}
+          onClick={() => (onAdd ? onAdd(func) : undefined)}
+        >
           Add
         </JitsuButton>
       )}
@@ -204,7 +202,7 @@ const SortableItem: React.FC<{
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
   const functionId = "udf." + func.id;
