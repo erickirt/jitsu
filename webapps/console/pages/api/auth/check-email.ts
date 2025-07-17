@@ -36,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const { email } = CheckEmailRequest.parse(payload);
     // First, check if Firebase auth is enabled
-    const firebaseEnabled = isTruish(process.env.FIREBASE_AUTH);
+    const firebaseEnabled = !!process.env.FIREBASE_AUTH;
     const dynamicOidcEnabled = isTruish(process.env.DYNAMIC_OIDC_ENABLED);
 
     if (firebaseEnabled) {
