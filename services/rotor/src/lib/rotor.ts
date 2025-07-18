@@ -131,8 +131,8 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
               ...headers,
               [CONNECTION_IDS_HEADER]: connectionId,
             },
-            true,
-            taintedConnectionIds.includes(connectionId) ? 10 : retries,
+            taintedConnectionIds.includes(connectionId) ? false : true,
+            retries,
             fetchTimeoutMs
           )
             .then(() => {
