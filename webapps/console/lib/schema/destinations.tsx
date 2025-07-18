@@ -115,6 +115,7 @@ export const FunctionsConnectionOptions = z.object({
 export const CloudDestinationsConnectionOptions = z
   .object({
     multithreading: z.boolean().optional(),
+    noretry: z.boolean().optional(),
   })
   .merge(FunctionsConnectionOptions);
 export type CloudDestinationsConnectionOptions = z.infer<typeof CloudDestinationsConnectionOptions>;
