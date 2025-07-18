@@ -34,7 +34,6 @@ export const CONNECTION_IDS_HEADER = "connection_ids";
 const concurrency = parseNumber(process.env.CONCURRENCY, 10);
 const fetchTimeoutMs = parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
 const rotorIndex = parseNumber(process.env.INSTANCE_INDEX, 0);
-const taintedConnectionIds = (process.env.TAINTED_CONNECTION_IDS || "").split(",");
 
 export type KafkaRotorConfig = {
   credentials: KafkaCredentials;
@@ -131,7 +130,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
               ...headers,
               [CONNECTION_IDS_HEADER]: connectionId,
             },
-            taintedConnectionIds.includes(connectionId) ? false : true,
+            true,
             retries,
             fetchTimeoutMs
           )

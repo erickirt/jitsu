@@ -156,7 +156,14 @@ export async function rotorMessageHandler(
     funcsChainCache.set(cacheKey, funcChain);
   }
 
-  const chainRes = await runChain(funcChain, event, ctx, metricsMeta, runFuncs, retriesEnabled);
+  const chainRes = await runChain(
+    funcChain,
+    event,
+    ctx,
+    metricsMeta,
+    runFuncs,
+    !!connection.options?.noretry ? false : retriesEnabled
+  );
   chainRes.connectionId = connectionId;
   rotorContext.metrics?.logMetrics(chainRes.execLog);
   checkError(chainRes);
