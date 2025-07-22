@@ -155,6 +155,9 @@ function trackEvent(
   const eventPayload = {
     event: eventType,
     properties: {
+      ...clickParams(pageUrl),
+      ...geoParams(analyticsContext.geo),
+      ...customProperties,
       ip: analyticsContext.ip,
       time: eventTimeSafeMs(event),
       $device_id: deviceId,
@@ -166,13 +169,10 @@ function trackEvent(
       $os: analyticsContext.os?.name || ua.os?.name,
       $os_version: analyticsContext.os?.version || ua.os?.version,
       $current_url: pageUrl,
-      ...clickParams(pageUrl),
       current_page_title: evict(customProperties, "title"),
       $referrer: evict(customProperties, "referrer"),
       $referring_domain: evict(customProperties, "referring_domain"),
       $session_id: analyticsContext.sessionId,
-
-      ...geoParams(analyticsContext.geo),
 
       //mobile
       $app_namespace: app.namespace,
@@ -201,8 +201,6 @@ function trackEvent(
       $model: device.model || uaDevice.model,
       advertising_id: device.advertisingId,
       ad_tracking_enabled: device.adTrackingEnabled,
-
-      ...customProperties,
     },
   };
   if (ctx["connectionOptions"]?.mode === "batch" && bulkerBase) {
