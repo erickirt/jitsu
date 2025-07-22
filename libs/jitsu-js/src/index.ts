@@ -54,6 +54,9 @@ export const emptyAnalytics: AnalyticsInterface = {
   group: () => Promise.resolve({}),
   reset: () => Promise.resolve({}),
   configure: () => {},
+  getConfiguration(): JitsuOptions {
+    return {};
+  },
 };
 
 function createUnderlyingAnalyticsInstance(
@@ -218,6 +221,9 @@ function createUnderlyingAnalyticsInstance(
       //It's incorrect at many levels. First, it's not a dispatched event. Second, we take a first result
       //However, since returned values are used for debugging purposes only, it's ok
       return results[0];
+    },
+    getConfiguration(): JitsuOptions {
+      return opts;
     },
   } as AnalyticsInterface;
   if (opts.privacy?.disableUserIds || opts.privacy?.dontSend) {
