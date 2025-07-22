@@ -480,6 +480,8 @@ export interface AnalyticsInterface {
 
   configure(options: DynamicJitsuOptions): void;
 
+  getConfiguration(): JitsuOptions;
+
   // alias(
   //   to: string | number,
   //   from?: string | number | Options,

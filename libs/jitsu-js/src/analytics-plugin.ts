@@ -45,7 +45,7 @@ const defaultConfig: Required<JitsuOptions> = {
     dontSend: false,
     disableUserIds: false,
     ipPolicy: "keep",
-    consentCategories: undefined,
+    consentCategories: {},
   },
 };
 
@@ -57,12 +57,19 @@ const mergeConfig = (current: JitsuOptions, newConfig: JitsuOptions): void => {
       if (typeof value === "object") {
         current.privacy = {
           ...defaultConfig.privacy,
+          consentCategories: { ...defaultConfig.privacy.consentCategories },
           ...current.privacy,
           ...value,
         };
-      } else if (newConfig.hasOwnProperty("privacy") && typeof value === "undefined") {
-        // explicitly set to undefined - reset to default
-        current.privacy = { ...defaultConfig.privacy };
+      } else if (typeof value === "undefined") {
+        if (newConfig.hasOwnProperty("privacy") || !current.hasOwnProperty("privacy")) {
+          // explicitly set to undefined - reset to default
+          // or was not set at all - set to default
+          current.privacy = {
+            ...defaultConfig.privacy,
+            consentCategories: { ...defaultConfig.privacy.consentCategories },
+          };
+        }
       }
     } else if (typeof value === "undefined") {
       if (newConfig.hasOwnProperty(key) || !current.hasOwnProperty(key)) {
@@ -479,11 +486,12 @@ function adjustPayload(
       version: jitsuVersion,
       env: isInBrowser() ? "browser" : "node",
     },
-    consent: config.privacy?.consentCategories
-      ? {
-          categoryPreferences: config.privacy.consentCategories,
-        }
-      : undefined,
+    consent:
+      typeof config.privacy?.consentCategories === "object" && Object.keys(config.privacy?.consentCategories).length
+        ? {
+            categoryPreferences: config.privacy.consentCategories,
+          }
+        : undefined,
     userAgent: runtime.userAgent?.(),
     locale: runtime.language?.(),
     screen: runtime.screen?.(),
