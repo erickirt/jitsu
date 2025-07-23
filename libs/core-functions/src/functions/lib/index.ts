@@ -275,7 +275,7 @@ export function createFilter(filter: string): (eventType: string, eventName?: st
 }
 
 export function eventTimeSafeMs(event: AnalyticsServerEvent) {
-  const now = new Date().getTime();
+  const now = Date.now();
   const ts = event.timestamp ? new Date(event.timestamp as string).getTime() : NaN;
   const receivedAt = event.receivedAt ? new Date(event.receivedAt as string).getTime() : NaN;
   return Math.min(!isNaN(ts) ? ts : now, !isNaN(receivedAt) ? receivedAt : now, now);

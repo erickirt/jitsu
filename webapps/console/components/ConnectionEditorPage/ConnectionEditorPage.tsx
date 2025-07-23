@@ -283,6 +283,17 @@ function ConnectionEditor({
 
   const configItems: EditorItem[] = [
     {
+      name: "Enabled",
+      component: (
+        <SwitchComponent
+          value={!connectionOptions.disabled}
+          onChange={enabled => {
+            updateOptions({ disabled: !enabled });
+          }}
+        />
+      ),
+    },
+    {
       name: existingLink ? "Select Source" : "Source",
       documentation: "Select destination to connect",
       component: (

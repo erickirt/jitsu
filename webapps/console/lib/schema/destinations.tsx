@@ -115,6 +115,7 @@ export const FunctionsConnectionOptions = z.object({
 export const CloudDestinationsConnectionOptions = z
   .object({
     multithreading: z.boolean().optional(),
+    disabled: z.boolean().optional(),
     noretry: z.boolean().optional(),
   })
   .merge(FunctionsConnectionOptions);
@@ -148,6 +149,7 @@ export type DeviceDestinationsConnectionOptions = z.infer<typeof DeviceDestinati
 //All possible options for Bulker based source -> destination connection
 export const BaseBulkerConnectionOptions = z
   .object({
+    disabled: z.boolean().optional(),
     mode: z.enum(["stream", "batch"]).default("batch"),
     primaryKey: z.string().default("message_id"),
     deduplicate: z.boolean().default(true),
