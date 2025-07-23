@@ -88,6 +88,9 @@ const exports: Export[] = [
         getLog().atDebug().log(`Got batch of ${objects.length} objects for bulker export`);
         lastId = objects[objects.length - 1].id;
         for (const { data, from, id, to, updatedAt, workspace } of objects) {
+          if (data.disabled) {
+            continue; // skip disabled connections
+          }
           const destinationType = to.config.destinationType;
           const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
           if (coreDestinationType?.usesBulker || coreDestinationType?.hybrid) {
@@ -253,6 +256,9 @@ const exports: Export[] = [
         getLog().atDebug().log(`Got batch of ${objects.length} objects for bulker export`);
         lastId = objects[objects.length - 1].id;
         for (const { data, from, id, to, updatedAt, workspace } of objects) {
+          if (data.disabled) {
+            continue; // skip disabled connections
+          }
           const destinationType = to.config.destinationType;
           const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
           if (!coreDestinationType) {
@@ -550,7 +556,7 @@ const exports: Export[] = [
               shard: shardNumber,
               destinations: [
                 ...obj.toLinks
-                  .filter(l => !l.deleted && l.type === "push" && !l.to.deleted)
+                  .filter(l => !l.deleted && l.type === "push" && !l.data.disabled && !l.to.deleted)
                   .map(l => ({
                     id: l.to.id,
                     connectionId: l.id,

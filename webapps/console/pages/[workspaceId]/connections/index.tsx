@@ -15,7 +15,7 @@ import { useRouter } from "next/router";
 import { jsonSerializationBase64, useQueryStringState } from "../../../lib/useQueryStringState";
 import { TableProps } from "antd/es/table/InternalTable";
 import { ColumnType, SortOrder } from "antd/es/table/interface";
-import { Activity, Edit3, Inbox, UserRoundPen, XCircle } from "lucide-react";
+import { Activity, Edit3, Inbox, UserRoundPen, XCircle, Power, PowerOff } from "lucide-react";
 import { PlusOutlined } from "@ant-design/icons";
 import { WJitsuButton } from "../../../components/JitsuButton/JitsuButton";
 import { DestinationTitle } from "../destinations";
@@ -25,10 +25,16 @@ import { FunctionTitle } from "../functions";
 import omit from "lodash/omit";
 import { toURL } from "../../../lib/shared/url";
 import JSON5 from "json5";
-import { useConfigObjectLinks, useConfigObjectList, useStoreReload } from "../../../lib/store";
+import {
+  useConfigObjectLinks,
+  useConfigObjectList,
+  useStoreReload,
+  useConfigObjectLinkMutation,
+} from "../../../lib/store";
 import { ServiceTitle } from "../services";
 import { ObjectTitle } from "../../../components/ObjectTitle/ObjectTitle";
 import { WLink } from "../../../components/Workspace/WLink";
+import { useAntdModal } from "../../../lib/modal";
 
 function EmptyLinks() {
   const workspace = useWorkspace();
@@ -126,6 +132,7 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
   const streamsById = index(streams, "id");
   const destinationsById = index(destinations, "id");
   const functionsById = index(functions, "id");
+  const modal = useAntdModal();
 
   const workspace = useWorkspace();
   const router = useRouter();
@@ -136,6 +143,12 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
     ...jsonSerializationBase64,
   });
   const reloadStore = useStoreReload();
+
+  const onSaveMutation = useConfigObjectLinkMutation(async (obj: any) => {
+    await get(`/api/${workspace.id}/config/link`, {
+      body: obj,
+    });
+  });
 
   const deleteConnection = async (link: Omit<ConfigurationLinkDbModel, "data">) => {
     if (await confirmOp("Are you sure you want to unlink this site from this destination?")) {
@@ -252,7 +265,9 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
       title: <span onClick={() => setShowId(!showId)}>Actions</span>,
       key: "actions",
       render: (text, link) => {
+        const stream = streamsById[link.fromId];
         const dst = destinationsById[link.toId];
+        const isEnabled = !link.data?.disabled;
         let type = "function";
         try {
           if (getCoreDestinationType(dst.destinationType).usesBulker) {
@@ -260,6 +275,47 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
           }
         } catch (e) {}
         const items: ButtonProps[] = [
+          {
+            icon: isEnabled ? <PowerOff className={"w-4 h-4"} /> : <Power className={"w-4 h-4"} />,
+            label: isEnabled ? "Disable connection" : "Enable connection",
+            collapsed: true,
+            onClick: async () => {
+              modal.confirm({
+                title: `Are you sure you want to ${!isEnabled ? "enable" : "disable"} this connection?`,
+                content: (
+                  <>
+                    This will <b>{isEnabled ? "disable" : "enable"}</b> the connection between
+                    <br />
+                    <b>{stream.name}</b> and <b>{dst.name}</b>
+                  </>
+                ),
+                okType: isEnabled ? "danger" : "primary",
+                okText: !isEnabled ? "Enable" : "Disable",
+                cancelText: "Cancel",
+                onOk: async () => {
+                  setLoading(true);
+                  try {
+                    const updatedLink = {
+                      ...link,
+                      data: {
+                        ...link.data,
+                        disabled: isEnabled,
+                      },
+                    };
+                    await onSaveMutation.mutateAsync(updatedLink);
+                    await reloadStore();
+                    feedbackSuccess(`Connection ${!isEnabled ? "enabled" : "disabled"}`);
+                    reloadCallback();
+                  } catch (e) {
+                    feedbackError(`Failed to ${!isEnabled ? "enable" : "disable"} connection`, { error: e });
+                  } finally {
+                    setLoading(false);
+                  }
+                },
+              });
+            },
+            requiredPermission: "editEntities",
+          },
           {
             icon: <Edit3 className={"w-4 h-4"} />,
             label: "Edit",
@@ -299,7 +355,10 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
         dataSource={links}
         sortDirections={["ascend", "descend"]}
         columns={columns}
-        className="border border-backgroundDark rounded-lg"
+        rowClassName={link => {
+          return link.data?.disabled ? "opacity-50" : "";
+        }}
+        className="border border-backgroundDark rounded-lg "
         pagination={false}
         loading={loading}
         onChange={onChange}
