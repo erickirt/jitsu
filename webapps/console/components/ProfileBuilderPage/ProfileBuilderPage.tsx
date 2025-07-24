@@ -607,7 +607,7 @@ function useProfileBuilderData(
         .catch(e => setError(e))
         .finally(() => setLoading(false));
     })();
-  }, [billing.enabled, billing.loading, workspace, billing.settings, refreshDate]);
+  }, [billing.enabled, billing.loading, workspace, billing.settings, refreshDate.getTime()]);
   return { isLoading: loading, error, data, enabled } as any;
 }
 
@@ -672,10 +672,10 @@ export function ProfileBuilderPage() {
   const functions = useConfigObjectList("function").filter(f => f.kind !== "profile");
   const [pbRefreshDate, setPbRefreshDate] = useState(new Date());
   const [stateRefreshDate, setStateRefreshDate] = useState(new Date());
+  const [obj, dispatch] = useReducer(pbDataReducer, defaultProfileBuilderData);
   const { data: initialData, error: globalError, isLoading, enabled } = useProfileBuilderData(pbRefreshDate);
   const { data: pbState, isLoading: stateLoading } = useProfileBuilderState(initialData!, enabled, stateRefreshDate);
   const [saving, setSaving] = useState(false);
-  const [obj, dispatch] = useReducer(pbDataReducer, defaultProfileBuilderData);
   const [editorShown, setEditorShown] = useState(false);
 
   const [activePrimaryTab, setActivePrimaryTab] = useState("code");
@@ -947,13 +947,7 @@ export function ProfileBuilderPage() {
           <ErrorCard error={new Error(globalError?.message)} />
         </Overlay>
         <Header
-          status={
-            isLoading
-              ? "loading"
-              : pbState?.status === "building" || pbState?.status === "unknown"
-              ? "building"
-              : obj.status
-          }
+          status={isLoading ? "loading" : pbState?.status === "building" ? "building" : obj.status}
           pbEnabled={enabled}
         />
         <Splitter layout="vertical" className={`flex-auto flex-grow overflow-auto gap-1 ${styles.splitterFix}`}>
