@@ -202,21 +202,6 @@ const SettingsTab: React.FC<{
             ),
           },
           {
-            key: "storage",
-            name: "Storage",
-            documentation: (
-              <>
-                The host name of the profile storage. To make changes, please{" "}
-                <WLink href={"/support"}>contact support</WLink>
-              </>
-            ),
-            component: (
-              <div className={"max-w-80"}>
-                <Input disabled={true} />
-              </div>
-            ),
-          },
-          {
             key: "destination",
             name: "Default Destination",
             documentation: (
@@ -282,6 +267,21 @@ const SettingsTab: React.FC<{
                   value={settings.profileWindow || 365}
                   onChange={n => dispatch({ type: "settings", value: { ...settings, profileWindow: n } })}
                 />
+              </div>
+            ),
+          },
+          {
+            key: "storage",
+            name: "Storage",
+            documentation: (
+              <>
+                The host name of the profile storage. To make changes, please{" "}
+                <WLink href={"/support"}>contact support</WLink>
+              </>
+            ),
+            component: (
+              <div className={"max-w-80"}>
+                <Input disabled={true} />
               </div>
             ),
           },
