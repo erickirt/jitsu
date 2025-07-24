@@ -234,7 +234,7 @@ const SettingsTab: React.FC<{
             ),
             component: (
               <DestinationSelector
-                selected={settings.destinationId || destinations[0]?.id}
+                selected={settings.destinationId}
                 items={destinations}
                 enabled={!disabled}
                 onSelect={d => dispatch({ type: "settings", value: { ...settings, destinationId: d } })}
