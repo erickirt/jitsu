@@ -149,7 +149,7 @@ const Header: React.FC<{ status: ProfileBuilderStatus | "loading"; pbEnabled: bo
   );
 };
 
-export function Dot() {
+export function Dot(props: { color?: string }) {
   return (
     <svg
       className={"w-1.5 h-1.5"}
@@ -158,7 +158,7 @@ export function Dot() {
       viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <circle cx="12" cy="12" r="12" fill={"#5d70cc"} />
+      <circle cx="12" cy="12" r="12" fill={props.color || "#5d70cc"} />
     </svg>
   );
 }
@@ -174,12 +174,6 @@ const SettingsTab: React.FC<{
     const dest = getCoreDestinationTypeNonStrict(d.destinationType);
     return dest?.usesBulker;
   });
-
-  useEffect(() => {
-    if (destinations.length && !settings.destinationId) {
-      dispatch({ type: "settings", value: { ...settings, destinationId: destinations[0].id } });
-    }
-  }, [destinations, dispatch, settings]);
 
   return (
     <div className={styles.settingsTable}>
@@ -203,7 +197,11 @@ const SettingsTab: React.FC<{
           },
           {
             key: "destination",
-            name: "Default Destination",
+            name: settings.destinationId ? (
+              "Default Destination"
+            ) : (
+              <span className={"text-red-600"}>Default Destination</span>
+            ),
             documentation: (
               <>
                 Select the destination database where the profiles will be stored. Destination can be assigned in{" "}
@@ -1106,7 +1104,13 @@ export function ProfileBuilderPage() {
                     <ButtonLabel icon={<Settings className="w-3.5 h-3.5" />}>
                       <div className={"flex gap-2 items-center"}>
                         <span>Settings</span>
-                        {hasUnpublishedSettings && <Dot />}
+                        {!obj.settings.destinationId ? (
+                          <Dot color={"#dc2626"} />
+                        ) : hasUnpublishedSettings ? (
+                          <Dot />
+                        ) : (
+                          <></>
+                        )}
                       </div>{" "}
                     </ButtonLabel>
                   ),
