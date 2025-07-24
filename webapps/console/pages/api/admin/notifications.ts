@@ -605,9 +605,13 @@ async function loadBatchStatusesChanges(
 ): Promise<Map<bigint, StatusRepeats>> {
   const increments: Map<bigint, StatusRepeats> = new Map();
   const sw = stopwatch();
-  const actorIds = Object.entries(entities)
-    .filter(([_, b]) => b.type === "batch")
-    .map(([id, _]) => id);
+  const actorIds = [
+    ...new Set(
+      Object.entries(entities)
+        .filter(([_, b]) => b.type === "batch")
+        .map(([id, _]) => id.split("::")[0])
+    ),
+  ];
   let processed = 0;
   let statusChanges = 0;
 
