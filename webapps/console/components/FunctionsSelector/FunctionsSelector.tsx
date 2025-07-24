@@ -72,7 +72,7 @@ const FunctionsSelector0: React.FC<FunctionsSelectorProps> = ({
   );
   const Wrapper: React.FC<React.PropsWithChildren> = ({ children }) => {
     if (split === "vertical") {
-      return <div className={"flex-auto"}>{children}</div>;
+      return <div className={"flex-auto max-w-[50%]"}>{children}</div>;
     }
     return <>{children}</>;
   };
