@@ -979,10 +979,14 @@ const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, even
     {
       title: "Status",
       width: "8em",
-      dataIndex: ["content", "status"],
+      dataIndex: "content",
       key: "status",
-      render: (d: string) => {
-        return <Tag color={d === "COMPLETED" ? "cyan" : "red"}>{d}</Tag>;
+      render: (d: any) => {
+        return (
+          <Tag color={d.status === "COMPLETED" ? (d.representation?.status === 400 ? "orange" : "cyan") : "red"}>
+            {d.status}
+          </Tag>
+        );
       },
     },
     {
@@ -1014,8 +1018,60 @@ const BatchTable = ({ loadEvents, loading, streamType, entityType, actorId, even
       loading={loading}
       loadEvents={loadEvents}
       events={batchEvents}
-      drawerNode={event => <JSONView data={event.event.content} />}
+      drawerNode={event =>
+        event.event.content.representation?.response ? (
+          <BulkerAPIResponseDrawer event={event.event} />
+        ) : (
+          <JSONView data={event.event.content} />
+        )
+      }
       columns={columns}
+    />
+  );
+};
+
+const BulkerAPIResponseDrawer = ({ event }: { event: any }) => {
+  if (!event) {
+    return <></>;
+  }
+  const drawerColumns: ColumnsType<any> = [
+    {
+      title: "Name",
+      dataIndex: "name",
+      width: "10em",
+      className: "align-top whitespace-nowrap",
+    },
+    {
+      title: "Value",
+      dataIndex: "value",
+    },
+  ];
+
+  const drawerData: { name: ReactNode; value: ReactNode }[] = [];
+  drawerData.push({ name: <UTCHeader />, value: <UTCDate date={event.date} /> });
+  drawerData.push({ name: "Response status", value: event.content.representation?.status });
+  drawerData.push({
+    name: "Response text",
+    value: (
+      <span className={"whitespace-pre-wrap break-all font-mono text-xs"}>
+        {event.content.representation?.response}
+      </span>
+    ),
+  });
+  drawerData.push({
+    name: "Full Info",
+    value: <JSONView data={event.content} />,
+  });
+
+  return (
+    <Table
+      bordered={true}
+      size={"middle"}
+      showHeader={false}
+      rowKey={"name"}
+      pagination={false}
+      columns={drawerColumns}
+      dataSource={drawerData}
     />
   );
 };
