@@ -7,6 +7,7 @@ import NodeCache from "node-cache";
 import { getOauthCreds } from "./lib/oauth";
 import { z } from "zod";
 import zlib from "zlib";
+import { parseNumber } from "juava";
 
 const API_VERSION = "v64.0"; // Update this to the latest Salesforce API version if needed
 
@@ -22,7 +23,18 @@ const Creds = z.object({
 
 type Creds = z.infer<typeof Creds>;
 
-type SalesforcePropertyPermissions = "u" | "c" | "f" | "" | "uc" | "uf" | "cf" | "ucf" | "ucr" | "cfr" | "ucfr";
+enum SalesforcePropertyPermissionBit {
+  Updateable,
+  Createable,
+  Filterable,
+  ExternalId,
+  Required,
+}
+type SalesforcePropertyPermissions = number;
+
+function hasPermission(prop: SalesforcePropertyPermissions, permissionBit: SalesforcePropertyPermissionBit): boolean {
+  return (prop & (1 << permissionBit)) > 0;
+}
 
 type Sobject = {
   name: string;
@@ -170,7 +182,7 @@ async function filterOutAvailableProperties(
   // check for required properties for insert operation
   if (operation === "insert") {
     for (const [prop, mod] of Object.entries(availableProps)) {
-      if (mod.includes("r") && !payload[prop]) {
+      if (hasPermission(mod, SalesforcePropertyPermissionBit.Required) && !payload[prop]) {
         throw new Error(`'${sobject}' object requires '${prop}' property`);
       }
     }
@@ -181,10 +193,10 @@ async function filterOutAvailableProperties(
       log(`Property '${key}' is not available in the '${sobject}' object's schema, removing from payload`);
       delete payload[key]; // Remove unavailable properties
     } else {
-      if (!prop.includes("u") && operation !== "insert") {
+      if (!hasPermission(prop, SalesforcePropertyPermissionBit.Updateable) && operation !== "insert") {
         log(`'${sobject}' object's property '${key}' is not updateable, removing from payload`);
         delete payload[key]; // Remove properties that are not updateable for update or upsert operations
-      } else if (!prop.includes("c") && operation === "insert") {
+      } else if (!hasPermission(prop, SalesforcePropertyPermissionBit.Createable) && operation === "insert") {
         log(`'${sobject}' object's property '${key}' is not createable, removing from payload`);
         delete payload[key]; // Remove properties that are not createable for insert operations
       }
@@ -285,6 +297,23 @@ const SalesforceDestination: JitsuFunction<AnalyticsServerEvent, SalesforceCrede
       envelope.SALESFORCE_OPERATION,
       "warn"
     );
+    if (["update", "upsert", "insert"].includes(envelope.SALESFORCE_OPERATION)) {
+      const newPayload = await performOps(
+        ctx,
+        cred,
+        envelope.SALESFORCE_SOBJECT,
+        envelope.SALESFORCE_PAYLOAD!,
+        envelope.SALESFORCE_OPERATION,
+        recordId
+      );
+      if (Object.keys(newPayload).length === 0) {
+        log.info(
+          `${envelope.SALESFORCE_SOBJECT} Id: ${recordId}. No properties changed, skipping ${envelope.SALESFORCE_OPERATION}`
+        );
+        return; // No properties to update, skip the request
+      }
+      envelope.SALESFORCE_PAYLOAD = newPayload;
+    }
   }
   let httpMethod = "POST";
   let httpPath = `/sobjects/${envelope.SALESFORCE_SOBJECT}`;
@@ -294,6 +323,7 @@ const SalesforceDestination: JitsuFunction<AnalyticsServerEvent, SalesforceCrede
   } else if (envelope.SALESFORCE_OPERATION === "delete") {
     httpMethod = "DELETE";
     httpPath += "/" + recordId;
+    envelope.SALESFORCE_PAYLOAD = undefined;
   }
   const slash = cred.instance_url.endsWith("/") ? "" : "/";
 
@@ -309,8 +339,7 @@ const SalesforceDestination: JitsuFunction<AnalyticsServerEvent, SalesforceCrede
       const result = await ctx.fetch(`${cred.instance_url}${slash}services/data/${API_VERSION}${httpRequest.path}`, {
         method,
         headers: {
-          "Content-type": "application/json",
-          "Content-Encoding": "gzip",
+          ...(httpRequest.payload ? { "Content-type": "application/json", "Content-Encoding": "gzip" } : {}),
           Authorization: `Bearer ${cred.access_token}`,
         },
         ...(httpRequest.payload ? { body: zlib.gzipSync(JSON.stringify(httpRequest.payload)) } : {}),
@@ -425,10 +454,13 @@ const availableProperties = async (
       const properties = Object.fromEntries(
         data.fields.map((f: any) => [
           f.name,
-          ((f.updateable ? "u" : "") +
-            (f.createable ? "c" : "") +
-            (f.filterable ? "f" : "") +
-            (f.createable && !f.nillable && !f.defaultedOnCreate ? "r" : "")) as SalesforcePropertyPermissions,
+          ((f.updateable ? 1 << SalesforcePropertyPermissionBit.Updateable : 0) |
+            (f.createable ? 1 << SalesforcePropertyPermissionBit.Createable : 0) |
+            (f.externalId ? 1 << SalesforcePropertyPermissionBit.ExternalId : 0) |
+            (f.filterable ? 1 << SalesforcePropertyPermissionBit.Filterable : 0) |
+            (f.createable && !f.nillable && !f.defaultedOnCreate
+              ? 1 << SalesforcePropertyPermissionBit.Required
+              : 0)) as SalesforcePropertyPermissions,
         ])
       );
       sobjectData = {
@@ -448,6 +480,100 @@ const availableProperties = async (
     throw new RetryError(`Error during SALESFORCE_PROPERTIES lookup: ${e.message}`);
   }
 };
+
+const Operations: Record<string, (sourceValue: any, eventValue: any) => any> = {
+  add: (sourceValue: any, eventValue: any) => {
+    return parseNumber(sourceValue, 0) + parseNumber(eventValue, 0);
+  },
+  dateAdd: (sourceValue: any, eventValue: any) => {
+    return new Date((sourceValue ? new Date(sourceValue).getTime() : Date.now()) + parseNumber(eventValue, 0) * 1000); // Add days to date
+  },
+  subtract: (sourceValue: any, eventValue: any) => {
+    return parseNumber(sourceValue, 0) - parseNumber(eventValue, 0);
+  },
+  dateSubtract: (sourceValue: any, eventValue: any) => {
+    return new Date((sourceValue ? new Date(sourceValue).getTime() : Date.now()) - parseNumber(eventValue, 0) * 1000); // Add days to date
+  },
+  multiply: (sourceValue: any, eventValue: any) => {
+    return parseNumber(sourceValue, 0) * parseNumber(eventValue, 1);
+  },
+  divide: (sourceValue: any, eventValue: any) => {
+    const divisor = parseNumber(eventValue, 1); // Avoid division by zero
+    if (divisor === 0) {
+      throw new Error("Division by zero is not allowed");
+    }
+    return parseNumber(sourceValue, 0) / divisor;
+  },
+  setOnce: (sourceValue: any, eventValue: any) => {
+    return sourceValue === undefined || sourceValue === null ? eventValue : sourceValue; // Set only if sourceValue is undefined
+  },
+  concat: (sourceValue: any, eventValue: any) => {
+    return `${sourceValue ?? ""}${eventValue ?? ""}`; // Concatenate values, treating undefined as empty string
+  },
+  prefix: (sourceValue: any, eventValue: any) => {
+    return `${eventValue ?? ""}${sourceValue ?? ""}`; // Prefix eventValue to sourceValue, treating undefined as empty string
+  },
+};
+
+type Operation = {
+  op: keyof typeof Operations;
+  value?: any;
+};
+
+async function performOps(
+  ctx: FullContext,
+  cred: Creds,
+  sobject: string,
+  payload: Record<string, any>,
+  operation: SalesforceEnvelope["SALESFORCE_OPERATION"],
+  recordId?: string
+): Promise<Record<string, any>> {
+  const operations: Record<string, Operation> = {};
+  const newPayload: Record<string, any> = {};
+  // Check that payload has operation object as value
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === "object" && value?.op) {
+      operations[key] = value;
+    }
+  }
+  if (operation === "insert" && Object.keys(operations).length === 0) {
+    return payload; // No operations to perform, return original payload
+  }
+  let sourceData: any = {};
+
+  if (recordId) {
+    const slash = cred.instance_url.endsWith("/") ? "" : "/";
+    const fieldsQuery = `?fields=${Object.keys(payload).join(",")}`;
+    const res = await ctx.fetch(
+      `${cred.instance_url}${slash}services/data/${API_VERSION}/sobjects/${sobject}/${recordId}${fieldsQuery}`,
+      {
+        headers: {
+          Authorization: `Bearer ${cred.access_token}`,
+        },
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch Salesforce object: ${res.status} ${await res.text()}`);
+    }
+    sourceData = await res.json();
+  }
+  for (const [key, pValue] of Object.entries(payload)) {
+    const sourceValue = sourceData[key];
+    let modifiedValue = pValue;
+    const op = operations[key];
+    if (op) {
+      if (!Operations[op.op]) {
+        ctx.log.error(`Unsupported operation '${op.op}' for property '${key}', skipping`);
+        continue; // Skip unsupported operations
+      }
+      modifiedValue = Operations[op.op](sourceValue, op.value);
+    }
+    if (modifiedValue !== sourceValue) {
+      newPayload[key] = modifiedValue;
+    }
+  }
+  return newPayload;
+}
 
 const lookupMatchers = async (
   ctx: FullContext,
