@@ -281,7 +281,10 @@ const exports: Export[] = [
               usesBulker: !!coreDestinationType?.usesBulker,
               options: {
                 ...data,
-                ...((workspace.featuresEnabled ?? []).includes("nofetchlogs") ? { fetchLogLevel: "debug" } : {}),
+                ...((workspace.featuresEnabled ?? []).includes("nofetchlogs") &&
+                data?.functionsEnv?.FETCH_LOGS_ENABLED !== "true"
+                  ? { fetchLogLevel: "debug" }
+                  : {}),
                 ...((workspace.featuresEnabled ?? []).includes("fastFunctions") ? { fastFunctions: true } : {}),
               },
               optionsHash: hash(data),
