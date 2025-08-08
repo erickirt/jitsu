@@ -415,6 +415,16 @@ export const emptyRuntime = (config: JitsuOptions): RuntimeFacade => ({
   },
 });
 
+function deepCopy(o) {
+  if (typeof o !== "object") {
+    return o;
+  }
+  if (!o) {
+    return o;
+  }
+  return JSON.parse(JSON.stringify(o));
+}
+
 function deepMerge(target: any, source: any) {
   if (typeof source !== "object" || source === null) {
     return source;
@@ -574,15 +584,17 @@ async function processDestinations(
   const promises: Promise<any>[] = [];
 
   for (const destination of destinations) {
-    let newEvents = [originalEvent];
+    let newEvents: AnalyticsClientEvent[] = [];
     if (destination.newEvents) {
       try {
         newEvents = destination.newEvents.map(e =>
-          e === "same" ? originalEvent : isDiff(e) ? diff.patch(originalEvent, e.__diff) : e
+          e === "same" ? deepCopy(originalEvent) : isDiff(e) ? diff.patch(deepCopy(originalEvent), e.__diff) : e
         );
       } catch (e) {
         console.error(`[JITSU] Error applying '${destination.id}' changes to event: ${e?.message}`, e);
       }
+    } else {
+      newEvents = [deepCopy(originalEvent)];
     }
     const credentials = { ...destination.credentials, ...destination.options };
 
