@@ -61,7 +61,6 @@
     "cookie": "1.0.1",
     "cuid": "^2.1.8",
     "dayjs": "^1.11.10",
-    "facebook-nodejs-business-sdk": "^21.0.2",
     "firebase": "^11.4.0",
     "firebase-admin": "^13.2.0",
     "google-ads-api": "^17.1.0-rest-beta",
