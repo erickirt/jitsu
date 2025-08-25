@@ -39,13 +39,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const firebaseEnabled = !!process.env.FIREBASE_AUTH;
     const dynamicOidcEnabled = isTruish(process.env.DYNAMIC_OIDC_ENABLED);
 
-    if (firebaseEnabled) {
-      const authMethod = await checkFirebaseUser(email);
-      if (authMethod) {
-        return res.json(authMethod);
-      }
-    }
-
     // Check if user exists in database with any login provider
     const existingUser = await db.prisma().userProfile.findFirst({
       where: {
@@ -53,21 +46,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    // If user exists, check their login provider
-    if (existingUser && !firebaseEnabled) {
+    if (dynamicOidcEnabled) {
+      const authMethod = await checkDynamicOidcUser(email, existingUser);
+      if (authMethod) {
+        return res.json(authMethod);
+      }
+    }
+
+    if (firebaseEnabled) {
+      const authMethod = await checkFirebaseUser(email);
+      if (authMethod) {
+        return res.json(authMethod);
+      }
+    } else if (existingUser) {
       // Check for nextauth login providers
       // TODO: we should replace hardcoded login providers with a dynamic list from nextauth config
       if (["github", "credentials", "oidc"].includes(existingUser.loginProvider)) {
         return res.json({
           type: "nextauth-" + existingUser.loginProvider,
         });
-      }
-    }
-
-    if (dynamicOidcEnabled) {
-      const authMethod = await checkDynamicOidcUser(email, existingUser);
-      if (authMethod) {
-        return res.json(authMethod);
       }
     }
 
