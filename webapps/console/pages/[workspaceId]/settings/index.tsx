@@ -118,12 +118,14 @@ function showInvitationLink(m: AntdModal, link: string) {
 export type {};
 
 function getIcon(provider: string) {
-  if (provider.indexOf("github") >= 0) {
-    return <FaGithub />;
-  } else if (provider.indexOf("google") >= 0) {
-    return <FaGoogle />;
-  } else if (provider.indexOf("credentials") >= 0) {
+  if (provider.indexOf("credentials") >= 0) {
     return <FiMail />;
+  } else if (provider.indexOf("github") >= 0) {
+    return <FaGithub />;
+  } else if (provider.indexOf("google") >= 0 || provider === "firebase") {
+    return <FaGoogle />;
+  } else if (provider.startsWith("dynamic-oidc/")) {
+    return <Key />;
   }
   return <FaUser />;
 }
