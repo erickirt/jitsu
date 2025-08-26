@@ -22,6 +22,26 @@ export const specialProperties = [
   "unsubscribed",
 ];
 
+const invalidDistinctIds = new Set([
+  "00000000-0000-0000-0000-000000000000",
+  "anon",
+  "anonymous",
+  "nil",
+  "none",
+  "null",
+  "n/a",
+  "na",
+  "undefined",
+  "unknown",
+  "<nil>",
+  "0",
+  "-1",
+  "true",
+  "false",
+  "[]",
+  "{}",
+]);
+
 const CLICK_IDS = ["dclid", "fbclid", "gclid", "ko_click_id", "li_fat_id", "msclkid", "ttclid", "twclid", "wbraid"];
 
 export type MixpanelRequest = {
@@ -204,6 +224,14 @@ function trackEvent(
     },
   };
   if (ctx["connectionOptions"]?.mode === "batch" && bulkerBase) {
+    let tableName = "import";
+    if (ctx["connectionOptions"]?.multithreading) {
+      const threadsCount = ctx["connectionOptions"]?.threadsCount || 2;
+      const thread = Math.floor(Math.random() * threadsCount);
+      if (thread > 0) {
+        tableName = `import_${thread + 1}`;
+      }
+    }
     const metricsMeta: Omit<MetricsMeta, "messageId"> = {
       workspaceId: ctx.workspace.id,
       streamId: ctx.source.id,
@@ -212,7 +240,7 @@ function trackEvent(
       functionId: "builtin.destination.bulker",
     };
     return {
-      url: `${bulkerBase}/post/${ctx.connection.id}?tableName=import&modeOverride=batch`,
+      url: `${bulkerBase}/post/${ctx.connection.id}?tableName=${tableName}&modeOverride=batch`,
       eventType,
       insertId,
       headers: {
@@ -506,6 +534,9 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
     return;
   }
   const distinctId = getDistinctId(ctx, event, deviceId);
+  if (invalidDistinctIds.has(distinctId)) {
+    throw new Error(`Invalid distinctId '${distinctId}'. Skipping event: ${JSON.stringify(event)}`);
+  }
   // no userId or email
   const isAnonymous = event.anonymousId && distinctId.endsWith(event.anonymousId);
   if (isAnonymous && !ctx.props.enableAnonymousUserProfiles) {
