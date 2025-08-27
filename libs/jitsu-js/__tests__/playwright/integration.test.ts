@@ -542,6 +542,104 @@ test("cookie-names", async ({ browser }) => {
   expect(requestLog[1].body.anonymousId).toEqual(anonymousId);
 });
 
+test("spa-navigation", async ({ browser }) => {
+  clearRequestLog();
+  const browserContext = await browser.newContext();
+  const { page, uncaughtErrors } = await createLoggingPage(browserContext);
+
+  const initialUrl = `${server.baseUrl}/spa-navigation.html`;
+  const pageResult = await page.goto(initialUrl);
+
+  await page.waitForFunction(() => window["jitsu"] !== undefined, undefined, {
+    timeout: 1000,
+    polling: 100,
+  });
+
+  expect(pageResult.status()).toBe(200);
+
+  await page.waitForFunction(() => window["__spaTestComplete"] === true, undefined, {
+    timeout: 2000,
+    polling: 100,
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  expect(uncaughtErrors.length).toEqual(0);
+
+  console.log(
+    `📝 Request log size of ${requestLog.length}`,
+    requestLog.map(x => describeEvent(x.type, x.body))
+  );
+
+  const pageEvents = requestLog.filter(x => x.type === "page");
+  const trackEvents = requestLog.filter(x => x.type === "track");
+
+  expect(pageEvents.length).toBe(6);
+  expect(trackEvents.length).toBe(6);
+
+  //expect(pageEvents[0].body.name).toBe("initial-page");
+  expect(pageEvents[0].body.properties.path).toBe("/spa-navigation.html");
+  expect(pageEvents[0].body.properties.url).toContain("/spa-navigation.html");
+  expect(pageEvents[0].body.context.page.path).toBe("/spa-navigation.html");
+  expect(pageEvents[0].body.context.page.url).toContain("/spa-navigation.html");
+
+  expect(pageEvents[1].body.properties.path).toBe("/page1");
+  expect(pageEvents[1].body.properties.url).toContain("/page1");
+  expect(pageEvents[1].body.properties.search).toBe("");
+  expect(pageEvents[1].body.properties.hash).toBe("");
+  expect(pageEvents[1].body.context.page.path).toBe("/page1");
+  expect(pageEvents[1].body.context.page.url).toContain("/page1");
+  expect(pageEvents[1].body.context.page.search).toBe("");
+
+  expect(pageEvents[2].body.properties.path).toBe("/page2");
+  expect(pageEvents[2].body.properties.url).toContain("/page2?param1=value1");
+  expect(pageEvents[2].body.properties.search).toBe("?param1=value1");
+  expect(pageEvents[2].body.properties.hash).toBe("");
+  expect(pageEvents[2].body.context.page.path).toBe("/page2");
+  expect(pageEvents[2].body.context.page.url).toContain("/page2?param1=value1");
+  expect(pageEvents[2].body.context.page.search).toBe("?param1=value1");
+
+  expect(pageEvents[3].body.properties.path).toBe("/page3");
+  expect(pageEvents[3].body.properties.url).toContain("/page3?param1=value1&param2=value2");
+  expect(pageEvents[3].body.properties.search).toBe("?param1=value1&param2=value2");
+  expect(pageEvents[3].body.properties.hash).toBe("#section1");
+  expect(pageEvents[3].body.context.page.path).toBe("/page3");
+  expect(pageEvents[3].body.context.page.url).toContain("/page3?param1=value1&param2=value2");
+  expect(pageEvents[3].body.context.page.search).toBe("?param1=value1&param2=value2");
+
+  expect(pageEvents[4].body.properties.path).toBe("/page4/subpage");
+  expect(pageEvents[4].body.properties.url).toContain("/page4/subpage");
+  expect(pageEvents[4].body.properties.search).toBe("");
+  expect(pageEvents[4].body.properties.hash).toBe("#section2");
+  expect(pageEvents[4].body.context.page.path).toBe("/page4/subpage");
+  expect(pageEvents[4].body.context.page.url).toContain("/page4/subpage");
+  expect(pageEvents[4].body.context.page.search).toBe("");
+
+  expect(pageEvents[5].body.properties.path).toBe("/final");
+  expect(pageEvents[5].body.properties.url).toContain("/final?utm_source=test&utm_medium=spa");
+  expect(pageEvents[5].body.properties.search).toBe("?utm_source=test&utm_medium=spa");
+  expect(pageEvents[5].body.properties.hash).toBe("#top");
+  expect(pageEvents[5].body.context.page.path).toBe("/final");
+  expect(pageEvents[5].body.context.page.url).toContain("/final?utm_source=test&utm_medium=spa");
+  expect(pageEvents[5].body.context.page.search).toBe("?utm_source=test&utm_medium=spa");
+
+  const navTrackEvents = trackEvents.filter(x => x.body.event === "navigation");
+  expect(navTrackEvents.length).toBe(5);
+
+  expect(navTrackEvents[0].body.context.page.path).toBe("/page1");
+  expect(navTrackEvents[1].body.context.page.url).toContain("/page2?param1=value1");
+  expect(navTrackEvents[1].body.context.page.path).toBe("/page2");
+  expect(navTrackEvents[1].body.context.page.search).toBe("?param1=value1");
+  expect(navTrackEvents[2].body.context.page.url).toContain("/page3?param1=value1&param2=value2#section1");
+  expect(navTrackEvents[2].body.context.page.path).toBe("/page3");
+  expect(navTrackEvents[2].body.context.page.search).toBe("?param1=value1&param2=value2");
+  expect(navTrackEvents[3].body.context.page.url).toContain("/page4/subpage#section2");
+  expect(navTrackEvents[3].body.context.page.path).toBe("/page4/subpage");
+  expect(navTrackEvents[4].body.context.page.url).toContain("/final?utm_source=test&utm_medium=spa#top");
+  expect(navTrackEvents[4].body.context.page.path).toBe("/final");
+  expect(navTrackEvents[4].body.context.page.search).toBe("?utm_source=test&utm_medium=spa");
+});
+
 test("basic", async ({ browser }) => {
   clearRequestLog();
   const browserContext = await browser.newContext();
