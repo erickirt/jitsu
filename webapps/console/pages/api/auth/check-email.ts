@@ -72,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // We don't want to reveal what user email we have registered so offer password login by default for non-existing users
     let defaultType: AuthMethod["type"] = "none";
     if (firebaseEnabled) {
-      defaultType = "firebase-password";
+      defaultType = "firebase-google";
     } else if (credentialsLoginEnabled) {
       defaultType = "nextauth-credentials";
     } else if (githubLoginEnabled) {
