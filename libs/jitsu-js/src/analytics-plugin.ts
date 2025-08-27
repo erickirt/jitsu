@@ -466,6 +466,27 @@ function urlPath(url) {
   return "/" + pathMatch;
 }
 
+function canonicalUrl() {
+  if (!isInBrowser()) return;
+  const tags = document.getElementsByTagName("link");
+  for (var i = 0, tag; (tag = tags[i]); i++) {
+    if (tag.getAttribute("rel") === "canonical") {
+      return tag.getAttribute("href");
+    }
+  }
+}
+
+/**
+ * bugged analytics.js logic that produces 'url' parameter by concating canonical URL with current search part
+ * I produces broken results in some cases like SPA where path is changed but canonical URL is not updated
+ */
+function analyticsJsUrl() {
+  if (!isInBrowser()) return;
+  const canonical = canonicalUrl();
+  if (!canonical) return window.location.href.replace(hashRegex, "");
+  return canonical.match(/\?/) ? canonical : canonical + window.location.search;
+}
+
 function adjustPayload(
   payload: any,
   config: JitsuOptions,
@@ -479,9 +500,16 @@ function adjustPayload(
   const properties = payload.properties || {};
 
   if (payload.type === "page" && (properties.url || url)) {
-    const targetUrl = properties.url || url;
+    // we don't trust analytics.js URL logic since it's sticks with canonical URL on SPA pages
+    let targetUrl = url || properties.url;
+    if (properties.url && properties.url !== analyticsJsUrl()) {
+      // properties.url is not the same as provided by analytics.js
+      // it means that it was not overridden by user and we should use it
+      targetUrl = properties.url;
+    }
     properties.url = targetUrl.replace(hashRegex, "");
     properties.path = fixPath(urlPath(targetUrl));
+    // other properties are correctly based on window.location in analytics.js
   }
 
   const customContext = deepMerge(
