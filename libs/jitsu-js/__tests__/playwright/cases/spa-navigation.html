@@ -7,7 +7,7 @@
     <title>SPA Navigation Test</title>
     <script>
       window.jitsuConfig = {
-        debug: true
+        debug: true,
       };
 
       window.testOnload = async j => {
@@ -22,29 +22,29 @@
           url.search = query;
           url.hash = hash;
 
-          window.history.pushState({}, '', url.toString());
+          window.history.pushState({}, "", url.toString());
           j.page();
           j.track("navigation");
         }
 
         setTimeout(() => {
-          simulateNavigation('/page1', '', '');
+          simulateNavigation("/page1", "", "");
         }, 100);
 
         setTimeout(() => {
-          simulateNavigation('/page2', '?param1=value1', '');
+          simulateNavigation("/page2", "?param1=value1", "");
         }, 200);
 
         setTimeout(() => {
-          simulateNavigation('/page3', '?param1=value1&param2=value2', '#section1');
+          simulateNavigation("/page3", "?param1=value1&param2=value2", "#section1");
         }, 300);
 
         setTimeout(() => {
-          simulateNavigation('/page4/subpage', '', '#section2');
+          simulateNavigation("/page4/subpage", "", "#section2");
         }, 400);
 
         setTimeout(() => {
-          simulateNavigation('/final', '?utm_source=test&utm_medium=spa', '#top');
+          simulateNavigation("/final", "?utm_source=test&utm_medium=spa", "#top");
         }, 500);
 
         setTimeout(() => {
