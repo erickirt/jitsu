@@ -38,18 +38,18 @@ export const EmailFirstLogin: React.FC<EmailFirstLoginProps> = ({ onPasswordLogi
         body: { email },
       });
 
-      setAuthMethod(result);
-
+      const authMethod = result[0];
+      setAuthMethod(authMethod);
       // Auto-trigger social login if applicable
-      switch (result.type) {
+      switch (authMethod.type) {
         case "firebase-google":
         case "firebase-github":
         case "nextauth-github":
         case "nextauth-oidc":
-          await onSSOLogin(result.type, result.type, email);
+          await onSSOLogin(authMethod.type, authMethod.type, email);
           break;
         case "dynamic-oidc":
-          await onSSOLogin(result.type, result.oidcProviderId, email);
+          await onSSOLogin(authMethod.type, authMethod.oidcProviderId, email);
       }
     } catch (err: any) {
       setError("Failed to check authentication method. Please try again.");
