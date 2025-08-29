@@ -371,7 +371,15 @@ const SalesforceDestination: JitsuFunction<AnalyticsServerEvent, SalesforceCrede
       }
     }
   } catch (e: any) {
-    throw new RetryError(e.message);
+    if (httpRequest.method === "PATCH" && e.message.includes("timeout")) {
+      // PATCH request may timeout while being successfully processed on Salesforce side
+      log.warn(
+        `Salesforce ${httpRequest.method} ${httpRequest.path}: Timeout error, but the request may have been successful. Error: ${e.message}`
+      );
+      return;
+    } else {
+      throw new RetryError(e.message);
+    }
   }
 };
 
