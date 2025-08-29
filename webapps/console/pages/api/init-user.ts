@@ -116,16 +116,6 @@ export default createRoute()
         await withProductAnalytics(p => p.track("user_created"), { user: { ...newUser, internalId: newUser.id }, req });
         await onUserCreated({ email: user.email, name: user.name });
       }
-      //????
-
-      //Check if user with given email has invite, if yes - return, and render page:
-      // - Accept invitation to XXX workspace (list all invites)
-      // - or create new workspace (/new-workspace link)
-
-      //If user has no invitation, DO NOT CREATE WORKSPACE, redirect to /new-workspace link
-      //ALSO, link from /workspaces should lead to /new-workspace
-
-      // /new-workspace is a new route that should create a workspace only if used filled all data
 
       const newWorkspace = await db
         .prisma()
@@ -137,8 +127,7 @@ export default createRoute()
         .log(`Created a new workspace ${newWorkspace.id} for user ${user.internalId} (${user.email}).`);
       return { user: user, firstWorkspaceId: newWorkspace.id, firstWorkspaceSlug: null, newUser: true };
     }
-    //Questionable logic, maybe we should verify that user still has access to the workspace and this worksapce
-    //is active
+
     const lastUsedWorkspaceId = (
       await getUserPreferenceService(db.prisma()).getPreferences({ userId: user.internalId })
     )?.lastUsedWorkspaceId;
