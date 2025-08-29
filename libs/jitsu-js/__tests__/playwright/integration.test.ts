@@ -736,3 +736,44 @@ test("basic", async ({ browser }) => {
     fs.writeFileSync(file, JSON.stringify(sortKeysRecursively(payload), null, 2));
   });
 });
+
+test("ga4_cookies", async ({ browser }) => {
+  clearRequestLog();
+  const browserContext = await browser.newContext();
+  await browserContext.addCookies([
+    // client id cookie
+    { name: "_ga", value: "GA1.1.808865741.1700468121", url: server.baseUrl },
+    // old session id cookies
+    { name: "_ga_OLDDEFGHI1", value: "GS1.1.1711045472.9.0.1711045472.0.0.0", url: server.baseUrl },
+    // new session id cookies
+    { name: "_ga_NEWDEFGHI2", value: "GS2.1.s1756461685$o733$g1$t1756461704$j41$l0$h0", url: server.baseUrl },
+    { name: "_ga_NEWDEFGHI3", value: "GS2.1.o733$g1$t1756461704$j41$l0$h0$s1756461686", url: server.baseUrl },
+  ]);
+
+  const { page: firstPage, uncaughtErrors: firstPageErrors } = await createLoggingPage(browserContext);
+  const [pageResult] = await Promise.all([
+    firstPage.goto(`${server.baseUrl}/basic.html?utm_source=source&utm_medium=medium&utm_campaign=campaign`),
+  ]);
+
+  await firstPage.waitForFunction(() => window["jitsu"] !== undefined, undefined, {
+    timeout: 1000,
+    polling: 100,
+  });
+  expect(pageResult.status()).toBe(200);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  console.log(
+    `📝 Request log size of ${requestLog.length}`,
+    requestLog.map(x => describeEvent(x.type, x.body))
+  );
+  let pages = requestLog.filter(x => x.type === "page");
+  expect(pages.length).toBe(1);
+
+  const page = pages[0].body as AnalyticsClientEvent;
+
+  console.log(chalk.bold("📝 Checking page event"), JSON.stringify(page, null, 3));
+  expect(page.context.clientIds.ga4.clientId).toBe("808865741.1700468121");
+  expect(page.context.clientIds.ga4.sessionIds).toHaveProperty("OLDDEFGHI1", "1711045472");
+  expect(page.context.clientIds.ga4.sessionIds).toHaveProperty("NEWDEFGHI2", "1756461685");
+  expect(page.context.clientIds.ga4.sessionIds).toHaveProperty("NEWDEFGHI3", "1756461686");
+});

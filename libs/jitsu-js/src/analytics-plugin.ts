@@ -167,6 +167,19 @@ function getClientIds(runtime: RuntimeFacade, customCookieCapture: Record<string
   };
 }
 
+function parseGa4SessionId(cookieValue: string) {
+  if (typeof cookieValue !== "string") {
+    return undefined;
+  }
+  if (cookieValue.startsWith("GA1") || cookieValue.startsWith("GS1")) {
+    return cookieValue.split(".")[2];
+  } else {
+    // parse new GA4 cookie format, e.g.: GS2.1.s1747323152$o28$g0$t1747323152$j60$l0$h69286059
+    const match = cookieValue.match(/^GS\d+\.\d+\.(?:\w+[$])*s(\d+)(?:$|[$])/);
+    return match ? match[1] : undefined;
+  }
+}
+
 function getGa4Ids(runtime: RuntimeFacade) {
   const allCookies = runtime.getCookies();
   const clientId = allCookies["_ga"]?.split(".").slice(-2).join(".");
@@ -176,14 +189,11 @@ function getGa4Ids(runtime: RuntimeFacade) {
       ? Object.fromEntries(
           gaSessionCookies
             .map(([key, value]) => {
-              if (typeof value !== "string") {
+              const sessionId = parseGa4SessionId(value);
+              if (!sessionId) {
                 return null;
               }
-              const parts = value.split(".");
-              if (parts.length < 3) {
-                return null;
-              }
-              return [key.substring("_ga_".length), parts[2]];
+              return [key.substring("_ga_".length), sessionId];
             })
             .filter(v => v !== null)
         )
