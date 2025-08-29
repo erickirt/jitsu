@@ -175,7 +175,7 @@ function parseGa4SessionId(cookieValue: string) {
     return cookieValue.split(".")[2];
   } else {
     // parse new GA4 cookie format, e.g.: GS2.1.s1747323152$o28$g0$t1747323152$j60$l0$h69286059
-    const match = cookieValue.match(/^GS\d+\.\d+\.(?:\w+[$])*s(\d+)(?:$|[$])/);
+    const match = cookieValue.match(/^GS\d+\.\d+\.(?:[\w_-]+[$])*s(\d+)(?:$|[$])/);
     return match ? match[1] : undefined;
   }
 }
