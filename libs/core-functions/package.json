@@ -37,6 +37,7 @@
     "@hubspot/api-client": "^11.1.0",
     "@mongodb-js/zstd": "^2.0.1",
     "undici": "^7.11.0",
+    "ip": "^2.0.1",
     "agentkeepalive": "4.3.0",
     "dayjs": "^1.11.10",
     "google-ads-api": "^17.1.0-rest-beta",
