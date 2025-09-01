@@ -32,6 +32,10 @@ import {
 
 const log = getLog("functions-context");
 
+const fetchForbiddenHostnames = process.env.FETCH_FORBIDDEN_HOSTNAMES
+  ? process.env.FETCH_FORBIDDEN_HOSTNAMES.split(",").map(h => h.trim().toLowerCase())
+  : [];
+
 /**
  * Store for incoming events, destination results and function log messages
  */
@@ -392,6 +396,10 @@ export const makeFetch = (
 
     let fetchResult: any = undefined;
     try {
+      const host = new URL(url).hostname; //this will throw if url is invalid
+      if (fetchForbiddenHostnames.includes(host.toLowerCase())) {
+        throw newError(`fetch failed`);
+      }
       const throttleValue = throttle.throttle();
       if (throttleValue > 0 && Math.random() < throttleValue) {
         const e = new Error(`Fetch request throttled because of timeout rate: ${throttleValue}`);
