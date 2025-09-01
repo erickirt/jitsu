@@ -23,18 +23,24 @@ import {
   getErrorMessage,
   getLog,
   getThrottle,
+  isTruish,
   LogLevel,
   LogMessageBuilder,
   newError,
   noThrottle,
   stopwatch,
 } from "juava";
+import * as dns from "node:dns";
+import ip from "ip";
+import NodeCache from "node-cache";
 
 const log = getLog("functions-context");
 
 const fetchForbiddenHostnames = process.env.FETCH_FORBIDDEN_HOSTNAMES
   ? process.env.FETCH_FORBIDDEN_HOSTNAMES.split(",").map(h => h.trim().toLowerCase())
   : [];
+const fetchForbidLocal = isTruish(process.env.FETCH_FORBID_LOCAL);
+const publicHostnamesCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false });
 
 /**
  * Store for incoming events, destination results and function log messages
@@ -368,6 +374,26 @@ export const makeFetch = (
 ) => {
   const throttle = connectionId === "clke5lrfm0000ii0gahryc37d-wbyo-5jyq-KIMXwt" ? getThrottle(5000) : noThrottle();
 
+  async function isPublic(hostname: string) {
+    const cached = publicHostnamesCache.get(hostname);
+    if (typeof cached !== "undefined") {
+      return cached as boolean;
+    }
+    const addresses = await dns.promises.lookup(hostname, { all: true });
+    if (addresses.length === 0) {
+      publicHostnamesCache.set(hostname, false);
+      return false;
+    }
+    for (const addr of addresses) {
+      if (ip.isPrivate(addr.address)) {
+        publicHostnamesCache.set(hostname, false);
+        return false;
+      }
+    }
+    publicHostnamesCache.set(hostname, true);
+    return true;
+  }
+
   return async (
     url: string,
     init?: FetchOpts,
@@ -398,6 +424,9 @@ export const makeFetch = (
     try {
       const host = new URL(url).hostname; //this will throw if url is invalid
       if (fetchForbiddenHostnames.includes(host.toLowerCase())) {
+        throw newError(`fetch failed`);
+      }
+      if (fetchForbidLocal && !(await isPublic(host))) {
         throw newError(`fetch failed`);
       }
       const throttleValue = throttle.throttle();
