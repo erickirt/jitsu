@@ -36,10 +36,10 @@ import NodeCache from "node-cache";
 
 const log = getLog("functions-context");
 
-const fetchForbiddenHostnames = process.env.FETCH_FORBIDDEN_HOSTNAMES
-  ? process.env.FETCH_FORBIDDEN_HOSTNAMES.split(",").map(h => h.trim().toLowerCase())
-  : [];
 const fetchForbidLocal = isTruish(process.env.FETCH_FORBID_LOCAL);
+const fetchLocalWhitelist = process.env.FETCH_LOCAL_WHITELIST
+  ? process.env.FETCH_LOCAL_WHITELIST.split(",").map(h => h.trim().toLowerCase())
+  : [];
 const publicHostnamesCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false });
 
 /**
@@ -423,10 +423,7 @@ export const makeFetch = (
     let fetchResult: any = undefined;
     try {
       const host = new URL(url).hostname; //this will throw if url is invalid
-      if (fetchForbiddenHostnames.includes(host.toLowerCase())) {
-        throw newError(`fetch failed`);
-      }
-      if (fetchForbidLocal && !(await isPublic(host))) {
+      if (fetchForbidLocal && !fetchLocalWhitelist.includes(host.toLowerCase()) && !(await isPublic(host))) {
         throw newError(`fetch failed`);
       }
       const throttleValue = throttle.throttle();
