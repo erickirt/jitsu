@@ -15,3 +15,4 @@ export * from "./number";
 export * from "./throttle";
 export * from "./objects";
 export * from "./strings";
+export * from "./date";

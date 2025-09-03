@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { JitsuFunction } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
-import { getSingleton, parseNumber } from "juava";
+import { getSingleton, parseDate, parseNumber } from "juava";
 import { MongoClient } from "mongodb";
 import { createHash } from "crypto";
 import { mongodb } from "./lib/mongodb";
@@ -146,6 +146,7 @@ export const ProfilesFunction: JitsuFunction<AnalyticsServerEvent, ProfilesConfi
       [profileIdColumn]: profileId,
     };
     transfer(obj, event, [ProfileIdParameter]);
+    obj["timestamp"] = parseDate(event.timestamp, new Date());
 
     const res = await mongo
       .db(config.eventsDatabase)
@@ -203,7 +204,6 @@ export async function pbEnsureMongoCollection(
       return;
     }
     const collection = await db.createCollection(collectionName, {
-      expireAfterSeconds: 60 * 60 * 24 * ttlDays,
       clusteredIndex: {
         key: { _id: 1 },
         unique: true,
@@ -211,6 +211,7 @@ export async function pbEnsureMongoCollection(
       writeConcern: { w: 1, journal: false },
       storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } },
     });
+    await collection.createIndex({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * ttlDays });
     if (indexFields.length > 0) {
       const index = {};
       indexFields.forEach(field => {
