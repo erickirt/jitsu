@@ -4,6 +4,8 @@ import { db } from "../../../lib/server/db";
 import { requireDefined } from "juava";
 import { withProductAnalytics } from "../../../lib/server/telemetry";
 import { WorkspaceDbModel } from "../../../prisma/schema";
+import { validateSlug, validateWorkspaceName } from "./validate";
+import { ApiError } from "../../../lib/shared/errors";
 
 const MAX_LIMIT = 1_000_000;
 
@@ -132,16 +134,43 @@ const api: Api = {
   POST: {
     auth: true,
     types: {
-      body: z.object({ name: z.string().optional() }),
+      body: z.object({
+        name: z.string().optional(),
+        slug: z.string().optional(),
+      }),
+      query: z
+        .object({
+          onboarding: z.string().optional(),
+        })
+        .optional(),
     },
-    handle: async ({ req, user, body }) => {
+    handle: async ({ req, user, body, query }) => {
+      // Validate workspace name to prevent HTML injection
+      const nameResult = validateWorkspaceName(body.name || "");
+      if (!nameResult.valid) {
+        throw new ApiError(`Invalid workspace name: ${nameResult.reason}`, { status: 400 });
+      }
+      const slugResult = await validateSlug(body.slug || "", undefined);
+      if (!slugResult.valid) {
+        throw new ApiError(`Invalid workspace slug: ${slugResult.reason}`, { status: 400 });
+      }
+
       const newWorkspace = await db.prisma().workspace.create({
-        data: { name: body.name || `${user.name || user.email || user.externalId}'s new workspace` },
+        data: {
+          name: body.name.trim(),
+          slug: body.slug.trim(),
+        },
       });
       await db.prisma().workspaceAccess.create({
         data: { userId: user.internalId, workspaceId: newWorkspace.id, role: "owner" },
       });
       await withProductAnalytics(p => p.track("workspace_created"), { user, workspace: newWorkspace, req });
+
+      // Fire workspace_onboarded event if this is part of onboarding flow
+      if (query?.onboarding === "true") {
+        await withProductAnalytics(p => p.track("workspace_onboarded"), { user, workspace: newWorkspace, req });
+      }
+
       return { id: newWorkspace.id };
     },
   },
