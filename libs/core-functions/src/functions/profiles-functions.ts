@@ -104,6 +104,7 @@ export const ProfilesFunction: JitsuFunction<AnalyticsServerEvent, ProfilesConfi
       config.traitsCollectionName,
       config.profileWindowDays,
       [profileIdColumn],
+      "updatedAt",
       true
     );
 
@@ -186,6 +187,7 @@ export async function pbEnsureMongoCollection(
   collectionName: string,
   ttlDays: number,
   indexFields: string[] = [],
+  ttlColumn: string = "timestamp",
   unique?: boolean
 ) {
   if (MongoCreatedCollections.has(collectionName)) {
@@ -211,7 +213,7 @@ export async function pbEnsureMongoCollection(
       writeConcern: { w: 1, journal: false },
       storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } },
     });
-    await collection.createIndex({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * ttlDays });
+    await collection.createIndex({ [ttlColumn]: 1 }, { expireAfterSeconds: 60 * 60 * 24 * ttlDays });
     if (indexFields.length > 0) {
       const index = {};
       indexFields.forEach(field => {

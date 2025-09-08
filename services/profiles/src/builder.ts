@@ -135,6 +135,7 @@ export async function profileBuilder(
     config.traitsCollectionName,
     config.profileWindowDays,
     [profileIdColumn],
+    "updatedAt",
     true
   );
 
