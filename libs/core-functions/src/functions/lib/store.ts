@@ -154,6 +154,10 @@ export const createMongoStore = (
         return col;
       }
       collection = await db.createCollection<StoreValue>(namespace, {
+        clusteredIndex: {
+          key: { _id: 1 },
+          unique: true,
+        },
         storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } },
       });
       await collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
