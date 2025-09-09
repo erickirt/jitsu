@@ -13,7 +13,7 @@ import { AnalyticsServerEvent, DataLayoutType } from "@jitsu/protocols/analytics
 
 import { request, Agent } from "undici";
 import omit from "lodash/omit";
-import { MetricsMeta } from "./lib";
+import { bulkerPartitionParam, MetricsMeta } from "./lib";
 import { UserRecognitionParameter } from "./user-recognition";
 import { parseNumber } from "juava";
 
@@ -241,14 +241,17 @@ const BulkerDestination: JitsuFunction<AnalyticsServerEvent, BulkerDestinationCo
       if (streamOptions && Object.keys(streamOptions).length > 0) {
         headers["streamOptions"] = JSON.stringify(streamOptions);
       }
-      const res = await request(`${bulkerEndpoint}/post/${destinationId}?tableName=${table}`, {
-        method: "POST",
-        headers,
-        body: payload,
-        bodyTimeout: fetchTimeoutMs,
-        headersTimeout: fetchTimeoutMs,
-        dispatcher: undiciAgent,
-      });
+      const res = await request(
+        `${bulkerEndpoint}/post/${destinationId}?tableName=${table}${bulkerPartitionParam(ctx, event)}`,
+        {
+          method: "POST",
+          headers,
+          body: payload,
+          bodyTimeout: fetchTimeoutMs,
+          headersTimeout: fetchTimeoutMs,
+          dispatcher: undiciAgent,
+        }
+      );
       if (res.statusCode != 200) {
         throw new HTTPError(`HTTP Error: ${res.statusCode}`, res.statusCode, await res.body.text());
       } else {

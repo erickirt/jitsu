@@ -23,6 +23,7 @@ import {
   getErrorMessage,
   getLog,
   getThrottle,
+  int32Hash,
   isTruish,
   LogLevel,
   LogMessageBuilder,
@@ -512,4 +513,18 @@ function tryJson(text: string, maxLen: number = 1000): any {
   } catch (err) {
     return text;
   }
+}
+
+export function bulkerPartitionParam(ctx: FullContext, event: AnalyticsServerEvent): string {
+  let partitionParam = "";
+  if (ctx["connectionOptions"]?.multithreading) {
+    const threadsCount = ctx["connectionOptions"]?.threadsCount || 2;
+    const thread = event.messageId
+      ? int32Hash(event.messageId) % threadsCount
+      : Math.floor(Math.random() * threadsCount);
+    if (thread > 0) {
+      partitionParam = `&partition=${thread}`;
+    }
+  }
+  return partitionParam;
 }

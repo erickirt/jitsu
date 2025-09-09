@@ -3,7 +3,7 @@ import { HTTPError, RetryError } from "@jitsu/functions-lib";
 import type { AnalyticsServerEvent, Geo } from "@jitsu/protocols/analytics";
 import { hash } from "juava";
 import { MixpanelCredentials } from "../meta";
-import { eventTimeSafeMs, getPageOrScreenProps, MetricsMeta } from "./lib";
+import { bulkerPartitionParam, eventTimeSafeMs, getPageOrScreenProps, MetricsMeta } from "./lib";
 import { randomUUID } from "crypto";
 import zlib from "zlib";
 
@@ -135,13 +135,13 @@ function clickParams(url: string) {
 }
 
 function trackEvent(
-  ctx: FullContext,
+  ctx: FullContext<MixpanelCredentials>,
   deviceId: string,
   distinctId: string,
   eventType: string,
   event: AnalyticsServerEvent
 ): MixpanelRequest {
-  const opts = ctx.props as MixpanelCredentials;
+  const opts = ctx.props;
   const analyticsContext = event.context || {};
   const traits = { ...(event.traits || analyticsContext.traits || {}) };
   specialProperties.forEach(prop => {
@@ -225,13 +225,6 @@ function trackEvent(
   };
   if (ctx["connectionOptions"]?.mode === "batch" && bulkerBase) {
     let tableName = "import";
-    if (ctx["connectionOptions"]?.multithreading) {
-      const threadsCount = ctx["connectionOptions"]?.threadsCount || 2;
-      const thread = Math.floor(Math.random() * threadsCount);
-      if (thread > 0) {
-        tableName = `import_${thread + 1}`;
-      }
-    }
     const metricsMeta: Omit<MetricsMeta, "messageId"> = {
       workspaceId: ctx.workspace.id,
       streamId: ctx.source.id,
@@ -240,7 +233,10 @@ function trackEvent(
       functionId: "builtin.destination.bulker",
     };
     return {
-      url: `${bulkerBase}/post/${ctx.connection.id}?tableName=${tableName}&modeOverride=batch`,
+      url: `${bulkerBase}/post/${ctx.connection.id}?tableName=${tableName}&modeOverride=batch${bulkerPartitionParam(
+        ctx,
+        event
+      )}`,
       eventType,
       insertId,
       headers: {
@@ -252,7 +248,7 @@ function trackEvent(
     };
   } else {
     return {
-      url: `https://api.mixpanel.com/import?strict=1&project_id=${opts.projectId}`,
+      url: `https://${apiHost(opts)}/import?strict=1&project_id=${opts.projectId}`,
       eventType,
       insertId,
       headers: {
@@ -266,8 +262,12 @@ function trackEvent(
   }
 }
 
-function setProfileMessage(ctx: FullContext, distinctId: string, event: AnalyticsServerEvent): MixpanelRequest[] {
-  const opts = ctx.props as MixpanelCredentials;
+function setProfileMessage(
+  ctx: FullContext<MixpanelCredentials>,
+  distinctId: string,
+  event: AnalyticsServerEvent
+): MixpanelRequest[] {
+  const opts = ctx.props;
 
   const analyticsContext = event.context || {};
   const traits = { ...(event.traits || analyticsContext.traits || {}) };
@@ -306,7 +306,7 @@ function setProfileMessage(ctx: FullContext, distinctId: string, event: Analytic
   }
 
   const ip = analyticsContext.ip;
-  const engageUrl = `https://api.mixpanel.com/engage?verbose=1${ip ? "" : "&ip=0"}`;
+  const engageUrl = `https://${apiHost(opts)}/engage?verbose=1${ip ? "" : "&ip=0"}`;
   const reqs: MixpanelRequest[] = [
     {
       url: engageUrl + "#profile-set",
@@ -379,7 +379,8 @@ function setProfileMessage(ctx: FullContext, distinctId: string, event: Analytic
   return reqs;
 }
 
-function setGroupMessage(event: AnalyticsServerEvent, opts: MixpanelCredentials): MixpanelRequest {
+function setGroupMessage(ctx: FullContext<MixpanelCredentials>, event: AnalyticsServerEvent): MixpanelRequest {
+  const opts = ctx.props;
   const props = { ...(event.traits || {}) };
   specialProperties.forEach(prop => {
     if (props[prop]) {
@@ -396,7 +397,7 @@ function setGroupMessage(event: AnalyticsServerEvent, opts: MixpanelCredentials)
   };
 
   return {
-    url: "https://api.mixpanel.com/groups?verbose=1#group-set",
+    url: `https://${apiHost(opts)}/groups?verbose=1#group-set`,
     eventType: "group-set",
     headers: {
       "Content-type": "application/json",
@@ -418,17 +419,22 @@ function getInsertId(messageId: string, eventType: string) {
   return hash("md5", (messageId || randomUUID()) + "_" + eventType);
 }
 
-function merge(ctx: FullContext, messageId: string, identifiedId: string, anonymousId: string): MixpanelRequest[] {
+function merge(
+  ctx: FullContext<MixpanelCredentials>,
+  messageId: string,
+  identifiedId: string,
+  anonymousId: string
+): MixpanelRequest[] {
   if (!anonymousId) {
     return [];
   }
-  const opts = ctx.props as MixpanelCredentials;
+  const opts = ctx.props;
   const basicAuth = getAuth(opts);
   const insertId = getInsertId(messageId, "merge");
 
   return [
     {
-      url: `https://api.mixpanel.com/import?strict=1&project_id=${opts.projectId}`,
+      url: `https://${apiHost(opts)}/import?strict=1&project_id=${opts.projectId}`,
       headers: {
         "Content-type": "application/json",
         Accept: "text-plain",
@@ -450,16 +456,21 @@ function merge(ctx: FullContext, messageId: string, identifiedId: string, anonym
   ];
 }
 
-function alias(ctx: FullContext, messageId: string, identifiedId: string, anonymousId: string): MixpanelRequest[] {
+function alias(
+  ctx: FullContext<MixpanelCredentials>,
+  messageId: string,
+  identifiedId: string,
+  anonymousId: string
+): MixpanelRequest[] {
   if (!anonymousId) {
     return [];
   }
-  const opts = ctx.props as MixpanelCredentials;
+  const opts = ctx.props;
   const basicAuth = getAuth(opts);
   const insertId = getInsertId(messageId, "alias");
   return [
     {
-      url: `https://api.mixpanel.com/import?strict=1&project_id=${opts.projectId}`,
+      url: `https://${apiHost(opts)}/import?strict=1&project_id=${opts.projectId}`,
       headers: {
         "Content-type": "application/json",
         Accept: "text-plain",
@@ -561,7 +572,7 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
       }
     } else {
       if (event.type === "group" && ctx.props.enableGroupAnalytics) {
-        messages.push(setGroupMessage(event, ctx.props));
+        messages.push(setGroupMessage(ctx, event));
       } else if (event.type === "track") {
         messages.push(trackEvent(ctx, deviceId, distinctId, event.event as string, event));
       } else if (event.type === "page" && trackPageView) {
@@ -615,6 +626,10 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
     throw new RetryError(e.message);
   }
 };
+
+function apiHost(props: MixpanelCredentials) {
+  return props.dataResidency === "EU" ? "api-eu.mixpanel.com" : "api.mixpanel.com";
+}
 
 MixpanelDestination.displayName = "mixpanel-destination";
 

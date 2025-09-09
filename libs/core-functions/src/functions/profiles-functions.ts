@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { JitsuFunction } from "@jitsu/protocols/functions";
 import { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
-import { getSingleton, parseDate, parseNumber } from "juava";
+import { getSingleton, parseDate, parseNumber, int32Hash, hash } from "juava";
 import { MongoClient } from "mongodb";
-import { createHash } from "crypto";
 import { mongodb } from "./lib/mongodb";
 import { HTTPError, transfer } from "@jitsu/functions-lib";
 import { undiciAgent } from "./bulker-destination";
@@ -17,8 +16,6 @@ export const profileIdHashColumn = "_profile_id_hash";
 export const profileIdColumn = "_profile_id";
 export const ProfileIdParameter = "JITSU_PROFILE_ID";
 export const ProfilePriorityParameter = "__PROFILE_PROCESSING_PRIORITY";
-
-export const idHash32MaxValue = 2147483647;
 
 export const ProfilesConfig = z.object({
   profileBuilderId: z.string(),
@@ -53,18 +50,6 @@ export const createClient = async (config: { mongoUrl: string }) => {
 
   return client;
 };
-
-export function hash(algorithm: string, value: string) {
-  return createHash(algorithm).update(value).digest("hex");
-}
-
-export function int32Hash(value) {
-  // Hash the value using SHA-256 (or another algorithm if desired)
-  const h = hash("sha256", value);
-
-  // Convert the first 8 characters of the hash (or more) to an integer
-  return parseInt(h.substring(0, 8), 16) % idHash32MaxValue;
-}
 
 export const ProfilesFunction: JitsuFunction<AnalyticsServerEvent, ProfilesConfig> = async (event, ctx) => {
   const config = ProfilesConfig.parse(ctx.props || {});

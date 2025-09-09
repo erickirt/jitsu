@@ -2,7 +2,7 @@ import { JitsuFunction } from "@jitsu/protocols/functions";
 import { HTTPError, RetryError } from "@jitsu/functions-lib";
 import type { AnalyticsServerEvent } from "@jitsu/protocols/analytics";
 import { WebhookDestinationConfig } from "../meta";
-import { MetricsMeta } from "./lib";
+import { bulkerPartitionParam, MetricsMeta } from "./lib";
 
 const bulkerBase = process.env.BULKER_URL;
 const bulkerAuthKey = process.env.BULKER_AUTH_KEY;
@@ -21,7 +21,9 @@ const WebhookDestination: JitsuFunction<AnalyticsServerEvent, WebhookDestination
 
     try {
       const res = await ctx.fetch(
-        `${bulkerBase}/post/${ctx.connection.id}?tableName=${event.event || event.type}&modeOverride=batch`,
+        `${bulkerBase}/post/${ctx.connection.id}?tableName=${
+          event.event || event.type
+        }&modeOverride=batch${bulkerPartitionParam(ctx, event)}`,
         {
           method: "POST",
           body: JSON.stringify(event),
