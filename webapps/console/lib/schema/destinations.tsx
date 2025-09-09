@@ -161,6 +161,8 @@ export const BaseBulkerConnectionOptions = z
       .default("segment-single-table"),
     schemaFreeze: z.boolean().default(false),
     keepOriginalNames: z.boolean().default(false),
+    multithreading: z.boolean().optional(),
+    threadsCount: z.number().optional(),
   })
   .merge(BatchModeOptions)
   .merge(FunctionsConnectionOptions);
