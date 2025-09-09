@@ -5,13 +5,12 @@ import { getServerLog } from "../../../../lib/server/log";
 import {
   ProfilesConfig,
   createClient,
-  int32Hash,
   profileIdHashColumn,
   profileIdColumn,
 } from "@jitsu/core-functions/src/functions/profiles-functions";
 import { mongodb } from "@jitsu/core-functions/src/functions/lib/mongodb";
 
-import { getSingleton, hash } from "juava";
+import { getSingleton, hash, int32Hash } from "juava";
 import omit from "lodash/omit";
 
 const log = getServerLog("profile-builder-events");

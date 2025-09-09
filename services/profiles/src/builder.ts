@@ -5,7 +5,6 @@ import {
   ProfilesConfig,
   pbEnsureMongoCollection,
   profileIdHashColumn,
-  int32Hash,
   EventsStore,
   bulkerDestination,
   FunctionContext,
@@ -16,7 +15,7 @@ import {
 } from "@jitsu/core-functions";
 import { FindCursor, AggregationCursor, MongoClient, WithId, Document, ReadPreference } from "mongodb";
 import { db, ProfileBuilderQueueInfo } from "./lib/db";
-import { getLog, getSingleton, hash, LogFactory, parseNumber, requireDefined, stopwatch } from "juava";
+import { getLog, getSingleton, hash, LogFactory, parseNumber, requireDefined, stopwatch, int32Hash } from "juava";
 import NodeCache from "node-cache";
 import { buildFunctionChain, FuncChain, runChain } from "./lib/functions-chain";
 import { FullContext } from "@jitsu/protocols/functions";

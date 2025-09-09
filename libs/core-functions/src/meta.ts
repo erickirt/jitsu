@@ -71,6 +71,7 @@ export const IntercomDestinationCredentials = z.object({
 export type IntercomDestinationCredentials = z.infer<typeof IntercomDestinationCredentials>;
 
 export const MixpanelCredentials = z.object({
+  dataResidency: z.enum(["US", "EU"]).optional().default("US"),
   simplifiedIdMerge: z
     .boolean()
     .optional()

@@ -152,6 +152,7 @@ export const destinationMappings: Record<string, DestinationMapping> = {
     type: "mixpanel",
     credentialsFunc: _formData => {
       const mixpanelCred: MixpanelCredentials = {
+        dataResidency: "US",
         projectId: _formData.project_id,
         serviceAccountUserName: "",
         serviceAccountPassword: "",
@@ -170,6 +171,7 @@ export const destinationMappings: Record<string, DestinationMapping> = {
   mixpanel: {
     credentialsFunc: _formData => {
       const mixpanelCred: MixpanelCredentials = {
+        dataResidency: "US",
         projectId: "",
         serviceAccountUserName: "",
         serviceAccountPassword: "",
