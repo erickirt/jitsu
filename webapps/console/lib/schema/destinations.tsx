@@ -163,6 +163,7 @@ export const BaseBulkerConnectionOptions = z
     keepOriginalNames: z.boolean().default(false),
     multithreading: z.boolean().optional(),
     threadsCount: z.number().optional(),
+    spreadTablesSchedule: z.boolean().optional(),
   })
   .merge(BatchModeOptions)
   .merge(FunctionsConnectionOptions);
