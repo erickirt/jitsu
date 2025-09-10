@@ -154,7 +154,7 @@ export const BaseBulkerConnectionOptions = z
     mode: z.enum(["stream", "batch"]).default("batch"),
     primaryKey: z.string().default("message_id"),
     deduplicate: z.boolean().default(true),
-    deduplicateWindow: z.number().default(365),
+    deduplicateWindow: z.number().default(31),
     timestampColumn: z.string().default("timestamp"),
     dataLayout: z
       .enum(["segment", "jitsu-legacy", "segment-single-table", "passthrough"])
