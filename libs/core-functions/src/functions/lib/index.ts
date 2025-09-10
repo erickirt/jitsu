@@ -520,8 +520,8 @@ export function bulkerPartitionParam(ctx: FullContext, event: AnalyticsServerEve
   if (ctx["connectionOptions"]?.multithreading) {
     const threadsCount = ctx["connectionOptions"]?.threadsCount || 2;
     const thread = event.messageId
-      ? int32Hash(event.messageId) % threadsCount
-      : Math.floor(Math.random() * threadsCount);
+      ? (int32Hash(event.messageId) % (threadsCount - 1)) + 1
+      : Math.floor(Math.random() * (threadsCount - 1)) + 1;
     if (thread > 0) {
       partitionParam = `&partition=${thread}`;
     }
