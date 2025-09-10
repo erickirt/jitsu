@@ -492,7 +492,7 @@ function ConnectionEditor({
       name: "Deduplicate Window",
       component: (
         <InputNumber
-          value={connectionOptions.deduplicateWindow || 365}
+          value={connectionOptions.deduplicateWindow || 31}
           disabled={
             !canEdit ||
             connectionOptions.primaryKey === "" ||
@@ -504,7 +504,7 @@ function ConnectionEditor({
           className="w-36"
           min={1}
           max={1000000}
-          onChange={deduplicateWindow => updateOptions({ deduplicateWindow: deduplicateWindow ?? 365 })}
+          onChange={deduplicateWindow => updateOptions({ deduplicateWindow: deduplicateWindow ?? 31 })}
         />
       ),
     });
