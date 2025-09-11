@@ -16,7 +16,6 @@
     "build": "turbo run build",
     "ee-api:dev": "dotenv -e .env.local -- turbo run ee-api:dev",
     "console:dev": "dotenv -e .env.local -- turbo run console:dev",
-    "console:storybook": "dotenv -e .env.local -- turbo run console:storybook",
     "rotor:dev": "dotenv -e .env.local -- turbo run rotor:dev",
     "console:start": "dotenv -e .env.local -- turbo run console:start",
     "console:db-prepare": "dotenv -e .env.local -- pnpm run --filter=console db:update-schema",
@@ -50,6 +49,7 @@
   },
   "pnpm": {
     "overrides": {
+      "form-data": "^4.0.4",
       "zstd-napi": "^0.0.10",
       "nth-check": "2.1.1",
       "nanoid": "3.3.8",
