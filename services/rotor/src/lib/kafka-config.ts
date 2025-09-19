@@ -1,23 +1,18 @@
-import { Kafka, logLevel, CompressionCodecs, CompressionTypes } from "kafkajs";
-import SnappyCodec from "kafkajs-snappy";
-import "@sensejs/kafkajs-zstd-support";
+import { KafkaJS, GlobalConfig } from "@confluentinc/kafka-javascript";
 
-import { readFileSync } from "fs";
 import { isTruish, LogMessageBuilder, requireDefined, randomId, getLog } from "juava";
 import JSON5 from "json5";
 const log = getLog("kafka");
 
-CompressionCodecs[CompressionTypes.Snappy] = SnappyCodec;
-
-function translateLevel(l: logLevel): LogMessageBuilder {
+function translateLevel(l: KafkaJS.logLevel): LogMessageBuilder {
   switch (l) {
-    case logLevel.ERROR:
+    case KafkaJS.logLevel.ERROR:
       return log.atError();
-    case logLevel.WARN:
+    case KafkaJS.logLevel.WARN:
       return log.atWarn();
-    case logLevel.INFO:
+    case KafkaJS.logLevel.INFO:
       return log.atDebug();
-    case logLevel.DEBUG:
+    case KafkaJS.logLevel.DEBUG:
       return log.atDebug();
     default:
       return log.atInfo();
@@ -25,41 +20,30 @@ function translateLevel(l: logLevel): LogMessageBuilder {
 }
 
 export type KafkaCredentials = {
-  brokers: string[] | string;
-  ssl?: boolean | Record<string, any>;
-  sasl?: {
-    mechanism: "scram-sha-256" | "scram-sha-512";
-    username: string;
-    password: string;
-  };
+  brokers: KafkaJS.KafkaConfig["brokers"];
+  ssl?: GlobalConfig;
+  sasl?: KafkaJS.KafkaConfig["sasl"];
 };
 
 export function getCredentialsFromEnv(): KafkaCredentials {
   const ssl = isTruish(process.env.KAFKA_SSL);
   const sslSkipVerify = isTruish(process.env.KAFKA_SSL_SKIP_VERIFY);
-
   let sslOption: KafkaCredentials["ssl"] = undefined;
 
   if (ssl) {
+    sslOption = {
+      "security.protocol": process.env.KAFKA_SASL ? "sasl_ssl" : "ssl",
+    };
     if (sslSkipVerify) {
       // TLS enabled, but server TLS certificate is not verified
-      sslOption = {
-        rejectUnauthorized: false,
-        checkServerIdentity: () => undefined,
-      };
+      sslOption["ssl.endpoint.identification.algorithm"] = "none";
+      sslOption["enable.ssl.certificate.verification"] = false;
     } else if (process.env.KAFKA_SSL_CA) {
       // TLS enabled, server TLS certificate is verified using a custom CA certificate
-      sslOption = {
-        ca: process.env.KAFKA_SSL_CA,
-      };
+      sslOption["ssl.ca.pem"] = process.env.KAFKA_SSL_CA;
     } else if (process.env.KAFKA_SSL_CA_FILE) {
       // TLS enabled, server TLS certificate is verified using a custom CA certificate (loaded from a local file)
-      sslOption = {
-        ca: readFileSync(process.env.KAFKA_SSL_CA_FILE, "utf-8"),
-      };
-    } else {
-      // TLS enabled, no extra configurations
-      sslOption = true;
+      sslOption["ssl.ca.location"] = process.env.KAFKA_SSL_CA_FILE;
     }
   }
 
@@ -70,24 +54,27 @@ export function getCredentialsFromEnv(): KafkaCredentials {
   };
 }
 
-export function connectToKafka(opts: { defaultAppId: string } & KafkaCredentials): Kafka {
+export function connectToKafka(opts: { defaultAppId: string } & KafkaCredentials): KafkaJS.Kafka {
   const sasl = opts.sasl
     ? {
         sasl: opts.sasl as any,
       }
     : {};
   log.atDebug().log("SASL config", JSON.stringify(opts.sasl));
-  return new Kafka({
-    logLevel: logLevel.ERROR,
-    // logCreator: logLevel => log => {
-    //   translateLevel(logLevel).log(
-    //     `${log.namespace ? `${log.namespace} # ` : ""}${JSON.stringify(omit(log.log, "timestamp", "logger"))}`
-    //   );
-    // },
-    clientId: process.env.APPLICATION_ID || opts.defaultAppId,
-    brokers: typeof opts.brokers === "string" ? opts.brokers.split(",") : opts.brokers,
-    ssl: opts.ssl,
-    ...sasl,
+  return new KafkaJS.Kafka({
+    kafkaJS: {
+      logLevel: KafkaJS.logLevel.ERROR,
+      // logCreator: logLevel => log => {
+      //   translateLevel(logLevel).log(
+      //     `${log.namespace ? `${log.namespace} # ` : ""}${JSON.stringify(omit(log.log, "timestamp", "logger"))}`
+      //   );
+      // },
+      clientId: process.env.APPLICATION_ID || opts.defaultAppId,
+      brokers: typeof opts.brokers === "string" ? (opts.brokers as string).split(",") : opts.brokers,
+      ...(opts.ssl ? { ssl: true } : {}),
+      ...sasl,
+    },
+    ...opts.ssl,
   });
 }
 

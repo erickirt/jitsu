@@ -1,8 +1,7 @@
 import { getLog, isTruish, requireDefined, stopwatch } from "juava";
 import { FunctionExecLog, FunctionExecRes, RotorMetrics } from "@jitsu/core-functions";
 
-import type { Producer } from "kafkajs";
-import { getCompressionType } from "./rotor";
+import { KafkaJS } from "@confluentinc/kafka-javascript";
 import { Readable } from "stream";
 import { Counter, Gauge, Histogram } from "prom-client";
 import { createClient } from "@clickhouse/client";
@@ -98,7 +97,7 @@ export const DummyMetrics: RotorMetrics = {
   close: () => {},
 };
 
-export function createMetrics(producer?: Producer): RotorMetrics {
+export function createMetrics(producer?: KafkaJS.Producer): RotorMetrics {
   const buffer: MetricsEvent[] = [];
   const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
@@ -119,7 +118,6 @@ export function createMetrics(producer?: Producer): RotorMetrics {
       const asyncWrite = async () => {
         return producer.send({
           topic: `in.id.metrics.m.batch.t.${billingMetricsTable}`,
-          compression: getCompressionType(),
           messages: buf
             .filter(m => m[_FunctionId].startsWith("builtin.destination.") && m[_Status] !== "dropped")
             .map(m => {
