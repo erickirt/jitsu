@@ -493,6 +493,14 @@ function alias(
   ];
 }
 
+function isAnonymous(ctx: FullContext, event: AnalyticsServerEvent) {
+  if (ctx.props.simplifiedIdMerge) {
+    return !event.userId;
+  } else {
+    return !event.userId && !event.traits?.email && !event.context?.traits?.email;
+  }
+}
+
 function getDistinctId(ctx: FullContext, event: AnalyticsServerEvent, deviceId: string) {
   if (ctx.props.simplifiedIdMerge) {
     return event.userId ? `${event.userId}` : `$device:${deviceId}`;
@@ -536,6 +544,12 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
       return;
     }
   }
+  // no userId or email
+  const anonymous = isAnonymous(ctx, event);
+  if (anonymous && !ctx.props.enableAnonymousUserProfiles) {
+    return;
+  }
+
   const trackPageView = typeof ctx.props.sendPageEvents === "undefined" || ctx.props.sendPageEvents;
   const deviceId = getDeviceId(ctx, event);
   if (!deviceId) {
@@ -548,18 +562,15 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
   if (invalidDistinctIds.has(distinctId)) {
     throw new Error(`Invalid distinctId '${distinctId}'. Skipping event: ${JSON.stringify(event)}`);
   }
-  // no userId or email
-  const isAnonymous = event.anonymousId && distinctId.endsWith(event.anonymousId);
-  if (isAnonymous && !ctx.props.enableAnonymousUserProfiles) {
-    return;
-  }
+
   try {
     const messages: MixpanelRequest[] = [];
     if (event.type === "identify") {
       if (event.userId) {
         messages.push(...setProfileMessage(ctx, distinctId, event));
       }
-      if (!ctx.props.simplifiedIdMerge && !isAnonymous) {
+      if (!ctx.props.simplifiedIdMerge && !anonymous && ctx.props.enableAnonymousUserProfiles) {
+        // we merge distinctId with anonymousId. It makes sense only when enableAnonymousUserProfiles is enabled
         if (event.userId) {
           messages.push(...merge(ctx, event.messageId, distinctId, `${event.anonymousId}`));
         } else {
