@@ -1414,7 +1414,7 @@ const IncomingEventsTable = ({
               }
               className={"whitespace-nowrap"}
             >
-              {trimMiddle(eventName || "", 16)}
+              {trimMiddle(`${eventName || ""}`, 16)}
             </Tag>
           </Tooltip>
         );

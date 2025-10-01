@@ -451,7 +451,6 @@ function ConnectionEditor({
   }
   if (hasZodFields(connectionOptionsZodType, "deduplicate")) {
     configItems.push({
-      group: "Advanced",
       name: "Deduplicate",
       documentation: (
         <>
@@ -460,19 +459,27 @@ function ConnectionEditor({
         </>
       ),
       component: (
-        <SwitchComponent
-          className="max-w-xs"
-          disabled={!canEdit || connectionOptions.primaryKey === ""}
-          value={connectionOptions.deduplicate}
-          onChange={deduplicate => {
-            let functions = connectionOptions.functions ?? [];
-            if (!deduplicate) {
-              // remove user recognition function when deduplication is disabled
-              functions = functions.filter(f => f.functionId !== "builtin.transformation.user-recognition");
-            }
-            updateOptions({ deduplicate, functions });
-          }}
-        />
+        <div>
+          <SwitchComponent
+            className="max-w-xs"
+            disabled={!canEdit || connectionOptions.primaryKey === ""}
+            value={connectionOptions.deduplicate}
+            onChange={deduplicate => {
+              let functions = connectionOptions.functions ?? [];
+              if (!deduplicate) {
+                // remove user recognition function when deduplication is disabled
+                functions = functions.filter(f => f.functionId !== "builtin.transformation.user-recognition");
+              }
+              updateOptions({ deduplicate, functions });
+            }}
+          />
+          {destinationType.id === "bigquery" && (
+            <div className={"text-sm font-light text-textLight mt-3"}>
+              Deduplication relies on reading data from the database. Using the Deduplication feature may therefore lead
+              to higher BigQuery costs. These additional costs increase linearly with the frequency of syncs.
+            </div>
+          )}
+        </div>
       ),
     });
   }

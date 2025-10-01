@@ -516,6 +516,10 @@ export const coreDestinations: DestinationType<any>[] = [
             "It's possible to implement stream mode for BigQuery, but data Deduplication cannot be supported in this mode. So it is currently disabled in Jitsu.",
         },
       })
+    ).merge(
+      z.object({
+        deduplicate: z.boolean().default(false),
+      })
     ),
     title: "BigQuery",
     tags: "Datawarehouse",
