@@ -162,6 +162,7 @@ function SyncEditor({
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [refreshCatalog, setRefreshCatalog] = useState(0);
   const reloadStore = useStoreReload();
+  const [settingsLocked, setSettingsLocked] = useState(!!existingLink);
 
   function onlyUnique(value, index, array) {
     return array.indexOf(value) === index;
@@ -334,6 +335,26 @@ function SyncEditor({
     }
   }, [catalog, syncOptions.disabledStreams, syncOptions.streams, updateOptions]);
 
+  const SettingsLocker = () => {
+    if (!existingLink) {
+      return <></>;
+    }
+    return (
+      <Tooltip title="Please change cautiously. Changing this setting for an existing sync may lead to incomplete data for Incremental streams.">
+        <Button
+          className="m-0 p-0"
+          type="link"
+          size="small"
+          onClick={() => {
+            setSettingsLocked(!settingsLocked);
+          }}
+        >
+          {settingsLocked ? "🔒" : "🔓"}
+        </Button>
+      </Tooltip>
+    );
+  };
+
   useEffect(() => {
     if (service?.package) {
       (async () => {
@@ -459,14 +480,19 @@ function SyncEditor({
             </>
           ),
           component: (
-            <div className="w-80 flex flex-col gap-2">
-              <Input
-                disabled={!canEdit || !!existingLink}
-                placeholder="Destination default"
-                style={{ color: "black" }}
-                value={syncOptions.namespace}
-                onChange={e => updateOptions({ namespace: e.target.value })}
-              />
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-row gap-1 items-center">
+                <div className="w-80">
+                  <Input
+                    disabled={!canEdit || settingsLocked}
+                    placeholder="Destination default"
+                    style={{ color: "black" }}
+                    value={syncOptions.namespace}
+                    onChange={e => updateOptions({ namespace: e.target.value })}
+                  />
+                </div>
+                <SettingsLocker />
+              </div>
               {destination && (
                 <div className="text-xs text-textLight">
                   Current value{destinationNamespaces.length > 1 ? "s" : ""}:{" "}
@@ -498,13 +524,16 @@ function SyncEditor({
             </>
           ),
           component: (
-            <div className="w-80">
-              <Input
-                disabled={!canEdit || !!existingLink}
-                style={{ color: "black" }}
-                value={legacyPrefix ? legacyPrefix : syncOptions.tableNamePrefix}
-                onChange={e => updateOptions({ tableNamePrefix: e.target.value })}
-              />
+            <div className="flex flex-row gap-1 items-center">
+              <div className="w-80">
+                <Input
+                  disabled={!canEdit || settingsLocked}
+                  style={{ color: "black" }}
+                  value={legacyPrefix ? legacyPrefix : syncOptions.tableNamePrefix}
+                  onChange={e => updateOptions({ tableNamePrefix: e.target.value })}
+                />
+              </div>
+              <SettingsLocker />
             </div>
           ),
         }
@@ -548,12 +577,15 @@ function SyncEditor({
             </>
           ),
           component: (
-            <div className="w-80">
-              <SwitchComponent
-                disabled={!canEdit || !!existingLink}
-                value={syncOptions.toSameCase}
-                onChange={e => updateOptions({ toSameCase: e })}
-              />
+            <div className="flex flex-row gap-1 items-center">
+              <div className="w-10">
+                <SwitchComponent
+                  disabled={!canEdit || settingsLocked}
+                  value={syncOptions.toSameCase}
+                  onChange={e => updateOptions({ toSameCase: e })}
+                />
+              </div>
+              <SettingsLocker />
             </div>
           ),
         }

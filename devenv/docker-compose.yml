@@ -39,7 +39,7 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
   jitsu-dev-kafka:
-    image: bitnami/kafka:3.4
+    image: bitnamilegacy/kafka:3.4
     #    ports:
     #      - "19092:19092"
     #      - "19093:19093"

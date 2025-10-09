@@ -669,6 +669,7 @@ export async function scheduleSync({
           deduplicate: sync.data?.["deduplicate"] ?? true ? "true" : "false",
           nodelay: nodelay ? "true" : "false",
           tableNamePrefix: sync.data?.["tableNamePrefix"] ?? "",
+          ...(process.env.DEBUG_SYNCS === "true" ? { debug: "true" } : {}),
         },
         body: {
           config: await tryManageOauthCreds({ ...serviceConfig, id: sync.fromId }),
