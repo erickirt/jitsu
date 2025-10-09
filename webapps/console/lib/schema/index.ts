@@ -153,6 +153,7 @@ export const StreamConfig = ConfigEntityBase.merge(
     publicKeys: z.array(ApiKey).optional(),
     privateKeys: z.array(ApiKey).optional(),
     strict: z.boolean().optional(),
+    deduplicateWindowMs: z.number().optional(),
   })
 );
 export type StreamConfig = z.infer<typeof StreamConfig>;
