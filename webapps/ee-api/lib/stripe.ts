@@ -176,7 +176,7 @@ export function stripeLink(entity: string, id: string) {
 export async function exportSubscriptions(): Promise<Record<string, { customer: any; subscription: any }>> {
   const result = {};
   let starting_after: string | undefined = undefined;
-  const products = Object.fromEntries((await getAvailableProducts()).map(p => [p.id, p]));
+  const products = Object.fromEntries((await getAvailableProducts({ custom: true })).map(p => [p.id, p]));
   console.log("Products", products);
   const cus2sub: Record<string, Stripe.Subscription[]> = {};
   const sub2prod: Record<string, Stripe.Product> = {};
