@@ -388,3 +388,54 @@ export const HubspotCredentials = z.object({
 });
 
 export type HubspotCredentials = z.infer<typeof HubspotCredentials>;
+
+export const StatsigDestinationConfig = z.object({
+  apiKey: z
+    .string()
+    .describe(
+      "Server Secret Key::Server Secret Key. Server Secret Keys can be created in <a target='_blank' rel='noopener noreferrer' href='https://console.statsig.com/api_keys'>Statsig Console → Project Settings → Keys & Environments</a>."
+    ),
+  enableAnonymousUserProfiles: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("If enabled, anonymous users (without userId) will be tracked in Statsig using their anonymousId"),
+  sendPageEvents: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("If enabled, page and screen view events will be sent to Statsig"),
+  segmentCompatibility: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Segment Compatibility Mode::When enabled, customIDs and custom properties will only be populated from <code>statsigCustomIDs</code> and <code>statsigCustom</code> arrays in event properties or traits, following <a target=\'_blank\' rel=\'noopener noreferrer\' href=\'https://docs.statsig.com/integrations/data-connectors/segment#manual-configuration\'>Segment\'s integration pattern</a>. Arrays should be in key-value pair format: <code>["key1", "value1", "key2", "value2"]</code>.'
+    ),
+  includeContextInMetadata: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Include Context in Metadata::When enabled, event context properties (page, screen, device, etc.) will be included in event metadata."
+    ),
+  environment: z
+    .string()
+    .optional()
+    .describe(
+      "Environment Tier::Statsig environment tier (e.g., production, staging, development). This will be used to segment data by environment in Statsig."
+    ),
+});
+
+export type StatsigDestinationConfig = z.infer<typeof StatsigDestinationConfig>;
+
+export const StatsigDestinationConfigUi: Partial<
+  Record<keyof StatsigDestinationConfig, { password?: boolean; hidden?: boolean | ((obj: any) => boolean) }>
+> = {
+  apiKey: {
+    password: true,
+  },
+  includeContextInMetadata: {
+    hidden: (obj: any) => obj.segmentCompatibility === true,
+  },
+};

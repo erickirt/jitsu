@@ -13,6 +13,7 @@ import juneIcon from "./icons/june";
 import blazeIcon from "./icons/blaze";
 import salesforceIcon from "./icons/salesforce";
 import mongodbIcon from "./icons/mongodb";
+import statsigIcon from "./icons/statsig";
 
 import ga4Icon from "./icons/ga4";
 import gtmIcon from "./icons/gtm";
@@ -983,6 +984,16 @@ export const coreDestinations: DestinationType<any>[] = [
     tags: "Product Analytics",
     credentials: meta.AmplitudeDestinationConfig,
     description: "Amplitude is a product analytics platform",
+  },
+  {
+    id: "statsig",
+    icon: statsigIcon,
+    connectionOptions: CloudDestinationsConnectionOptions,
+    title: "Statsig",
+    tags: "Product Analytics",
+    credentials: meta.StatsigDestinationConfig,
+    credentialsUi: meta.StatsigDestinationConfigUi,
+    description: "Statsig is a feature management, experimentation, and product analytics platform",
   },
   {
     id: "hubspot",

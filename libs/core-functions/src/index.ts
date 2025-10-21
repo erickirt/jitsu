@@ -21,6 +21,7 @@ import HubspotDestination from "./functions/hubspot-destination";
 import BrazeDestination from "./functions/braze-destination";
 import { ProfilesFunction } from "./functions/profiles-functions";
 import SalesforceDestination from "./functions/salesforce-destination";
+import StatsigDestination from "./functions/statsig-destination";
 
 const builtinDestinations: Record<BuiltinDestinationFunctionName, JitsuFunction> = {
   "builtin.destination.bulker": BulkerDestination as JitsuFunction,
@@ -37,6 +38,7 @@ const builtinDestinations: Record<BuiltinDestinationFunctionName, JitsuFunction>
   "builtin.destination.facebook-conversions": FacebookConversionsApi as JitsuFunction,
   "builtin.destination.hubspot": HubspotDestination as JitsuFunction,
   "builtin.destination.salesforce": SalesforceDestination as JitsuFunction,
+  "builtin.destination.statsig": StatsigDestination as JitsuFunction,
   "builtin.destination.devnull": () => undefined,
   "builtin.destination.tag": () => undefined,
   "builtin.destination.gtm": () => undefined,
@@ -83,6 +85,7 @@ export * as ga4Destination from "./functions/ga4-destination";
 export * as webhookDestination from "./functions/webhook-destination";
 export * as posthogDestination from "./functions/posthog-destination";
 export * as mongodbDestination from "./functions/mongodb-destination";
+export * as statsigDestination from "./functions/statsig-destination";
 export { mongodb, mongoAnonymousEventsStore } from "./functions/lib/mongodb";
 export type {
   MetricsMeta,
