@@ -240,9 +240,9 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
           <div className="flex flex-row flex-wrap items-center gap-1 gap-x-2.5">
             {functions &&
               (link.data?.functions || [])
-                .filter(f => f.functionId.startsWith("udf."))
+                .filter(f => f.functionId?.startsWith("udf."))
                 .map((f, i) => {
-                  const id = f.functionId.replace("udf.", "");
+                  const id = f.functionId?.replace("udf.", "");
                   const func = functionsById[id];
                   if (!func) {
                     return <FunctionTitle size={"small"} key={i} title={() => f.functionId} />;
