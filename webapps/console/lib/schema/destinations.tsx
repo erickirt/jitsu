@@ -107,7 +107,7 @@ export type PropertyUI = {
 export type SchemaUI = Record<string, PropertyUI>;
 
 export const FunctionsConnectionOptions = z.object({
-  functions: z.array(z.object({ functionId: z.string(), functionOptions: z.any() })).optional(),
+  functions: z.array(z.object({ functionId: z.string(), functionOptions: z.any().optional() })).optional(),
   functionsEnv: z.record(z.string()).optional(),
   debugTill: z.string().optional(),
 });

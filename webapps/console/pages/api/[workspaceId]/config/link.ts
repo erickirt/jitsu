@@ -7,7 +7,7 @@ import { getAppEndpoint } from "../../../../lib/domains";
 import { ConfigurationObjectLinkDbModel } from "../../../../prisma/schema";
 import { SyncOptionsType } from "../../../../lib/schema";
 import { ApiError } from "../../../../lib/shared/errors";
-import { MASKED_SECRET } from "../../../../lib/schema/destinations";
+import { MASKED_SECRET, getCoreDestinationTypeNonStrict } from "../../../../lib/schema/destinations";
 
 export type SyncDbModel = Omit<z.infer<typeof ConfigurationObjectLinkDbModel>, "data"> & {
   data?: SyncOptionsType;
@@ -16,7 +16,7 @@ export type SyncDbModel = Omit<z.infer<typeof ConfigurationObjectLinkDbModel>, "
 const postAndPutCfg = {
   auth: true,
   types: {
-    query: z.object({ workspaceId: z.string(), runSync: z.string().optional() }),
+    query: z.object({ workspaceId: z.string(), runSync: z.string().optional(), strict: z.string().optional() }),
     body: z.object({
       id: z.string().optional(),
       data: z.any().optional(),
@@ -29,11 +29,45 @@ const postAndPutCfg = {
     const {
       body,
       user,
-      query: { workspaceId, runSync },
+      query: { workspaceId, runSync, strict },
       req,
     } = ctx;
     const { id, toId, fromId, data = undefined, type = "push" } = body;
     await verifyAccessWithRole(user, workspaceId, "editEntities");
+
+    // Validate connection data if strict mode is enabled
+    if (strict === "true" && data !== undefined) {
+      if (type === "sync") {
+        // Validate against SyncOptionsType
+        const parseResult = SyncOptionsType.safeParse(data);
+        if (!parseResult.success) {
+          throw new ApiError(
+            `Invalid sync options: ${parseResult.error.message}`,
+            { zodError: parseResult.error },
+            { status: 400 }
+          );
+        }
+      } else {
+        // type === "push" or undefined - validate against destination's connectionOptions
+        const destination = await db.prisma().configurationObject.findFirst({
+          where: { workspaceId, id: toId, type: "destination", deleted: false },
+        });
+
+        if (destination) {
+          const destinationType = getCoreDestinationTypeNonStrict(destination.config?.["destinationType"]);
+          if (destinationType?.connectionOptions) {
+            const parseResult = destinationType.connectionOptions.safeParse(data);
+            if (!parseResult.success) {
+              throw new ApiError(
+                `Invalid connection options for ${destination.config?.["destinationType"]}: ${parseResult.error.message}`,
+                { zodError: parseResult.error },
+                { status: 400 }
+              );
+            }
+          }
+        }
+      }
+    }
     const fromType = type === "sync" ? "service" : "stream";
 
     // we allow duplicates of service=>dst links because they may have different streams and scheduling

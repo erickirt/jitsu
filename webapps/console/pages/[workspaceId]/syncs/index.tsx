@@ -123,7 +123,8 @@ export const NotFound: React.FC<{ id: string; type: string }> = ({ id, type }) =
 function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
   const servicesById = index(services, "id");
   const destinationsById = index(destinations, "id");
-  const linksById = index(links, "id");
+  const validLinks = links.filter(l => servicesById[l.fromId] && destinationsById[l.toId]);
+  const linksById = index(validLinks, "id");
   const workspace = useWorkspace();
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
@@ -412,7 +413,7 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
     <div>
       <Table
         rowKey={"id"}
-        dataSource={links}
+        dataSource={validLinks}
         sortDirections={["ascend", "descend"]}
         columns={columns}
         className="border border-backgroundDark rounded-lg"

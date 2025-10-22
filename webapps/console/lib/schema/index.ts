@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { UserProfileDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { WorkspaceRolesZodType } from "../workspace-roles";
+import { ConfigApiDeleteOptions } from "../useApi";
 
 export const SessionUser = z.object({
   name: z.string(),
@@ -262,6 +263,12 @@ export type ConfigObjectType<T = any> = {
    * Clean object before sending to client. Can remove fields, hide values etc
    */
   outputFilter?: OutputFilter<T> | ((original: T) => Promise<T>);
+
+  /**
+   * Called before deleting the object. Can perform validation and cleanup.
+   * Should throw ApiError if deletion is not allowed.
+   */
+  onDelete?: (original: T, options?: ConfigApiDeleteOptions) => Promise<void>;
 };
 
 const SafeUserProfile = UserProfileDbModel.pick({
@@ -297,8 +304,8 @@ export const SelectedStreamSettings = z.object({
 export type SelectedStreamSettings = z.infer<typeof SelectedStreamSettings>;
 
 export const SyncOptionsType = z.object({
-  streams: z.record(SelectedStreamSettings),
-  disabledStreams: z.record(SelectedStreamSettings),
+  streams: z.record(SelectedStreamSettings).optional(),
+  disabledStreams: z.record(SelectedStreamSettings).optional(),
   namespace: z.string().optional(),
   tableNamePrefix: z.string().optional(),
   toSameCase: z.boolean().optional(),
@@ -306,7 +313,9 @@ export const SyncOptionsType = z.object({
   deduplicate: z.boolean().optional().default(true),
   schemaChanges: z.enum(["manual", "fields", "streams"]).optional(),
   functionsEnv: z.any().optional(),
-  schedule: z.union([z.string(), z.enum(["0 0 * * *", "0 * * * *", "*/15 * * * *", "*/5 * * * *", "* * * * *"])]),
+  schedule: z
+    .union([z.string(), z.enum(["0 0 * * *", "0 * * * *", "*/15 * * * *", "*/5 * * * *", "* * * * *"])])
+    .optional(),
   timezone: z.string().optional(),
 });
 

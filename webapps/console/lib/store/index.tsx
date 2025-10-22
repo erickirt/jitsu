@@ -15,6 +15,7 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/re
 import { z } from "zod";
 import { ConfigurationObjectLinkDbModel, ProfileBuilderDbModel, WorkspaceDbModel } from "../../prisma/schema";
 import { UseMutationResult } from "@tanstack/react-query/src/types";
+import { useRouter } from "next/router";
 
 export const allConfigTypes = [
   "stream",
@@ -450,13 +451,19 @@ export function useConfigObjectList<T extends ConfigType>(type: T): ConfigTypes[
 
 export function useConfigObjectMutation<FParams = unknown>(
   type: ConfigType,
-  fn: (variables: FParams) => Promise<void>
+  fn: (variables: FParams) => Promise<void>,
+  // if we inside SingleObjectEditor we need to leave before setQueriesData
+  redirectTo?: string
 ): UseMutationResult<unknown, Error, FParams> {
   const queryClient = useQueryClient();
+  const { push } = useRouter();
   const workspace = useWorkspace();
   return useMutation<unknown, Error, FParams, unknown>(async params => {
     try {
       await fn(params);
+      if (redirectTo) {
+        await push(redirectTo);
+      }
       queryClient.setQueriesData(
         getConfigObjectCacheKey(workspace.id, type),
         (await rpc(`/api/${workspace.id}/config/${type}`)).objects

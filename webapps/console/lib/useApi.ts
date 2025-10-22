@@ -7,12 +7,17 @@ import { useWorkspace } from "./context";
 import { safeParseWithDate } from "./zod";
 import { EventsLogFilter, EventsLogRecord } from "./server/events-log";
 
+export type ConfigApiDeleteOptions = {
+  strict?: boolean;
+  cascade?: boolean;
+};
+
 export type ConfigApi<T = any> = {
   get(id: string): Promise<T>;
   create(obj: T): Promise<T>;
   update(id: string, obj: Partial<T>): Promise<T>;
   test(obj: Partial<T>): Promise<any>;
-  del(id: string): Promise<T>;
+  del(id: string, options?: ConfigApiDeleteOptions): Promise<T>;
   list(): Promise<T[]>;
 };
 
@@ -89,8 +94,16 @@ export function getConfigApi<T = any>(workspaceId: string, type: string): Config
         body: obj,
       });
     },
-    del: async id => {
-      return rpc(`/api/${workspaceId}/config/${type}/${id}`, {
+    del: async (id, options) => {
+      const queryParams: string[] = [];
+      if (options?.strict) {
+        queryParams.push("strict=true");
+      }
+      if (options?.cascade) {
+        queryParams.push("cascade=true");
+      }
+      const queryString = queryParams.length > 0 ? "?" + queryParams.join("&") : "";
+      return rpc(`/api/${workspaceId}/config/${type}/${id}${queryString}`, {
         method: "DELETE",
       });
     },

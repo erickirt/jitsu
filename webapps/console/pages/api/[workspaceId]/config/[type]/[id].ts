@@ -95,10 +95,16 @@ export const api: Api = {
   DELETE: {
     auth: true,
     types: {
-      query: z.object({ type: z.string(), workspaceId: z.string(), id: z.string() }),
+      query: z.object({
+        type: z.string(),
+        workspaceId: z.string(),
+        id: z.string(),
+        strict: z.string().optional(),
+        cascade: z.string().optional(),
+      }),
     },
     handle: async ({ user, body, query }) => {
-      const { id, workspaceId, type } = query;
+      const { id, workspaceId, type, strict, cascade } = query;
       await verifyAccessWithRole(user, workspaceId, "deleteEntities");
       if (isReadOnly) {
         throw new ApiError("Console is in read-only mode. Modifications of objects are not allowed");
@@ -106,28 +112,40 @@ export const api: Api = {
       const object = await db.prisma().configurationObject.findFirst({
         where: { workspaceId: workspaceId, id, deleted: false },
       });
-      if (object) {
-        await db.prisma().configurationObject.update({
-          where: { id: object.id },
-          data: { deleted: true },
-        });
-        await trackTelemetryEvent("config-object-delete", { objectType: type });
-        if (enableAuditLog) {
-          await db.prisma().auditLog.create({
-            data: {
-              type: "config-object-delete",
-              workspaceId,
-              objectId: id,
-              userId: user.internalId,
-              changes: {
-                objectType: type,
-                prevVersion: object.config,
-              },
-            },
-          });
-        }
-        return { ...((object.config as any) || {}), workspaceId, id, type };
+      if (!object) {
+        return null;
       }
+
+      // Call onDelete hook if it exists
+      const configObjectType = getConfigObjectType(type);
+      if (configObjectType.onDelete) {
+        await configObjectType.onDelete(object, {
+          strict: strict === "true",
+          cascade: cascade === "true",
+        });
+      }
+
+      // Delete the object
+      await db.prisma().configurationObject.update({
+        where: { id: object.id },
+        data: { deleted: true },
+      });
+      await trackTelemetryEvent("config-object-delete", { objectType: type });
+      if (enableAuditLog) {
+        await db.prisma().auditLog.create({
+          data: {
+            type: "config-object-delete",
+            workspaceId,
+            objectId: id,
+            userId: user.internalId,
+            changes: {
+              objectType: type,
+              prevVersion: object.config,
+            },
+          },
+        });
+      }
+      return { ...((object.config as any) || {}), workspaceId, id, type };
     },
   },
 };

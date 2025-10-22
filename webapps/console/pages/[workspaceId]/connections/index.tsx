@@ -132,6 +132,7 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
   const streamsById = index(streams, "id");
   const destinationsById = index(destinations, "id");
   const functionsById = index(functions, "id");
+  const validLinks = links.filter(l => streamsById[l.fromId] && destinationsById[l.toId]);
   const modal = useAntdModal();
 
   const workspace = useWorkspace();
@@ -352,7 +353,7 @@ function ConnectionsTable({ links, streams, destinations, functions, reloadCallb
     <div>
       <Table
         rowKey={"id"}
-        dataSource={links}
+        dataSource={validLinks}
         sortDirections={["ascend", "descend"]}
         columns={columns}
         rowClassName={link => {

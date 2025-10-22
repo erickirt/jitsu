@@ -2,7 +2,7 @@ import React, { createContext, PropsWithChildren, ReactNode, useContext, useEffe
 import { Button, Col, Form as AntdForm, Input, Row, Switch, Table } from "antd";
 import { FaCaretDown, FaCaretRight, FaClone, FaPlus } from "react-icons/fa";
 import { ZodType } from "zod";
-import { getConfigApi } from "../../lib/useApi";
+import { ConfigApiDeleteOptions, getConfigApi } from "../../lib/useApi";
 import { useRouter } from "next/router";
 import { asFunction, FunctionLike, getErrorMessage, getLog, requireDefined, rpc } from "juava";
 
@@ -53,13 +53,116 @@ import { ButtonGroup, ButtonProps } from "../ButtonGroup/ButtonGroup";
 import cuid from "cuid";
 import { ObjectTitle } from "../ObjectTitle/ObjectTitle";
 import omitBy from "lodash/omitBy";
-import { asConfigType, useConfigObject, useConfigObjectList, useConfigObjectMutation } from "../../lib/store";
+import {
+  asConfigType,
+  useConfigObject,
+  useConfigObjectList,
+  useConfigObjectMutation,
+  useStoreReload,
+} from "../../lib/store";
 import { CustomWidgetProps, PasswordEditor } from "./Editors";
 import { WorkspacePermissionsType } from "../../lib/workspace-roles";
 import { oauthDecorators } from "../../lib/server/oauth/destinations";
 import Nango from "@nangohq/frontend";
 
 const log = getLog("ConfigEditor");
+
+/**
+ * Handles deletion of config objects with strict mode and cascade delete support
+ */
+async function handleConfigObjectDelete(params: {
+  type: string;
+  noun: string;
+  id: string;
+  deleteFn: (options?: ConfigApiDeleteOptions) => Promise<void>;
+  modal: ReturnType<typeof useAntdModal>;
+  onSuccess?: (cascade?: boolean) => void | Promise<void>;
+}): Promise<void> {
+  const { type, noun, id, deleteFn, modal, onSuccess } = params;
+  const shouldUseStrict = ["stream", "destination", "service", "function"].includes(type);
+
+  try {
+    // Try with strict mode first for certain types
+    await deleteFn(shouldUseStrict ? { strict: true } : undefined).then(onSuccess ? () => onSuccess() : undefined);
+    feedbackSuccess(`Successfully deleted ${noun}`);
+  } catch (error: any) {
+    // Check if this is a function in use error
+    if (error.response.code === "FUNCTION_IN_USE") {
+      const functionData = error.response;
+      const usageDetails: string[] = [];
+      if (functionData.connectionsCount > 0) {
+        usageDetails.push(`${functionData.connectionsCount} connection(s)`);
+      }
+      if (functionData.profileBuildersCount > 0) {
+        usageDetails.push(`${functionData.profileBuildersCount} profile builder(s)`);
+      }
+      const usageText = usageDetails.join(" and ");
+
+      // Show confirmation modal for function deletion
+      modal.confirm({
+        title: `Delete ${noun} that is in use?`,
+        content: (
+          <div>
+            <p>
+              This {noun} is being used by <strong>{usageText}</strong>.
+            </p>
+            <p className="mt-2">
+              Deleting this {noun} may cause those connections or profile builders to fail. Are you sure you want to
+              continue?
+            </p>
+          </div>
+        ),
+        okText: "Delete Anyway",
+        okType: "danger",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            // Delete without strict mode (no cascade needed)
+            await deleteFn(undefined).then(onSuccess ? () => onSuccess() : undefined);
+            feedbackSuccess(`Successfully deleted ${noun}`);
+          } catch (deleteError) {
+            feedbackError("Failed to delete object", { error: deleteError });
+          }
+        },
+      });
+    } else if (error.response.code === "LINKED_CONNECTIONS_EXIST") {
+      const linkedData = error.response;
+      const connectionLabel = linkedData.linkedConnections?.every((l: any) => l.type === "sync")
+        ? "Syncs"
+        : linkedData.linkedConnections?.some((l: any) => l.type === "sync")
+        ? "Connections and Syncs"
+        : "Connections";
+
+      // Show confirmation modal for cascade delete
+      modal.confirm({
+        title: `Delete ${noun} and linked ${connectionLabel}?`,
+        content: (
+          <div>
+            <p>
+              This {noun} has <strong>{linkedData.linkedConnectionsCount}</strong> linked {connectionLabel}.
+            </p>
+            <p className="mt-2">
+              Deleting this {noun} will also delete all linked {connectionLabel.toLowerCase()}.
+            </p>
+          </div>
+        ),
+        okText: "Confirm Delete",
+        okType: "danger",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            await deleteFn({ cascade: true }).then(onSuccess ? () => onSuccess(true) : undefined);
+            feedbackSuccess(`Successfully deleted ${noun} and all linked ${connectionLabel.toLowerCase()}`);
+          } catch (cascadeError) {
+            feedbackError("Failed to delete object", { error: cascadeError });
+          }
+        },
+      });
+    } else {
+      feedbackError("Failed to delete object", { error });
+    }
+  }
+}
 
 export type FieldDisplay = {
   isId?: boolean;
@@ -516,6 +619,7 @@ const SingleObjectEditor: React.FC<SingleObjectEditorProps> = props => {
   const workspace = useWorkspace();
   const appConfig = useAppConfig();
   const router = useRouter();
+  const reloadStore = useStoreReload();
 
   const onSaveMutation = useConfigObjectMutation(type as any, async (newObject: any) => {
     if (isNew) {
@@ -535,9 +639,15 @@ const SingleObjectEditor: React.FC<SingleObjectEditorProps> = props => {
     }
   });
 
-  const onDeleteMutation = useConfigObjectMutation(type as any, async (_: any) => {
-    await getConfigApi(workspace.id, type).del(object.id);
-  });
+  const modal = useAntdModal();
+
+  const onDeleteMutation = useConfigObjectMutation(
+    type as any,
+    async (options?: ConfigApiDeleteOptions) => {
+      await getConfigApi(workspace.id, type).del(object.id, options);
+    },
+    `/${workspace.slugOrId}${pref}/${type}s`
+  );
 
   useEffect(() => {
     if (loadMeta) {
@@ -579,15 +689,25 @@ const SingleObjectEditor: React.FC<SingleObjectEditorProps> = props => {
     }
   };
   const onDelete = async () => {
-    if (await confirmOp(`Are you sure you want to delete this ${noun}?`)) {
-      try {
-        await onDeleteMutation.mutateAsync(undefined);
-        feedbackSuccess(`Successfully deleted ${noun}`);
-        router.push(`/${workspace.slugOrId}${pref}/${type}s`);
-      } catch (error) {
-        feedbackError("Failed to delete object", { error });
-      }
+    if (!(await confirmOp(`Are you sure you want to delete this ${noun}?`))) {
+      return;
     }
+
+    await handleConfigObjectDelete({
+      type,
+      noun,
+      id: object.id,
+      deleteFn: async options => {
+        await onDeleteMutation.mutateAsync(options);
+      },
+      modal,
+      onSuccess: async cascade => {
+        if (cascade) {
+          //reload store to reflect cascade delete
+          await reloadStore();
+        }
+      },
+    });
   };
   const onSave = async newObject => {
     try {
@@ -903,18 +1023,33 @@ const ObjectListEditor: React.FC<ConfigEditorProps> = props => {
   const workspace = useWorkspace();
   const data = useConfigObjectList(asConfigType(props.type));
   const router = useRouter();
+  const modal = useAntdModal();
   const pluralNoun = props.nounPlural || plural(props.noun);
   const addAction = props.addAction || (() => router.push(`${router.asPath}?id=new`));
+  const reloadStore = useStoreReload();
 
-  const onDeleteMutation = useConfigObjectMutation(props.type as any, async (id: string) => {
-    await getConfigApi(workspace.id, props.type).del(id);
-  });
-  const onDelete = async (id: string) => {
-    try {
-      await onDeleteMutation.mutateAsync(id);
-    } catch (e) {
-      alert(`Failed to delete ${props.noun}: ${getErrorMessage(e)}`);
+  const onDeleteMutation = useConfigObjectMutation(
+    props.type as any,
+    async (params: { id: string; query?: ConfigApiDeleteOptions }) => {
+      await getConfigApi(workspace.id, props.type).del(params.id, params.query);
     }
+  );
+  const onDelete = async (id: string) => {
+    await handleConfigObjectDelete({
+      type: props.type,
+      noun: props.noun,
+      id,
+      deleteFn: async options => {
+        await onDeleteMutation.mutateAsync({ id, query: options });
+      },
+      modal,
+      onSuccess: async cascade => {
+        if (cascade) {
+          //reload store to reflect cascade delete
+          await reloadStore();
+        }
+      },
+    });
   };
   const list = data.filter(props.filter || (() => true)) || [];
   return (
