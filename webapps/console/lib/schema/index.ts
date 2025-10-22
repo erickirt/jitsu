@@ -304,7 +304,7 @@ export const SelectedStreamSettings = z.object({
 export type SelectedStreamSettings = z.infer<typeof SelectedStreamSettings>;
 
 export const SyncOptionsType = z.object({
-  streams: z.record(SelectedStreamSettings).optional(),
+  streams: z.record(SelectedStreamSettings),
   disabledStreams: z.record(SelectedStreamSettings).optional(),
   namespace: z.string().optional(),
   tableNamePrefix: z.string().optional(),
