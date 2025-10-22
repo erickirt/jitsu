@@ -146,7 +146,7 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
     (async () => {
       try {
         setTasksLoading(true);
-        const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: links.map(l => l.id) });
+        const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: validLinks.map(l => l.id) });
         setTasks({ data });
       } catch (e) {
         setTasks({ data: {}, error: e });
@@ -302,7 +302,7 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
               }
               setRunPressed(link.id);
               try {
-                const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: links.map(l => l.id) });
+                const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: validLinks.map(l => l.id) });
                 setTasks({ data });
                 if (data.tasks?.[link.id]?.status === "RUNNING") {
                   toTasks();
@@ -357,7 +357,7 @@ function SyncsTable({ links, services, destinations }: RemoteEntitiesProps) {
               }
               setRunPressed(link.id);
               try {
-                const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: links.map(l => l.id) });
+                const data = await rpc(`/api/${workspace.id}/sources/tasks`, { body: validLinks.map(l => l.id) });
                 setTasks({ data });
                 if (data.tasks?.[link.id]?.status === "RUNNING") {
                   toTasks();

@@ -247,7 +247,7 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
 };
 
 export const config = {
-  maxDuration: 180, //2 mins, mostly becasue of workspace-stat call
+  maxDuration: 180, //3 mins, mostly because of workspace-stat call
 };
 
 export default withErrorHandler(handler);

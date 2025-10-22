@@ -181,3 +181,7 @@ export default createRoute()
     }
   })
   .toNextApiHandler();
+
+export const config = {
+  maxDuration: 180, //3 mins, mostly because of workspace-stat call
+};
