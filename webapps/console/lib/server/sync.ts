@@ -1,7 +1,7 @@
 import { CloudSchedulerClient } from "@google-cloud/scheduler";
 import { db } from "./db";
 import { ConfigurationObject, ConfigurationObjectLink } from "@prisma/client";
-import { hash as juavaHash, LogFactory, randomId, requireDefined, rpc, stopwatch } from "juava";
+import { hash as juavaHash, LogFactory, parseNumber, randomId, requireDefined, rpc, stopwatch } from "juava";
 import { google } from "@google-cloud/scheduler/build/protos/protos";
 import { difference } from "lodash";
 import { getServerLog } from "./log";
@@ -87,6 +87,27 @@ async function dbLog({
       level,
     },
   });
+}
+
+export async function cleanupTasksLogs(syncId: string) {
+  const syncTaskLogAge = parseNumber(process.env.SYNC_TASK_LOG_AGE, 60);
+  const syncTaskLogSize = parseNumber(process.env.SYNC_TASK_LOG_SIZE, 3000);
+
+  await db.pgPool().query(
+    `DELETE FROM newjitsu.source_task t
+                           WHERE sync_id = $1 AND
+                             started_at < (SELECT
+                                             GREATEST(min(started_at), now() - interval '${syncTaskLogAge} days') AS cutoff_date
+                                           FROM (
+                                                  SELECT started_at
+                                                  FROM newjitsu.source_task
+                                                  WHERE sync_id = $1
+                                                  ORDER BY started_at DESC
+                                                  OFFSET ${syncTaskLogSize}
+                                                    LIMIT 1
+                                                ) sub)`,
+    [syncId]
+  );
 }
 
 async function createOrUpdateTask({
