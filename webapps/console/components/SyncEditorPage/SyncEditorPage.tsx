@@ -80,6 +80,7 @@ const namespaceImplementation: Record<string, { name: string; field: string }> =
   redshift: { name: "schema", field: "defaultSchema" },
   bigquery: { name: "dataset", field: "bqDataset" },
   snowflake: { name: "schema", field: "defaultSchema" },
+  duckdb: { name: "schema", field: "defaultSchema" },
   mysql: { name: "database", field: "database" },
   s3: { name: "folder", field: "folder" },
   gcs: { name: "folder", field: "folder" },
