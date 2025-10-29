@@ -6,7 +6,7 @@ import { ApiError } from "../../../../../lib/shared/errors";
 import { getConfigObjectType, parseObject } from "../../../../../lib/schema/config-objects";
 import { prepareZodObjectForDeserialization } from "../../../../../lib/zod";
 import { isReadOnly } from "../../../../../lib/server/read-only-mode";
-import { enableAuditLog } from "../../../../../lib/server/audit-log";
+import { configObjectAuditLog } from "../../../../../lib/server/audit-log";
 import { trackTelemetryEvent } from "../../../../../lib/server/telemetry";
 import { requireDefined } from "juava";
 
@@ -75,21 +75,10 @@ export const api: Api = {
       delete filtered.workspaceId;
       await db.prisma().configurationObject.update({ where: { id }, data: { config: filtered } });
       await trackTelemetryEvent("config-object-update", { objectType: type });
-      if (enableAuditLog) {
-        await db.prisma().auditLog.create({
-          data: {
-            type: "config-object-update",
-            workspaceId,
-            objectId: id,
-            userId: user.internalId,
-            changes: {
-              objectType: type,
-              prevVersion: object.config,
-              newVersion: filtered,
-            },
-          },
-        });
-      }
+      await configObjectAuditLog(user, workspaceId, id, type, "update", {
+        prevVersion: object.config,
+        newVersion: filtered,
+      });
     },
   },
   DELETE: {
@@ -131,20 +120,7 @@ export const api: Api = {
         data: { deleted: true },
       });
       await trackTelemetryEvent("config-object-delete", { objectType: type });
-      if (enableAuditLog) {
-        await db.prisma().auditLog.create({
-          data: {
-            type: "config-object-delete",
-            workspaceId,
-            objectId: id,
-            userId: user.internalId,
-            changes: {
-              objectType: type,
-              prevVersion: object.config,
-            },
-          },
-        });
-      }
+      await configObjectAuditLog(user, workspaceId, id, type, "delete", { prevVersion: object.config });
       return { ...((object.config as any) || {}), workspaceId, id, type };
     },
   },

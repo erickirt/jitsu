@@ -81,6 +81,7 @@ function getUserFromSession(session: Session): SessionUser {
     email: session.user.email || "unknown",
     name: session.user.name || "Unknown",
     image: session.user?.image,
+    authType: "next-auth",
   };
 }
 
@@ -122,6 +123,7 @@ function findServiceAccount({ keyId, secret }): SessionUser | undefined {
           loginProvider: "admin/token",
           email: adminServiceAccountEmail,
           name: adminServiceAccountEmail,
+          authType: "bearer",
         };
       }
     }
@@ -241,6 +243,7 @@ async function getUserFromOidcSession(req: NextApiRequest, res?: NextApiResponse
       loginProvider: sessionData.loginProvider,
       email: sessionData.email || "unknown",
       name: sessionData.name || "Unknown",
+      authType: "oidc",
     };
   } catch (error) {
     log.atWarn().withCause(error).log("Invalid OIDC session cookie");
@@ -281,6 +284,7 @@ export async function getUser(
         loginProvider: user.loginProvider,
         email: user.email,
         name: user.name,
+        authType: "bearer",
       };
     }
   }

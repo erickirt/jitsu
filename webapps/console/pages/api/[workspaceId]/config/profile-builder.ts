@@ -6,6 +6,7 @@ import { ProfileBuilderDbModel } from "../../../../prisma/schema";
 import { safeParseWithDate } from "../../../../lib/zod";
 import { ApiError } from "../../../../lib/shared/errors";
 import { MASKED_SECRET } from "../../../../lib/schema/destinations";
+import { configObjectAuditLog } from "../../../../lib/server/audit-log";
 
 const defaultProfileBuilderFunction = `export default async function(events, user, context) {
   context.log.info("Profile userId: " + user.id)
@@ -16,7 +17,7 @@ const defaultProfileBuilderFunction = `export default async function(events, use
   }
 };`;
 
-async function updateFunctionCode(workspaceId: string, pbId: string, code: string) {
+async function updateFunctionCode(user: any, workspaceId: string, pbId: string, code: string) {
   const withFunc = await db.prisma().profileBuilder.findFirst({
     include: { functions: { include: { function: true } } },
     where: { id: pbId, workspaceId: workspaceId, deleted: false },
@@ -24,15 +25,20 @@ async function updateFunctionCode(workspaceId: string, pbId: string, code: strin
   if (withFunc && withFunc.functions.length > 0) {
     const func = withFunc.functions[0];
     console.log("Updating function: " + JSON.stringify(func));
+    const newConfig = {
+      ...(func.function.config as any),
+      code: code,
+      draft: code,
+    };
     await db.prisma().configurationObject.update({
       where: { id: func.functionId },
       data: {
-        config: {
-          ...(func.function.config as any),
-          code: code,
-          draft: code,
-        },
+        config: newConfig,
       },
+    });
+    await configObjectAuditLog(user, workspaceId, func.functionId, "function", "update", {
+      prevVersion: func.function.config,
+      newVersion: newConfig,
     });
   } else {
     const func = await db.prisma().configurationObject.create({
@@ -52,6 +58,9 @@ async function updateFunctionCode(workspaceId: string, pbId: string, code: strin
         profileBuilderId: pbId,
         functionId: func.id,
       },
+    });
+    await configObjectAuditLog(user, workspaceId, func.id, "function", "create", {
+      newVersion: func.config,
     });
   }
 }
@@ -86,10 +95,14 @@ const postAndPutCfg = {
 
     let createdOrUpdated;
     if (existingPb) {
-      await updateFunctionCode(workspaceId, existingPb.id, body.code);
+      await updateFunctionCode(user, workspaceId, existingPb.id, body.code);
       createdOrUpdated = await db.prisma().profileBuilder.update({
         where: { id: existingPb.id },
         data: { ...pb, deleted: false, workspaceId },
+      });
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "profilebuilder", "update", {
+        prevVersion: existingPb,
+        newVersion: createdOrUpdated,
       });
     } else {
       createdOrUpdated = await db.prisma().profileBuilder.create({
@@ -98,7 +111,10 @@ const postAndPutCfg = {
           workspaceId,
         },
       });
-      await updateFunctionCode(workspaceId, createdOrUpdated.id, body.code);
+      await updateFunctionCode(user, workspaceId, createdOrUpdated.id, body.code);
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "profilebuilder", "create", {
+        newVersion: createdOrUpdated,
+      });
     }
 
     return { id: createdOrUpdated.id, created: !existingPb };
@@ -132,6 +148,9 @@ export const api: Api = {
             },
           },
         });
+        await configObjectAuditLog(user, workspaceId, func.id, "function", "create", {
+          newVersion: func.config,
+        });
         const pb = await db.prisma().profileBuilder.create({
           data: {
             workspaceId,
@@ -140,6 +159,9 @@ export const api: Api = {
             intermediateStorageCredentials: {},
             connectionOptions: {},
           },
+        });
+        await configObjectAuditLog(user, workspaceId, pb.id, "profilebuilder", "create", {
+          newVersion: pb,
         });
         const link = await db.prisma().profileBuilderFunction.create({
           data: {
@@ -186,8 +208,28 @@ export const api: Api = {
       if (!existingPB) {
         return { deleted: false };
       }
-      await db.prisma().profileBuilder.update({ where: { id: existingPB.id }, data: { deleted: true } });
+      const links = await db.prisma().profileBuilderFunction.findMany({
+        where: { profileBuilderId: existingPB.id },
+      });
 
+      for (const link of links) {
+        const func = await db.prisma().configurationObject.findFirst({
+          where: { id: link.functionId },
+        });
+        if (func) {
+          await db.prisma().configurationObject.update({
+            where: { id: func.id },
+            data: { deleted: true },
+          });
+          await configObjectAuditLog(user, workspaceId, func.id, "function", "delete", {
+            prevVersion: func,
+          });
+        }
+      }
+      await db.prisma().profileBuilder.update({ where: { id: existingPB.id }, data: { deleted: true } });
+      await configObjectAuditLog(user, workspaceId, existingPB.id, "profilebuilder", "delete", {
+        prevVersion: existingPB,
+      });
       return { deleted: true };
     },
   },

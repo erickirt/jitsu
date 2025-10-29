@@ -218,6 +218,7 @@ model AuditLog {
   workspaceId String?
   objectId    String?
   changes     Json?
+  authType     String?
 
   @@index(timestamp)
   @@index(type)

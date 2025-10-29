@@ -8,6 +8,7 @@ import { ConfigurationObjectLinkDbModel } from "../../../../prisma/schema";
 import { SyncOptionsType } from "../../../../lib/schema";
 import { ApiError } from "../../../../lib/shared/errors";
 import { MASKED_SECRET, getCoreDestinationTypeNonStrict } from "../../../../lib/schema/destinations";
+import { configObjectAuditLog } from "../../../../lib/server/audit-log";
 
 export type SyncDbModel = Omit<z.infer<typeof ConfigurationObjectLinkDbModel>, "data"> & {
   data?: SyncOptionsType;
@@ -117,6 +118,10 @@ const postAndPutCfg = {
           await updateScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
         }
       }
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "update", {
+        prevVersion: existingLink,
+        newVersion: createdOrUpdated,
+      });
     } else {
       createdOrUpdated = (await db.prisma().configurationObjectLink.create({
         data: {
@@ -132,6 +137,9 @@ const postAndPutCfg = {
         //sync scheduler immediately, so if it fails, user sees the error
         await createScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
       }
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "create", {
+        newVersion: createdOrUpdated,
+      });
     }
     if (type === "sync" && (runSync === "true" || runSync === "1")) {
       await scheduleSync({
@@ -199,6 +207,9 @@ export const api: Api = {
         if (updatedLink.type == "sync") {
           await deleteScheduler(updatedLink.id);
         }
+        await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", {
+          prevVersion: updatedLink,
+        });
         return { deleted: true };
       } else if (fromId && toId) {
         if (id) {
@@ -212,6 +223,9 @@ export const api: Api = {
           if (updatedLink.type == "sync") {
             await deleteScheduler(updatedLink.id);
           }
+          await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", {
+            prevVersion: updatedLink,
+          });
         }
         return { deleted: updatedLinks.length > 0 };
       } else {

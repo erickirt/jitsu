@@ -5,7 +5,7 @@ import { assertDefined, requireDefined } from "juava";
 import { getConfigObjectType, parseObject } from "../../../../../lib/schema/config-objects";
 import { ApiError } from "../../../../../lib/shared/errors";
 import { isReadOnly } from "../../../../../lib/server/read-only-mode";
-import { enableAuditLog } from "../../../../../lib/server/audit-log";
+import { configObjectAuditLog } from "../../../../../lib/server/audit-log";
 import { trackTelemetryEvent, withProductAnalytics } from "../../../../../lib/server/telemetry";
 import { containsMaskedSecrets, unmaskSecretsFromOriginal } from "../../../../../lib/schema/secrets";
 import { getServerLog } from "../../../../../lib/server/log";
@@ -96,20 +96,7 @@ export const api: Api = {
         //there's no workspace name / id available. Maybe that's fine?
         { user, workspace: { id: workspaceId }, req }
       );
-      if (enableAuditLog) {
-        await db.prisma().auditLog.create({
-          data: {
-            type: "config-object-create",
-            workspaceId,
-            objectId: id,
-            userId: user.internalId,
-            changes: {
-              objectType: type,
-              newVersion: object,
-            },
-          },
-        });
-      }
+      await configObjectAuditLog(user, workspaceId, created.id, type, "create", { newVersion: object });
       return { id: created.id };
     },
   },

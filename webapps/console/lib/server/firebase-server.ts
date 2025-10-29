@@ -128,5 +128,6 @@ export async function getFirebaseUser(req: NextApiRequest, checkRevoked?: boolea
     externalId: decodedIdToken.uid,
     internalId: decodedIdToken.internalId,
     externalUsername: email,
+    authType: "firebase",
   };
 }

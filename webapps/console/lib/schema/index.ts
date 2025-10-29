@@ -11,6 +11,7 @@ export const SessionUser = z.object({
   externalId: z.string(),
   internalId: z.string(),
   externalUsername: z.string().nullish(),
+  authType: z.string().nullish().optional(),
 });
 export type SessionUser = z.infer<typeof SessionUser>;
 
