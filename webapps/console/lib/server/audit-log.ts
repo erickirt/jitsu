@@ -15,7 +15,7 @@ export async function configObjectAuditLog(
   if (enableAuditLog) {
     await db.prisma().auditLog.create({
       data: {
-        type: op,
+        type: `config-object-${op}`,
         workspaceId,
         objectId: id,
         userId: user.internalId,
