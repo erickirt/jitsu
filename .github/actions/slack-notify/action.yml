@@ -18,9 +18,22 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: 📦 Install js-yaml
+    - name: 📦 Install yq
       shell: bash
-      run: npm install --global js-yaml
+      run: |
+        sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+
+    - name: 🔄 Convert YAML to JSON
+      id: convert
+      shell: bash
+      env:
+        BLOCKS_YAML: ${{ inputs.blocks }}
+      run: |
+        BLOCKS_JSON=$(echo "$BLOCKS_YAML" | yq -o=json '.')
+        echo "blocks_json<<EOF" >> $GITHUB_OUTPUT
+        echo "$BLOCKS_JSON" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: 💬 Send Slack notification
       uses: actions/github-script@v7
@@ -28,11 +41,10 @@ runs:
         SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
         COLOR: ${{ inputs.color }}
         HEADER: ${{ inputs.header }}
-        BLOCKS_YAML: ${{ inputs.blocks }}
+        BLOCKS_JSON: ${{ steps.convert.outputs.blocks_json }}
       with:
         script: |
-          const yaml = require('js-yaml');
-          const blocks = yaml.load(process.env.BLOCKS_YAML);
+          const blocks = JSON.parse(process.env.BLOCKS_JSON);
 
           // Build sections from blocks
           const sections = blocks.map(block => {
@@ -84,5 +96,8 @@ runs:
           });
 
           if (!response.ok) {
-            throw new Error(`Slack webhook failed: ${response.statusText}`);
+            const text = await response.text();
+            throw new Error(`Slack webhook failed: ${response.statusText} - ${text}`);
           }
+
+          console.log('✅ Slack notification sent successfully');
