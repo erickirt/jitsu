@@ -48,24 +48,44 @@ runs:
 
           // Build sections from blocks
           const sections = blocks.map(block => {
-            let text = `• *${block.title}:* `;
-
             if (block.is_code) {
-              text += `\n\`\`\`\n${block.value}\n\`\`\``;
-            } else if (block.url) {
-              text += `<${block.url}|${block.value}>`;
+              // Use separate header and context blocks for code to avoid collapse
+              return [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `*${block.title}:*`
+                  }
+                },
+                {
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `\`\`\`${block.value}\`\`\``
+                    }
+                  ]
+                }
+              ];
             } else {
-              text += `\`${block.value}\``;
-            }
+              let text = `*${block.title}:* `;
 
-            return {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: text
+              if (block.url) {
+                text += `<${block.url}|${block.value}>`;
+              } else {
+                text += block.value;
               }
-            };
-          });
+
+              return {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: text
+                }
+              };
+            }
+          }).flat();
 
           // Build complete payload
           const payload = {
