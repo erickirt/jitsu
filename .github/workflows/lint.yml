@@ -21,6 +21,18 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🚀 Setup Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-newjitsu-
+            ${{ runner.os }}-turbo-
 
       - name: 📦 Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -33,6 +45,12 @@ jobs:
 
       - name: 🧪 Run tests
         run: pnpm test
+
+      - name: 🏗️ Build @jitsu/js for Playwright
+        run: pnpm turbo run build --filter=@jitsu/js
+
+      - name: 🎭 Run Playwright tests
+        run: pnpm test:playwright
 
       - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4

@@ -16,7 +16,7 @@
     "clean": "rm -rf ./dist ./compiled",
     "test:node": "jest",
     "test:playwright": "playwright test ./__tests__/playwright",
-    "test": "pnpm run test:node && pnpm run test:playwright",
+    "test": "pnpm run test:node",
     "compile": "tsc -p .",
     "build": "pnpm run clean && pnpm run compile && rollup -c"
   },

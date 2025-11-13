@@ -2,6 +2,7 @@
   "name": "root",
   "version": "0.0.0",
   "private": false,
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "build-scripts": "pnpm --filter ./cli/build-scripts run exec",
     "format:check": "prettier --ignore-unknown --check --config ./.prettierrc.json --ignore-path ./.prettierignore $(git diff --name-only --diff-filter d | xargs)",
@@ -22,6 +23,7 @@
     "console:db-prepare-force": "dotenv -e .env.local -- pnpm run --filter=console db:update-schema-force",
     "dev": "dotenv -e .env.local -- turbo run dev",
     "test": "turbo run test",
+    "test:playwright": "turbo run test:playwright",
     "jitsu-cli": "turbo run build --filter=jitsu-cli && node --enable-source-maps core/jitsu-cli/lib/index.js",
     "clean:turbo": "rm -rf `find . -type d -name .turbo`",
     "factory-reset": "pnpm clean ; pnpm clean:turbo ; rm -rf `find . -type d -name node_modules`",
@@ -42,12 +44,12 @@
     "prettier": "^2.8.7",
     "semantic-release": "^23.0.0",
     "ts-node": "^10.9.2",
-    "turbo": "~1.2.16",
+    "turbo": "^2.0.0",
     "typescript": "^5.6.3"
   },
   "engines": {
     "yarn": ">=1000",
-    "pnpm": ">=9",
+    "pnpm": ">=10",
     "npm": ">=1000",
     "node": "22.x"
   },

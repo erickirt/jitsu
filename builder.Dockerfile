@@ -1,7 +1,7 @@
 # Docker image for building and testing the application in CI
 # This image includes all build dependencies to speed up CI workflows:
 # - Node.js 22 (matches .node-version)
-# - pnpm 9 (our package manager)
+# - pnpm 10 (our package manager)
 # - Playwright with browser binaries (for running browser tests)
 #
 # This image is automatically built and published to GHCR when this file changes.
@@ -20,7 +20,7 @@ RUN apt-get update && \
     apt-get install -y nodejs && \
     apt-get install git curl telnet python3 g++ make jq -y && \
     rm -rf /var/lib/apt/lists/* && \
-    npm -g install pnpm@9 && \
+    npm -g install pnpm@10 && \
     npm cache clean --force
 
 # Set up pnpm global bin directory
@@ -71,3 +71,9 @@ RUN PLAYWRIGHT_VERSION=$(cat /tmp/playwright-version.txt) && \
 
 # Clean up any leftover node_modules
 RUN rm -rf /node_modules
+
+# Remove build tools to save ~200-300MB (not needed for CI runtime, only for builds during pnpm install)
+RUN apt-get remove -y g++ gcc make python3 perl git && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*

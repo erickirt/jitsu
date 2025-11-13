@@ -1,5 +1,6 @@
 {
-  "pipeline": {
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
     "console:dev": {
       "dependsOn": ["^console:dev"],
       "cache": false
@@ -44,6 +45,9 @@
     "build": {
       "dependsOn": ["clean", "^build"],
       "outputs": ["dist/**", "compiled/**", "build/**", ".next/**", "!.next/cache/**"]
+    },
+    "test:playwright": {
+      "dependsOn": ["^test:playwright"]
     }
   }
 }

@@ -5,7 +5,7 @@
 # WHY WE NEED THIS:
 # The jitsu-builder image contains all dependencies needed for CI builds and tests:
 # - Node.js 22 (our runtime)
-# - pnpm 9 (our package manager)
+# - pnpm 10 (our package manager)
 # - Playwright with pre-installed browser binaries (for E2E tests)
 #
 # By pre-installing these dependencies, we significantly speed up CI workflows.
