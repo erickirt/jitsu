@@ -73,8 +73,8 @@ jobs:
         uses: ./.github/actions/slack-notify
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && 'good' || 'danger' }}
-          header: "Jitsu Lint and Test [${{ github.ref_name }}] ${{ job.status == 'success' && 'successful' || 'failed' }}"
+          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
+          header: "${{ job.status == 'success' && '✅' || '❌' }} Jitsu Lint on branch ${{ github.ref_name }} ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Commit
               value: ${{ github.sha }}
