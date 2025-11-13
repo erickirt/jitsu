@@ -53,7 +53,6 @@ jobs:
       - name: 🧪 Run tests
         run: docker exec builder pnpm test
 
-
       - name: 🎭 Run Playwright tests
         run: docker exec builder pnpm test:playwright
 
