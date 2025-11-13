@@ -16,7 +16,7 @@
 # - Workflow triggers: automatically on changes to builder.Dockerfile on newjitsu branch, or manually via workflow_dispatch
 # - Publishes to: ghcr.io/<owner>/jitsu-builder:latest
 # - Uses GitHub Actions cache backend (type=gha) for fast layer caching (up to 10GB per repo)
-#
+# 
 name: Build Builder Image
 
 on:
@@ -25,8 +25,10 @@ on:
       - newjitsu
     paths:
       - builder.Dockerfile
+      - .github/workflows/build-builder-image.yml
       - pnpm-lock.yaml
   workflow_dispatch:
+    
 
 jobs:
   build:
