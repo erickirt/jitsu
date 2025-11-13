@@ -1,0 +1,136 @@
+name: Test Slack Notification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-simple:
+    name: 🧪 Test Simple Blocks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💬 Send simple notification
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: good
+          header: "Test: Simple Blocks"
+          blocks: |
+            - title: Simple text
+              value: Hello from GitHub Actions
+            - title: Another field
+              value: Just a regular value
+
+  test-links:
+    name: 🧪 Test Blocks with Links
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💬 Send notification with links
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: warning
+          header: "Test: Blocks with Links"
+          blocks: |
+            - title: Commit
+              value: ${{ github.sha }}
+              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            - title: Repository
+              value: View on GitHub
+              url: ${{ github.server_url }}/${{ github.repository }}
+            - title: Workflow run
+              value: Current run
+              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  test-code:
+    name: 🧪 Test Code Blocks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💬 Send notification with code
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: danger
+          header: "Test: Code Blocks"
+          blocks: |
+            - title: Multiline code
+              value: |
+                function hello() {
+                  console.log("Hello, World!");
+                  return 42;
+                }
+              is_code: true
+            - title: Single line code
+              value: npm install && npm test
+              is_code: true
+            - title: JSON example
+              value: |
+                {
+                  "name": "test",
+                  "version": "1.0.0",
+                  "status": "success"
+                }
+              is_code: true
+
+  test-mixed:
+    name: 🧪 Test Mixed Blocks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💬 Send mixed notification
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: "#36a64f"
+          header: "Test: Mixed Block Types"
+          blocks: |
+            - title: Status
+              value: Build successful
+            - title: Version
+              value: v1.2.3-beta.20251113120000.abc1234
+            - title: Commit
+              value: ${{ github.sha }}
+              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            - title: Changes
+              value: |
+                - Added new feature
+                - Fixed bug in auth
+                - Updated dependencies
+              is_code: true
+            - title: Triggered by
+              value: ${{ github.actor }}
+            - title: View logs
+              value: Click here for details
+              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  test-all-colors:
+    name: 🧪 Test All Color Options
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        color: [good, warning, danger]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💬 Send notification with ${{ matrix.color }}
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: ${{ matrix.color }}
+          header: "Test: Color '${{ matrix.color }}'"
+          blocks: |
+            - title: Color type
+              value: ${{ matrix.color }}
+            - title: Description
+              value: This notification uses the '${{ matrix.color }}' color
