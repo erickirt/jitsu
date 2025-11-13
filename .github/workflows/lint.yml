@@ -82,9 +82,9 @@ jobs:
   deploy:
     name: 🐳 Build Docker Images
     needs: build
-    if: github.event_name == 'push' && (github.ref == format('refs/heads/{0}', env.BETA_BRANCH) || github.ref == format('refs/heads/{0}', env.STABLE_BRANCH))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
     uses: ./.github/workflows/services-build.yaml
     secrets: inherit
     with:
-      channel: ${{ github.ref == format('refs/heads/{0}', env.BETA_BRANCH) && 'beta' || 'stable' }}
+      channel: ${{ github.ref == 'refs/heads/newjitsu' && 'beta' || 'stable' }}
       skip_install: true
