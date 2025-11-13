@@ -1,0 +1,90 @@
+name: Jitsu Lint and Test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # The jitsu-builder container has Playwright browsers binaries preinstalled on this path:
+  PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
+  BETA_BRANCH: newjitsu
+  STABLE_BRANCH: stable-services
+
+jobs:
+  build:
+    name: 🏗️ Build Project
+    # Uses our custom builder image with Node 22, pnpm 9, and Playwright pre-installed
+    # See builder.Dockerfile and build-builder-image.yml for details
+    container: ghcr.io/jitsucom/jitsu-builder:latest
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💾 Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: 💾 Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: 📦 Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: ✨ Check code format
+        run: pnpm format:check:all
+
+      - name: 🔍 Run linter
+        run: pnpm lint
+
+      - name: 🏗️ Build project
+        run: pnpm build
+
+      - name: 🧪 Run tests
+        run: pnpm test
+
+      - name: 📤 Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: libs/jitsu-js/playwright/artifacts
+          name: artifacts/@jitsu/js
+          retention-days: 30
+
+      - name: 💬 Send notification to Slack
+        if: always() && github.ref == format('refs/heads/{0}', env.BETA_BRANCH)
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: ${{ job.status == 'success' && 'good' || 'danger' }}
+          header: "Jitsu Lint and Test [${{ github.ref_name }}] ${{ job.status == 'success' && 'successful' || 'failed' }}"
+          blocks: |
+            - title: Commit
+              value: ${{ github.sha }}
+              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            - title: Commit message
+              value: ${{ toJSON(github.event.head_commit.message) }}
+              is_code: true
+            - title: Workflow run
+              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
+              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - title: Triggered by
+              value: ${{ github.actor }}
+
+  deploy:
+    name: 🐳 Build Docker Images
+    needs: build
+    if: github.event_name == 'push' && (github.ref == format('refs/heads/{0}', env.BETA_BRANCH) || github.ref == format('refs/heads/{0}', env.STABLE_BRANCH))
+    uses: ./.github/workflows/services-build.yaml
+    secrets: inherit
+    with:
+      channel: ${{ github.ref == format('refs/heads/{0}', env.BETA_BRANCH) && 'beta' || 'stable' }}
+      skip_install: true

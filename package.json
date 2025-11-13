@@ -47,9 +47,9 @@
   },
   "engines": {
     "yarn": ">=1000",
-    "pnpm": ">=8",
+    "pnpm": ">=9",
     "npm": ">=1000",
-    "node": "18.x"
+    "node": "22.x"
   },
   "pnpm": {
     "overrides": {

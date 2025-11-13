@@ -1,0 +1,84 @@
+name: Send Slack Notification
+description: Send a formatted notification to Slack with custom blocks
+
+inputs:
+  slack_webhook_url:
+    description: "Slack webhook URL"
+    required: true
+  color:
+    description: "Notification color (good, warning, danger, or hex color)"
+    required: true
+  header:
+    description: "Header text for the notification"
+    required: true
+  blocks:
+    description: "YAML array of block objects with title, value, url (optional), is_code (optional)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: 💬 Send Slack notification
+      uses: actions/github-script@v7
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
+        COLOR: ${{ inputs.color }}
+        HEADER: ${{ inputs.header }}
+        BLOCKS_YAML: ${{ inputs.blocks }}
+      with:
+        script: |
+          const yaml = require('js-yaml');
+          const blocks = yaml.load(process.env.BLOCKS_YAML);
+
+          // Build sections from blocks
+          const sections = blocks.map(block => {
+            let text = `• *${block.title}:* `;
+
+            if (block.is_code) {
+              text += `\n\`\`\`\n${block.value}\n\`\`\``;
+            } else if (block.url) {
+              text += `<${block.url}|${block.value}>`;
+            } else {
+              text += `\`${block.value}\``;
+            }
+
+            return {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: text
+              }
+            };
+          });
+
+          // Build complete payload
+          const payload = {
+            attachments: [
+              {
+                color: process.env.COLOR,
+                blocks: [
+                  {
+                    type: "header",
+                    text: {
+                      type: "plain_text",
+                      text: process.env.HEADER
+                    }
+                  },
+                  ...sections
+                ]
+              }
+            ]
+          };
+
+          // Send to Slack
+          const response = await fetch(process.env.SLACK_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            throw new Error(`Slack webhook failed: ${response.statusText}`);
+          }
