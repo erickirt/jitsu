@@ -13,15 +13,16 @@
 #
 # HOW IT'S USED:
 # - The lint.yml workflow uses this image as a container for running builds, tests, and linting
-# - Workflow triggers: automatically on changes to builder.Dockerfile, or manually via workflow_dispatch
+# - Workflow triggers: automatically on changes to builder.Dockerfile on newjitsu branch, or manually via workflow_dispatch
 # - Publishes to: ghcr.io/<owner>/jitsu-builder:latest
+# - Uses GitHub Actions cache backend (type=gha) for fast layer caching (up to 10GB per repo)
 #
 name: Build Builder Image
 
 on:
   push:
     branches:
-      - $default-branch
+      - newjitsu
     paths:
       - builder.Dockerfile
   workflow_dispatch:
@@ -57,5 +58,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/jitsu-builder:latest
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/jitsu-builder:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/jitsu-builder:buildcache,mode=max
+          # Use GitHub Actions cache (recommended for GHA workflows)
+          # Supports up to 10GB per repository with automatic eviction
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

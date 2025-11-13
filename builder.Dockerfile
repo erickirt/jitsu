@@ -22,10 +22,11 @@ COPY libs/jitsu-js/package.json ./libs/jitsu-js/package.json
 
 # Extract Playwright version dynamically from libs/jitsu-js/package.json
 # This ensures the builder image always matches the project's Playwright version
+# Install only Chromium browser to save time and space (~313MB vs ~160MB for Chromium only)
 RUN PLAYWRIGHT_VERSION=$(jq -r '.devDependencies["@playwright/test"]' ./libs/jitsu-js/package.json) && \
     echo "Installing Playwright version: ${PLAYWRIGHT_VERSION}" && \
     npm install --global playwright@${PLAYWRIGHT_VERSION} && \
-    playwright install --with-deps
+    playwright install chromium --with-deps
 
 # Pre-fetch all dependencies into pnpm cache to speed up CI builds
 # pnpm fetch reads pnpm-lock.yaml and downloads all packages to the store
