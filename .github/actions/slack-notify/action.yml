@@ -46,46 +46,22 @@ runs:
         script: |
           const blocks = JSON.parse(process.env.BLOCKS_JSON);
 
-          // Build sections from blocks
-          const sections = blocks.map(block => {
+          // Build single text with all blocks as bullet points
+          const lines = blocks.map(block => {
+            let line = `• *${block.title}:* `;
+
             if (block.is_code) {
-              // Use separate header and context blocks for code to avoid collapse
-              return [
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `*${block.title}:*`
-                  }
-                },
-                {
-                  type: "context",
-                  elements: [
-                    {
-                      type: "mrkdwn",
-                      text: `\`\`\`${block.value}\`\`\``
-                    }
-                  ]
-                }
-              ];
+              line += `\n\`\`\`${block.value}\`\`\``;
+            } else if (block.url) {
+              line += `<${block.url}|${block.value}>`;
             } else {
-              let text = `*${block.title}:* `;
-
-              if (block.url) {
-                text += `<${block.url}|${block.value}>`;
-              } else {
-                text += block.value;
-              }
-
-              return {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: text
-                }
-              };
+              line += block.value;
             }
-          }).flat();
+
+            return line;
+          });
+
+          const text = lines.join('\n');
 
           // Build complete payload
           const payload = {
@@ -100,7 +76,13 @@ runs:
                       text: process.env.HEADER
                     }
                   },
-                  ...sections
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: text
+                    }
+                  }
                 ]
               }
             ]
