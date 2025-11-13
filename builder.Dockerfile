@@ -1,13 +1,3 @@
-# Docker image for building and testing the application in CI
-# This image includes all build dependencies to speed up CI workflows:
-# - Node.js 22 (matches .node-version)
-# - pnpm 10 (our package manager)
-# - Playwright with browser binaries (for running browser tests)
-#
-# This image is automatically built and published to GHCR when this file changes.
-# Manual build command:
-#   docker buildx build --platform linux/amd64,linux/arm64 -f builder.Dockerfile --push -t ghcr.io/jitsucom/jitsu-builder:latest .
-
 FROM debian:bookworm-slim
 
 # Install Node.js 22 manually from NodeSource
@@ -72,8 +62,6 @@ RUN PLAYWRIGHT_VERSION=$(cat /tmp/playwright-version.txt) && \
 # Clean up any leftover node_modules
 RUN rm -rf /node_modules
 
-# Remove build tools to save ~200-300MB (not needed for CI runtime, only for builds during pnpm install)
-RUN apt-get remove -y g++ gcc make python3 perl git && \
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+
+RUN  apt-get clean && rm -rf /var/lib/apt/lists/*
+
