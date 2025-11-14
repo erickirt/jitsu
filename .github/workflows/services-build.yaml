@@ -3,21 +3,12 @@ name: Backend Build
 on:
   workflow_call:
     inputs:
-      branch:
-        description: "Branch to build from"
-        required: true
-        type: string
       skip_install:
         description: "Skip dependency installation (already done in calling workflow)"
         required: false
         type: boolean
         default: false
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to build from"
-        required: true
-        type: string
 
 jobs:
   build:
@@ -34,14 +25,13 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: 🔍 Determine release channel
         id: channel
         run: |
-          BRANCH="${{ inputs.branch }}"
+          BRANCH="${{ github.ref_name }}"
           if [ "$BRANCH" = "stable-services" ]; then
             echo "channel=stable" >> $GITHUB_OUTPUT
           elif [ "$BRANCH" = "newjitsu" ]; then
@@ -120,7 +110,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           CHANNEL: ${{ steps.channel.outputs.channel }}
-          BRANCH: ${{ inputs.branch }}
+          BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           TARGETS="console rotor profiles"
@@ -215,7 +205,7 @@ jobs:
       - name: 📊 Summary
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ inputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Channel**: ${{ steps.channel.outputs.channel }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
