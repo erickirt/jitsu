@@ -3,8 +3,8 @@ name: Backend Build
 on:
   workflow_call:
     inputs:
-      channel:
-        description: "Release channel (beta or stable)"
+      branch:
+        description: "Branch to build from"
         required: true
         type: string
       skip_install:
@@ -12,6 +12,12 @@ on:
         required: false
         type: boolean
         default: false
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build from"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -28,8 +34,21 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.branch }}
           fetch-depth: 0
           fetch-tags: true
+
+      - name: 🔍 Determine release channel
+        id: channel
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          if [ "$BRANCH" = "stable-services" ]; then
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          elif [ "$BRANCH" = "newjitsu" ]; then
+            echo "channel=beta" >> $GITHUB_OUTPUT
+          else
+            echo "channel=canary" >> $GITHUB_OUTPUT
+          fi
 
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -61,32 +80,16 @@ jobs:
 
       - name: 📦 Install dependencies
         if: ${{ !inputs.skip_install }}
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      - name: 🔍 Set release channel
-        id: channel
-        run: echo "channel=${{ inputs.channel }}" >> $GITHUB_OUTPUT
-
-      - name: 🏷️ Generate version
+      - name: 🏷️ Generate version with semantic-release
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ steps.channel.outputs.channel }}" = "beta" ]; then
-            pnpm exec semantic-release --dry-run --extends ./.releaserc.server.json > /tmp/release-output.txt
-            BASE_VERSION=$(cat /tmp/release-output.txt | grep "The next release version is" | sed 's/.*The next release version is //')
-            TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-            SHORT_SHA=$(git rev-parse --short=7 HEAD)
-            VERSION="${BASE_VERSION}-beta.${TIMESTAMP}.${SHORT_SHA}"
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-            # Create tag for beta
-            git tag "jitsu-services-v${VERSION}" -m "Beta release ${VERSION}"
-          else
-            pnpm exec semantic-release --extends ./.releaserc.server.json
-            VERSION=$(cat /tmp/semantic-release-version.txt)
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          fi
+          pnpm exec semantic-release --extends ./.releaserc.server.json
+          VERSION=$(cat /tmp/semantic-release-version.txt)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: 📝 Update versions
         env:
@@ -116,14 +119,35 @@ jobs:
       - name: 🏗️ Build and push Docker images
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          CHANNEL: ${{ inputs.channel }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          BRANCH: ${{ inputs.branch }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           TARGETS="console rotor profiles"
           REGISTRY="ghcr.io/${{ github.repository_owner }}"
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+
+          # Sanitize branch name for Docker tag (lowercase, replace / and _ with -, remove special chars)
+          BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\/\_]/-/g' | sed 's/[^a-z0-9.-]//g')
 
           for TARGET in $TARGETS; do
             echo "🚀 Building ${TARGET} for AMD64 and ARM64..."
+
+            # Build tags list
+            # 1. Version tag (e.g., 1.2.3-canary.1.20251113.abc1234)
+            TAGS="-t ${REGISTRY}/${TARGET}:${VERSION}"
+
+            # 2. Channel-based tag (map stable to "latest")
+            if [ "${CHANNEL}" = "stable" ]; then
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:latest"
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:stable"
+            else
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${CHANNEL}"
+            fi
+
+            # 3. Branch + commit tag (e.g., feat-a.abc1234)
+            TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${BRANCH_SANITIZED}.${SHORT_SHA}"
+
             docker buildx build \
               --target ${TARGET} \
               --platform linux/amd64,linux/arm64 \
@@ -132,8 +156,7 @@ jobs:
               --build-arg JITSU_BUILD_COMMIT_SHA=${COMMIT_SHA} \
               --cache-from type=registry,ref=${REGISTRY}/${TARGET}:buildcache \
               --cache-to type=registry,ref=${REGISTRY}/${TARGET}:buildcache,mode=max \
-              -t ${REGISTRY}/${TARGET}:${VERSION} \
-              -t ${REGISTRY}/${TARGET}:${CHANNEL} \
+              ${TAGS} \
               -f all.Dockerfile \
               --push \
               .
@@ -171,8 +194,8 @@ jobs:
         uses: ./.github/actions/slack-notify
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && 'good' || 'danger' }}
-          header: "jitsu-services [${{ inputs.channel }}] build ${{ job.status == 'success' && 'successful' || 'failed' }}"
+          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
+          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.channel.outputs.channel }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Version
               value: ${{ steps.version.outputs.version }}
@@ -192,9 +215,9 @@ jobs:
       - name: 📊 Summary
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ inputs.branch }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Channel**: ${{ steps.channel.outputs.channel }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ steps.notify.outputs.deploy_run_url }}" ]; then
             echo "- **Deploy workflow**: ${{ steps.notify.outputs.deploy_run_url }}" >> $GITHUB_STEP_SUMMARY

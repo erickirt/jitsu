@@ -47,8 +47,8 @@ jobs:
       - name: 🔍 Run linter
         run: docker exec builder pnpm lint
 
-      - name: 🏗️ Build packages
-        run: docker exec builder pnpm build
+      - name: 🏗️ Build
+        run: docker exec builder sh -c 'pnpm turbo run build --filter="!@jitsu-internal/console" --filter="!@jitsu-ee/ee-api"'
 
       - name: 🧪 Run tests
         run: docker exec builder pnpm test
@@ -95,5 +95,5 @@ jobs:
     uses: ./.github/workflows/services-build.yaml
     secrets: inherit
     with:
-      channel: ${{ github.ref == 'refs/heads/newjitsu' && 'beta' || 'stable' }}
-      skip_install: true
+      branch: ${{ github.ref_name }}
+      #skip_install: true

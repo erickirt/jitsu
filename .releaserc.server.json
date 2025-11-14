@@ -8,6 +8,11 @@
       "name": "newjitsu",
       "channel": "beta",
       "prerelease": "beta"
+    },
+    {
+      "name": "*",
+      "channel": "canary",
+      "prerelease": "canary"
     }
   ],
   "tagFormat": "jitsu-services-v${version}",
@@ -18,7 +23,7 @@
     [
       "@semantic-release/exec",
       {
-        "verifyReleaseCmd": "echo ${nextRelease.version} > /tmp/semantic-release-version.txt"
+        "verifyReleaseCmd": "CHANNEL=${nextRelease.channel}; VERSION=${nextRelease.version}; if [ \"$CHANNEL\" = \"canary\" ]; then TIMESTAMP=$(date -u +%Y%m%d%H%M%S); SHORT_SHA=$(git rev-parse --short=7 HEAD); VERSION=\"${VERSION}.${TIMESTAMP}.${SHORT_SHA}\"; fi; echo \"$VERSION\" > /tmp/semantic-release-version.txt"
       }
     ],
     [
