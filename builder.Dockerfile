@@ -13,11 +13,6 @@ RUN apt-get update && \
     npm -g install pnpm@10 && \
     npm cache clean --force
 
-# Set up pnpm global bin directory
-ENV PNPM_HOME=/usr/local/share/pnpm
-ENV PATH="${PNPM_HOME}:${PATH}"
-RUN mkdir -p ${PNPM_HOME}
-
 # Copy only the files needed for dependency fetching and Playwright version extraction
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY libs/jitsu-js/package.json ./libs/jitsu-js/package.json
@@ -50,6 +45,8 @@ RUN PLAYWRIGHT_VERSION=$(jq -r '.devDependencies["@playwright/test"]' ./libs/jit
     echo "Playwright version to install: ${PLAYWRIGHT_VERSION}"
 
 # Fetch pnpm dependencies (only populates the store, doesn't create node_modules)
+# This populates the standard pnpm store at /root/.local/share/pnpm/store/v10
+# The store will be available to all.Dockerfile when it uses this image as builder
 RUN pnpm fetch && \
     rm -rf /package.json /pnpm-lock.yaml /pnpm-workspace.yaml /libs
 

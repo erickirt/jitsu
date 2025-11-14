@@ -4,12 +4,13 @@
 #
 # WHY WE NEED THIS:
 # The jitsu-builder image contains all dependencies needed for CI builds and tests:
-# - Node.js 22 (our runtime)
+# - Node.js 24 (our runtime)
 # - pnpm 10 (our package manager)
+# - Pre-fetched pnpm dependencies in /root/.local/share/pnpm/store (standard location)
 # - Playwright with pre-installed browser binaries (for E2E tests)
 #
 # By pre-installing these dependencies, we significantly speed up CI workflows.
-# Without this image, each CI run would need to install Playwright browsers (~500MB), adding 2-3 minutes per run.
+# Without this image, each CI run would need to download all packages (~3000+) and install Playwright browsers (~500MB).
 #
 # HOW IT'S USED:
 # - The lint.yml workflow uses this image as a container for running builds, tests, and linting
