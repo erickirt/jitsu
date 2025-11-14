@@ -18,6 +18,8 @@ RUN apt-get update && \
 # Note: This does NOT affect the store location, which remains at /root/.local/share/pnpm/store
 ENV PNPM_HOME=/root/.local/share/pnpm
 ENV PATH="${PNPM_HOME}:${PATH}"
+# Override pnpm store location to avoid workspace-local stores
+ENV NPM_CONFIG_STORE_DIR=/pnpm-store
 
 # Copy only the files needed for dependency fetching and Playwright version extraction
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -51,10 +53,10 @@ RUN PLAYWRIGHT_VERSION=$(jq -r '.devDependencies["@playwright/test"]' ./libs/jit
     echo "Playwright version to install: ${PLAYWRIGHT_VERSION}"
 
 # Fetch pnpm dependencies (only populates the store, doesn't create node_modules)
-# This populates the standard pnpm store at /root/.local/share/pnpm/store/v10
+# This populates the pnpm store at /pnpm-store
 # The store will be available to all.Dockerfile when it uses this image as builder
 # Use --ignore-scripts to skip compilation - only fetch source packages
-RUN pnpm fetch --ignore-scripts && \
+RUN echo "pnpm store path: $(pnpm store path)" && pnpm fetch --ignore-scripts && \
     rm -rf /package.json /pnpm-lock.yaml /pnpm-workspace.yaml /libs
 
 # Install Playwright globally with pnpm
