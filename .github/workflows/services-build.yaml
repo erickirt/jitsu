@@ -240,15 +240,17 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.version.outputs.channel }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.version.outputs.channel || 'unknown' }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
+            - title: Branch
+              value: ${{ github.ref_name }}
             - title: Version
-              value: ${{ steps.version.outputs.version }}
+              value: ${{ steps.version.outputs.version || 'N/A' }}
             - title: Commit
               value: ${{ steps.short-sha.outputs.sha }}
               url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
             - title: Commit message
-              value: ${{ toJSON(github.event.head_commit.message) }}
+              value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || 'N/A' }}
               is_code: true
             - title: Build workflow
               value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
