@@ -28,6 +28,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: 🏷️ Generate version
+        id: version
+        uses: ./.github/actions/version
+        with:
+          version_file: .services.version.json
+
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -87,48 +93,6 @@ jobs:
       #     fi
       #
       #     echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: 🏷️ Generate version
-        id: version
-        uses: ./.github/actions/version
-
-      - name: 🏷️ Create and push git tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Create annotated tag
-          git tag -a "$TAG" -m "Release $VERSION"
-
-          # Push tag using token with branch protection bypass
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git "$TAG"
-
-          echo "Created and pushed tag: $TAG"
-
-      - name: 📝 Create GitHub release
-        if: steps.version.outputs.channel != 'canary'
-        env:
-          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
-          CHANNEL="${{ steps.version.outputs.channel }}"
-
-          # Determine if prerelease
-          PRERELEASE_FLAG=""
-          if [ "$CHANNEL" = "beta" ]; then
-            PRERELEASE_FLAG="--prerelease"
-          fi
-
-          # Create release with auto-generated notes
-          gh release create "$TAG" \
-            --title "Release $VERSION" \
-            --generate-notes \
-            $PRERELEASE_FLAG
-
-          echo "Created GitHub release: $TAG"
 
       - name: 📝 Update versions
         if: steps.version.outputs.channel != 'canary'
@@ -199,6 +163,45 @@ jobs:
               .
           done
 
+      - name: 🏷️ Create and push git tag
+        if: steps.version.outputs.channel != 'canary'
+        env:
+          GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create annotated tag
+          git tag -a "$TAG" -m "Release $VERSION"
+
+          # Push tag using token with branch protection bypass
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git "$TAG"
+
+          echo "Created and pushed tag: $TAG"
+
+      - name: 📝 Create GitHub release
+        if: steps.version.outputs.channel != 'canary'
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANNEL="${{ steps.version.outputs.channel }}"
+
+          # Determine if prerelease
+          PRERELEASE_FLAG=""
+          if [ "$CHANNEL" = "beta" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          # Create release with auto-generated notes
+          gh release create "$TAG" \
+            --title "Release $VERSION" \
+            --generate-notes \
+            $PRERELEASE_FLAG
+
+          echo "Created GitHub release: $TAG"
+
       - name: 📢 Notify release
         id: notify
         env:
@@ -253,14 +256,3 @@ jobs:
             - title: ${{ job.status == 'success' && 'Deploy lifecycle' || 'Triggered by' }}
               value: ${{ job.status == 'success' && 'View deployment run' || github.actor }}
               url: ${{ job.status == 'success' && steps.notify.outputs.deploy_run_url || '' }}
-
-      - name: 📊 Summary
-        run: |
-          echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Channel**: ${{ steps.version.outputs.channel }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps.notify.outputs.deploy_run_url }}" ]; then
-            echo "- **Deploy workflow**: ${{ steps.notify.outputs.deploy_run_url }}" >> $GITHUB_STEP_SUMMARY
-          fi
