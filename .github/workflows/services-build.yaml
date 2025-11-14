@@ -11,7 +11,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Use a shared concurrency group for both direct runs and calls from lint.yml
+  # This ensures only one build runs per branch at a time
+  group: services-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,60 +46,6 @@ jobs:
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 📦 Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
-
-      - name: 💾 Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: 💾 Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
-      # - name: 📦 Install semantic-release
-      #   if: ${{ !inputs.skip_install }}
-      #   run: |
-      #     pnpm add -D -w semantic-release@^23.0.0 \
-      #       @semantic-release/exec@^6.0.3 \
-      #       @semantic-release/github@^10.0.0 \
-      #       @semantic-release/commit-analyzer \
-      #       @semantic-release/release-notes-generator
-
-      # - name: 🏷️ Generate version with semantic-release
-      #   id: version
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
-      #   run: |
-      #     CHANNEL="${{ steps.channel.outputs.channel }}"
-      #     BRANCH="${{ github.ref_name }}"
-      #
-      #     if [ "$CHANNEL" = "canary" ]; then
-      #       # For canary: simple branch.short-commit format (no semver, no git tags)
-      #       SHORT_SHA=$(git rev-parse --short=7 HEAD)
-      #       BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\\/\\_]/-/g' | sed 's/[^a-z0-9.-]//g')
-      #       VERSION="${BRANCH_SANITIZED}.${SHORT_SHA}"
-      #       echo "Generated canary version (no git tag): ${VERSION}"
-      #     else
-      #       # For stable/beta: use semantic-release (creates tags and releases)
-      #       pnpm exec semantic-release --extends ./.releaserc.server.json
-      #       VERSION=$(cat /tmp/semantic-release-version.txt)
-      #       echo "Using semantic-release version: ${VERSION}"
-      #     fi
-      #
-      #     echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
       - name: 📝 Update versions
         if: steps.version.outputs.channel != 'canary'
         env:
@@ -105,12 +53,7 @@ jobs:
         run: |
           echo "Updating all package.json files to version ${VERSION}"
           find . -name "package.json" -type f ! -path "*/node_modules/*" | while read -r file; do
-            node -e "
-              const fs = require('fs');
-              const pkg = JSON.parse(fs.readFileSync('$file', 'utf8'));
-              pkg.version = process.env.VERSION;
-              fs.writeFileSync('$file', JSON.stringify(pkg, null, 2) + '\n');
-            "
+            jq --arg version "${VERSION}" '.version = $version' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
             echo "Updated: $file"
           done
 
@@ -153,14 +96,24 @@ jobs:
             # 3. Branch + commit tag (e.g., feat-a.abc1234)
             TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${BRANCH_SANITIZED}.${SHORT_SHA}"
 
+            # Use AMD64 only for canary (faster), multi-arch for stable/beta
+            if [ "${CHANNEL}" = "canary" ]; then
+              PLATFORM="linux/amd64"
+            else
+              PLATFORM="linux/amd64"
+              #PLATFORM="linux/amd64,linux/arm64"
+            fi
+
             docker buildx build \
               --target ${TARGET} \
-              --platform linux/amd64,linux/arm64 \
+              --platform ${PLATFORM} \
               --build-arg JITSU_BUILD_VERSION=${VERSION} \
               --build-arg JITSU_BUILD_DOCKER_TAG=${CHANNEL} \
               --build-arg JITSU_BUILD_COMMIT_SHA=${COMMIT_SHA} \
               --build-arg CI=true \
+              --cache-from type=gha \
               --cache-from type=registry,ref=${REGISTRY}/${TARGET}:buildcache \
+              --cache-to type=gha,mode=max \
               --cache-to type=registry,ref=${REGISTRY}/${TARGET}:buildcache,mode=max \
               ${TAGS} \
               -f all.Dockerfile \

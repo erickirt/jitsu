@@ -15,11 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: 🏗️ Build Project
-    # Uses our custom builder image with Node 24, pnpm 10, and Playwright pre-installed
-    # See builder.Dockerfile and build-builder-image.yml for details
-    timeout-minutes: 60
+  lint-and-format:
+    name: ✨ Lint & Format
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout code
@@ -33,15 +31,15 @@ jobs:
           path: |
             .turbo
             **/node_modules/.cache
-          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-lint-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-lint-${{ hashFiles('**/pnpm-lock.yaml') }}-
             ${{ runner.os }}-turbo-
 
       - name: 🐳 Pull and start builder container
         run: |
           docker pull ghcr.io/jitsucom/jitsu-builder:latest
-          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Install dependencies
         run: docker exec builder pnpm install --frozen-lockfile
@@ -52,39 +50,144 @@ jobs:
       - name: 🔍 Run linter
         run: docker exec builder pnpm lint
 
+      - name: 🧹 Cleanup container
+        if: always()
+        run: docker stop builder && docker rm builder
+
+  build-and-test:
+    name: 🏗️ Build & Test
+    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🚀 Setup Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            **/node_modules/.cache
+          key: ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: 🐳 Pull and start builder container
+        run: |
+          docker pull ghcr.io/jitsucom/jitsu-builder:latest
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+
+      - name: 📦 Install dependencies
+        run: docker exec builder pnpm install --frozen-lockfile
+
       - name: 🏗️ Build
         run: docker exec builder sh -c 'pnpm turbo run build --filter="!@jitsu-internal/console" --filter="!@jitsu-ee/ee-api"'
 
       - name: 🧪 Run tests
         run: docker exec builder pnpm test
 
+      - name: 🧹 Cleanup container
+        if: always()
+        run: docker stop builder && docker rm builder
+
+  playwright:
+    name: 🎭 E2E Tests
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🔍 Check changed files
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            playwright:
+              - 'libs/jitsu-js/**'
+              - '**/playwright/**'
+              - '**/*.spec.ts'
+              - '**/playwright.config.ts'
+
+      - name: 🚀 Setup Turbo cache
+        if: steps.changes.outputs.playwright == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            **/node_modules/.cache
+          key: ${{ runner.os }}-turbo-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: 🐳 Pull and start builder container
+        if: steps.changes.outputs.playwright == 'true'
+        run: |
+          docker pull ghcr.io/jitsucom/jitsu-builder:latest
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+
+      - name: 📦 Install dependencies
+        if: steps.changes.outputs.playwright == 'true'
+        run: docker exec builder pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build (for Playwright)
+        if: steps.changes.outputs.playwright == 'true'
+        run: docker exec builder sh -c 'pnpm turbo run build --filter="!@jitsu-internal/console" --filter="!@jitsu-ee/ee-api"'
+
       - name: 🎭 Run Playwright tests
+        if: steps.changes.outputs.playwright == 'true'
         run: docker exec builder pnpm test:playwright
 
       - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.changes.outputs.playwright == 'true'
         with:
           path: libs/jitsu-js/playwright/artifacts
           name: artifacts/@jitsu/js
           retention-days: 30
 
       - name: 🧹 Cleanup container
-        if: always()
+        if: always() && steps.changes.outputs.playwright == 'true'
         run: docker stop builder && docker rm builder
 
+  notify:
+    name: 📢 Notify
+    needs: [lint-and-format, build-and-test, playwright]
+    if: always() && github.ref == format('refs/heads/{0}', env.BETA_BRANCH)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
       - name: 📝 Get short SHA
-        if: always()
         id: short-sha
         run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
+      - name: 🔍 Check job statuses
+        id: status
+        run: |
+          if [[ "${{ needs.lint-and-format.result }}" == "success" && "${{ needs.build-and-test.result }}" == "success" && ("${{ needs.playwright.result }}" == "success" || "${{ needs.playwright.result }}" == "skipped") ]]; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "color=#36a64f" >> $GITHUB_OUTPUT
+            echo "header=✅ Lint & Test on branch \`${{ github.ref_name }}\` SUCCEEDED" >> $GITHUB_OUTPUT
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "color=#ff0000" >> $GITHUB_OUTPUT
+            echo "header=❌ Lint & Test on branch \`${{ github.ref_name }}\` FAILED" >> $GITHUB_OUTPUT
+          fi
+
       - name: 💬 Send notification to Slack
-        if: always() && github.ref == format('refs/heads/{0}', env.BETA_BRANCH)
         uses: ./.github/actions/slack-notify
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} Lint & Test on branch `${{ github.ref_name }}` ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          color: ${{ steps.status.outputs.color }}
+          header: ${{ steps.status.outputs.header }}
           blocks: |
             - title: Commit
               value: ${{ steps.short-sha.outputs.sha }}
@@ -93,14 +196,14 @@ jobs:
               value: ${{ toJSON(github.event.head_commit.message) }}
               is_code: true
             - title: Workflow run
-              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
+              value: ${{ steps.status.outputs.success == 'true' && 'View workflow run' || 'View failed run' }}
               url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             - title: Triggered by
               value: ${{ github.actor }}
 
   deploy:
     name: 🐳 Build Docker Images
-    needs: build
+    needs: [lint-and-format, build-and-test, playwright]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
     uses: ./.github/workflows/services-build.yaml
     secrets: inherit

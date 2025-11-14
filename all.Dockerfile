@@ -14,12 +14,21 @@ ARG CI=false
 
 # Create app directory
 WORKDIR /app
-COPY pnpm-lock.yaml .
-RUN --mount=type=cache,id=onetag_pnpm,target=/root/.local/share/pnpm/store/v3 pnpm fetch
 
+# Copy lockfile and workspace config first (cached unless these change)
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+
+# Fetch dependencies into pnpm store (cached unless lockfile changes)
+# This is the expensive operation we want to cache
+RUN pnpm fetch
+
+# Copy source code
 COPY . .
-RUN rm .env*
-RUN --mount=type=cache,id=onetag_pnpm,target=/root/.local/share/pnpm/store/v3 pnpm install -r --unsafe-perm
+RUN rm -f .env*
+
+# Install from cached store (fast since fetch already downloaded)
+# This layer is still invalidated by source changes, but install is much faster
+RUN pnpm install -r --frozen-lockfile --offline --unsafe-perm
 
 ENV NEXTJS_STANDALONE_BUILD=1
 ENV CI=${CI}
@@ -35,7 +44,8 @@ ARG JITSU_BUILD_COMMIT_SHA=unknown,
 
 
 WORKDIR /app
-RUN npm -g install prisma@$(cat webapps/console/package.json | jq -r '.dependencies.prisma')
+COPY --from=builder /app/webapps/console/package.json /tmp/console-package.json
+RUN npm -g install prisma@$(jq -r '.dependencies.prisma' /tmp/console-package.json)
 COPY --from=builder /app/docker-start-console.sh ./
 COPY --from=builder /app/webapps/console/prisma/schema.prisma ./
 COPY --from=builder /app/webapps/console/.next/standalone ./
