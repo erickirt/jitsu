@@ -127,6 +127,18 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
 
+          # Configure git user (use actor if available, otherwise github-actions[bot])
+          GIT_USER_NAME="${{ github.actor }}"
+          GIT_USER_EMAIL="${{ github.actor }}@users.noreply.github.com"
+
+          if [ -z "$GIT_USER_NAME" ]; then
+            GIT_USER_NAME="github-actions[bot]"
+            GIT_USER_EMAIL="github-actions[bot]@users.noreply.github.com"
+          fi
+
+          git config user.name "$GIT_USER_NAME"
+          git config user.email "$GIT_USER_EMAIL"
+
           # Create annotated tag
           git tag -a "$TAG" -m "Release $VERSION"
 
