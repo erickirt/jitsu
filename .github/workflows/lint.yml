@@ -36,10 +36,9 @@ jobs:
           path: |
             .turbo
             **/node_modules/.cache
-          key: ${{ runner.os }}-turbo-lint-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-lint-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-turbo-lint-${{ hashFiles('**/pnpm-lock.yaml') }}-
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-lint-
 
       - name: 🐳 Pull and start builder container
         run: |
@@ -47,7 +46,9 @@ jobs:
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Fetch dependencies from store
-        run: docker exec builder pnpm fetch
+        run: |
+          docker exec builder sh -c 'echo "pnpm store path: $(pnpm store path)"'
+          docker exec builder pnpm fetch
 
       - name: 📦 Install dependencies
         run: docker exec builder pnpm install --frozen-lockfile --offline
@@ -83,10 +84,9 @@ jobs:
           path: |
             .turbo
             **/node_modules/.cache
-          key: ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}-
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-build-
 
       - name: 🐳 Pull builder image
         run: |
@@ -97,7 +97,9 @@ jobs:
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Fetch dependencies from store
-        run: docker exec builder pnpm fetch
+        run: |
+          docker exec builder sh -c 'echo "pnpm store path: $(pnpm store path)"'
+          docker exec builder pnpm fetch
 
       - name: 📦 Install dependencies
         run: docker exec builder pnpm install --frozen-lockfile --offline
@@ -145,10 +147,9 @@ jobs:
           path: |
             .turbo
             **/node_modules/.cache
-          key: ${{ runner.os }}-turbo-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-turbo-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}-
-            ${{ runner.os }}-turbo-
+            ${{ runner.os }}-turbo-playwright-
 
       - name: 🐳 Pull and start builder container
         if: steps.changes.outputs.playwright == 'true'

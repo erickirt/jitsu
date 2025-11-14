@@ -73,13 +73,11 @@
       "@swc/core",
       "core-js",
       "core-js-pure",
-      "cpu-features",
       "esbuild",
       "isolated-vm",
       "prisma",
       "protobufjs",
       "sharp",
-      "ssh2",
       "turbo",
       "zstd-napi"
     ]
