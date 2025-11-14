@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    name: Build and Release Backend Docker Images
+    name: 🚀 Build and Release Backend Docker Images
     timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
@@ -68,9 +68,9 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - name: 📦 Install dependencies
+      - name: 📦 Install dev dependencies (for semantic-release)
         if: ${{ !inputs.skip_install }}
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prod=false
 
       - name: 🏷️ Generate version with semantic-release
         id: version
@@ -179,6 +179,11 @@ jobs:
 
           echo "deploy_run_url=${DEPLOY_RUN_URL}" >> $GITHUB_OUTPUT
 
+      - name: 📝 Get short SHA
+        if: always()
+        id: short-sha
+        run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
       - name: 💬 Send notification to Slack
         if: always()
         uses: ./.github/actions/slack-notify
@@ -190,7 +195,7 @@ jobs:
             - title: Version
               value: ${{ steps.version.outputs.version }}
             - title: Commit
-              value: ${{ github.sha }}
+              value: ${{ steps.short-sha.outputs.sha }}
               url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
             - title: Commit message
               value: ${{ toJSON(github.event.head_commit.message) }}

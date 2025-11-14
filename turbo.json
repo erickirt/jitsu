@@ -1,53 +1,81 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env", ".env.local", "tsconfig.json", "package.json"],
+  "globalEnv": ["NODE_ENV", "CI"],
   "tasks": {
-    "console:dev": {
-      "dependsOn": ["^console:dev"],
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "compiled/**", "build/**", ".next/**", "!.next/cache/**"],
+      "inputs": [
+        "src/**",
+        "lib/**",
+        "pages/**",
+        "components/**",
+        "styles/**",
+        "public/**",
+        "prisma/**",
+        "package.json",
+        "tsconfig.json",
+        "*.config.js",
+        "*.config.ts"
+      ]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**", "lib/**", "__tests__/**", "*.config.js", "*.config.ts"]
+    },
+    "test:playwright": {
+      "dependsOn": ["^build"],
+      "outputs": ["playwright/artifacts/**"],
       "cache": false
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": ["src/**", "lib/**", "pages/**", "components/**", ".eslintrc*", "*.config.js"]
+    },
+    "clean": {
+      "cache": false
+    },
+    "console:dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "console:start": {
-      "dependsOn": ["^console:start"],
-      "cache": false
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "console:storybook": {
-      "dependsOn": ["^console:storybook"],
-      "cache": false
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "ee-api:dev": {
-      "dependsOn": ["^ee-api:dev"],
-      "cache": false
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "rotor:dev": {
-      "dependsOn": ["^rotor:dev"],
-      "cache": false
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "profiles:dev": {
-      "dependsOn": ["^profiles:dev"],
-      "cache": false
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     },
     "tool:hash": {
-      "dependsOn": ["^tool:hash"],
+      "dependsOn": ["^build"],
       "cache": false
     },
     "dev": {
-      "dependsOn": ["console:dev", "rotor:dev"],
-      "cache": false
-    },
-    "test": {
-      "dependsOn": ["^test"]
-    },
-    "clean": {
-      "dependsOn": ["^clean"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "build": {
-      "dependsOn": ["clean", "^build"],
-      "outputs": ["dist/**", "compiled/**", "build/**", ".next/**", "!.next/cache/**"]
-    },
-    "test:playwright": {
-      "dependsOn": ["^test:playwright"]
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     }
   }
 }
