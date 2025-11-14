@@ -42,7 +42,7 @@ jobs:
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Install dependencies
-        run: docker exec builder pnpm install --frozen-lockfile
+        run: docker exec builder pnpm install --frozen-lockfile --prefer-offline
 
       - name: ✨ Check code format
         run: docker exec builder pnpm format:check:all
@@ -75,16 +75,19 @@ jobs:
             ${{ runner.os }}-turbo-build-${{ hashFiles('**/pnpm-lock.yaml') }}-
             ${{ runner.os }}-turbo-
 
-      - name: 🐳 Pull and start builder container
+      - name: 🐳 Pull builder image
         run: |
           docker pull ghcr.io/jitsucom/jitsu-builder:latest
+
+      - name: 🐳 Start builder container
+        run: |
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Install dependencies
-        run: docker exec builder pnpm install --frozen-lockfile
+        run: docker exec builder pnpm install --frozen-lockfile --prefer-offline
 
       - name: 🏗️ Build
-        run: docker exec builder sh -c 'pnpm turbo run build --filter="!@jitsu-internal/console" --filter="!@jitsu-ee/ee-api"'
+        run: docker exec builder pnpm build
 
       - name: 🧪 Run tests
         run: docker exec builder pnpm test
@@ -134,7 +137,7 @@ jobs:
 
       - name: 📦 Install dependencies
         if: steps.changes.outputs.playwright == 'true'
-        run: docker exec builder pnpm install --frozen-lockfile
+        run: docker exec builder pnpm install --frozen-lockfile --prefer-offline
 
       - name: 🏗️ Build (for Playwright)
         if: steps.changes.outputs.playwright == 'true'

@@ -19,7 +19,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
 # Fetch dependencies into pnpm store (cached unless lockfile changes)
-# This is the expensive operation we want to cache
+# ghcr.io/jitsucom/jitsu-builder:latest should contain most of the deps already
 RUN pnpm fetch
 
 # Copy source code
