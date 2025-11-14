@@ -1,4 +1,4 @@
-name: Backend Build
+name: 🐳 Services Docker Build
 
 on:
   workflow_call:
@@ -28,18 +28,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: 🔍 Determine release channel
-        id: channel
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          if [ "$BRANCH" = "stable-services" ]; then
-            echo "channel=stable" >> $GITHUB_OUTPUT
-          elif [ "$BRANCH" = "newjitsu" ]; then
-            echo "channel=beta" >> $GITHUB_OUTPUT
-          else
-            echo "channel=canary" >> $GITHUB_OUTPUT
-          fi
-
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -68,41 +56,82 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - name: 📦 Install semantic-release
-        if: ${{ !inputs.skip_install }}
-        run: |
-          pnpm add -D -w semantic-release@^23.0.0 \
-            @semantic-release/changelog@^6.0.3 \
-            @semantic-release/exec@^6.0.3 \
-            @semantic-release/git@^10.0.1 \
-            @semantic-release/commit-analyzer \
-            @semantic-release/release-notes-generator
+      # - name: 📦 Install semantic-release
+      #   if: ${{ !inputs.skip_install }}
+      #   run: |
+      #     pnpm add -D -w semantic-release@^23.0.0 \
+      #       @semantic-release/exec@^6.0.3 \
+      #       @semantic-release/github@^10.0.0 \
+      #       @semantic-release/commit-analyzer \
+      #       @semantic-release/release-notes-generator
 
-      - name: 🏷️ Generate version with semantic-release
+      # - name: 🏷️ Generate version with semantic-release
+      #   id: version
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+      #   run: |
+      #     CHANNEL="${{ steps.channel.outputs.channel }}"
+      #     BRANCH="${{ github.ref_name }}"
+      #
+      #     if [ "$CHANNEL" = "canary" ]; then
+      #       # For canary: simple branch.short-commit format (no semver, no git tags)
+      #       SHORT_SHA=$(git rev-parse --short=7 HEAD)
+      #       BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\\/\\_]/-/g' | sed 's/[^a-z0-9.-]//g')
+      #       VERSION="${BRANCH_SANITIZED}.${SHORT_SHA}"
+      #       echo "Generated canary version (no git tag): ${VERSION}"
+      #     else
+      #       # For stable/beta: use semantic-release (creates tags and releases)
+      #       pnpm exec semantic-release --extends ./.releaserc.server.json
+      #       VERSION=$(cat /tmp/semantic-release-version.txt)
+      #       echo "Using semantic-release version: ${VERSION}"
+      #     fi
+      #
+      #     echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Generate version
         id: version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CHANNEL="${{ steps.channel.outputs.channel }}"
-          BRANCH="${{ github.ref_name }}"
+        uses: ./.github/actions/version
 
-          if [ "$CHANNEL" = "canary" ]; then
-            # For canary: simple branch.short-commit format (no semver, no git tags)
-            SHORT_SHA=$(git rev-parse --short=7 HEAD)
-            BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\\/\\_]/-/g' | sed 's/[^a-z0-9.-]//g')
-            VERSION="${BRANCH_SANITIZED}.${SHORT_SHA}"
-            echo "Generated canary version (no git tag): ${VERSION}"
-          else
-            # For stable/beta: use semantic-release
-            pnpm exec semantic-release --extends ./.releaserc.server.json
-            VERSION=$(cat /tmp/semantic-release-version.txt)
-            echo "Using semantic-release version: ${VERSION}"
+      - name: 🏷️ Create and push git tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create annotated tag
+          git tag -a "$TAG" -m "Release $VERSION"
+
+          # Push tag using token with branch protection bypass
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git "$TAG"
+
+          echo "Created and pushed tag: $TAG"
+
+      - name: 📝 Create GitHub release
+        if: steps.version.outputs.channel != 'canary'
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANNEL="${{ steps.version.outputs.channel }}"
+
+          # Determine if prerelease
+          PRERELEASE_FLAG=""
+          if [ "$CHANNEL" = "beta" ]; then
+            PRERELEASE_FLAG="--prerelease"
           fi
 
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          # Create release with auto-generated notes
+          gh release create "$TAG" \
+            --title "Release $VERSION" \
+            --generate-notes \
+            $PRERELEASE_FLAG
+
+          echo "Created GitHub release: $TAG"
 
       - name: 📝 Update versions
-        if: steps.channel.outputs.channel != 'canary'
+        if: steps.version.outputs.channel != 'canary'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -117,10 +146,6 @@ jobs:
             echo "Updated: $file"
           done
 
-      - name: 🚀 Push tags
-        if: steps.channel.outputs.channel != 'canary'
-        run: git push --follow-tags origin
-
       - name: 🔐 Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -131,7 +156,7 @@ jobs:
       - name: 🏗️ Build and push Docker images
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          CHANNEL: ${{ steps.channel.outputs.channel }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
@@ -183,7 +208,7 @@ jobs:
             --repo jitsucom/jitsu-cloud-infra \
             --ref main \
             -f release_type=jitsu-services \
-            -f channel=${{ steps.channel.outputs.channel }} \
+            -f channel=${{ steps.version.outputs.channel }} \
             -f version=${{ steps.version.outputs.version }} \
             -f triggerAuthor=${{ github.actor }} \
             -f triggerUrl=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -212,7 +237,7 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.channel.outputs.channel }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.version.outputs.channel }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Version
               value: ${{ steps.version.outputs.version }}
@@ -233,7 +258,7 @@ jobs:
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Channel**: ${{ steps.channel.outputs.channel }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Channel**: ${{ steps.version.outputs.channel }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ steps.notify.outputs.deploy_run_url }}" ]; then

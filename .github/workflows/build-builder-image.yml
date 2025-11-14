@@ -17,7 +17,7 @@
 # - Publishes to: ghcr.io/<owner>/jitsu-builder:latest
 # - Uses GitHub Actions cache backend (type=gha) for fast layer caching (up to 10GB per repo)
 #
-name: Build Builder Image
+name: 👷🏼‍♂️Create Builder Docker Image
 
 on:
   push:

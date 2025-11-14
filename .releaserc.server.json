@@ -14,19 +14,12 @@
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
-    "@semantic-release/changelog",
     [
       "@semantic-release/exec",
       {
         "verifyReleaseCmd": "echo ${nextRelease.version} > /tmp/semantic-release-version.txt"
       }
     ],
-    [
-      "@semantic-release/git",
-      {
-        "assets": ["CHANGELOG.md"],
-        "message": "chore(release): jitsu-services ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
-      }
-    ]
+    "@semantic-release/github"
   ]
 }
