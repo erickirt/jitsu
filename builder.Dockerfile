@@ -13,6 +13,11 @@ RUN apt-get update && \
     npm -g install pnpm@10 && \
     npm cache clean --force
 
+# Set up pnpm global bin directory (for global package installs like Playwright)
+# Note: This does NOT affect the store location, which remains at /root/.local/share/pnpm/store
+ENV PNPM_HOME=/root/.local/share/pnpm
+ENV PATH="${PNPM_HOME}:${PATH}"
+
 # Copy only the files needed for dependency fetching and Playwright version extraction
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY libs/jitsu-js/package.json ./libs/jitsu-js/package.json

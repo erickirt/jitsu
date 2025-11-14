@@ -31,3 +31,4 @@ webapps/**/__tests__/**/*.js
 # Ignore build outputs
 libs/jitsu-js/package/
 libs/jsondiffpatch/lib/
+.pnpm-store
