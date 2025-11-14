@@ -159,7 +159,7 @@ jobs:
   notify:
     name: 📢 Notify
     needs: [lint-and-format, build-and-test, playwright]
-    if: always() && github.ref == format('refs/heads/{0}', env.BETA_BRANCH)
+    if: always() && github.ref == 'refs/heads/newjitsu'
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout code
