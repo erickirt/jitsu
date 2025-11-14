@@ -2,17 +2,17 @@
 # Build & push it with
 #    docker buildx build --platform linux/amd64 . -f console.Dockerfile --push -t jitsucom/console:latest
 
-FROM node:24-bookworm as base
+FROM node:24-bookworm AS base
 
 WORKDIR /app
 RUN apt-get update -y
 RUN apt-get install nano curl cron bash netcat-traditional procps jq -y
 
-FROM base as builder
+FROM base AS builder
 
 RUN apt-get update -y
 RUN apt-get install git openssl1.1 procps python3 make g++ -y
-RUN npm -g install pnpm@^9.0.0
+RUN npm -g install pnpm@^10.0.0
 
 # Create app directory
 WORKDIR /app
@@ -28,7 +28,7 @@ ENV NEXTJS_STANDALONE_BUILD=1
 #RUN --mount=type=cache,id=onetag_turbo,target=/app/node_modules/.cache/turbo pnpm build
 RUN pnpm build
 
-FROM base as console
+FROM base AS console
 
 ARG JITSU_BUILD_VERSION=dev,
 ARG JITSU_BUILD_DOCKER_TAG=dev,
@@ -58,7 +58,7 @@ ENV JITSU_VERSION_STRING=${JITSU_BUILD_VERSION}
 
 ENTRYPOINT ["sh", "-c", "/app/docker-start-console.sh"]
 
-FROM base as rotor
+FROM base AS rotor
 
 ARG JITSU_BUILD_VERSION=dev,
 ARG JITSU_BUILD_DOCKER_TAG=dev,
@@ -81,7 +81,7 @@ ENV JITSU_VERSION_STRING=${JITSU_BUILD_VERSION}
 
 CMD ["--no-node-snapshot", "--max-old-space-size=2048", "main.js"]
 
-FROM base as profiles
+FROM base AS profiles
 
 ARG JITSU_BUILD_VERSION=dev,
 ARG JITSU_BUILD_DOCKER_TAG=dev,

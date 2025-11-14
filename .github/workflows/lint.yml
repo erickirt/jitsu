@@ -13,7 +13,7 @@ env:
 jobs:
   build:
     name: 🏗️ Build Project
-    # Uses our custom builder image with Node 22, pnpm 9, and Playwright pre-installed
+    # Uses our custom builder image with Node 24, pnpm 10, and Playwright pre-installed
     # See builder.Dockerfile and build-builder-image.yml for details
     timeout-minutes: 60
     runs-on: ubuntu-latest
