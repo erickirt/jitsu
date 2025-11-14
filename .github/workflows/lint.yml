@@ -46,8 +46,11 @@ jobs:
           docker pull ghcr.io/jitsucom/jitsu-builder:latest
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
+      - name: 📦 Fetch dependencies from store
+        run: docker exec builder pnpm fetch --ignore-scripts
+
       - name: 📦 Install dependencies
-        run: docker exec builder pnpm install --frozen-lockfile --prefer-offline
+        run: docker exec builder pnpm install --frozen-lockfile --offline
 
       - name: ✨ Check code format
         run: docker exec builder pnpm format:check:all
@@ -93,8 +96,11 @@ jobs:
         run: |
           docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
+      - name: 📦 Fetch dependencies from store
+        run: docker exec builder pnpm fetch --ignore-scripts
+
       - name: 📦 Install dependencies
-        run: docker exec builder pnpm install --frozen-lockfile --prefer-offline
+        run: docker exec builder pnpm install --frozen-lockfile --offline
 
       - name: 🏗️ Build
         run: docker exec builder pnpm build

@@ -1,6 +1,7 @@
 FROM debian:bookworm-slim
 
-# Install Node.js 24 manually from NodeSource
+# Install Node.js 24 manually from NodeSource + all runtime dependencies
+# This includes everything needed for building AND running the final images
 RUN apt-get update && \
     apt-get install -y ca-certificates curl gnupg && \
     mkdir -p /etc/apt/keyrings && \
@@ -8,7 +9,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && \
     apt-get install -y nodejs && \
-    apt-get install git curl telnet python3 g++ make jq -y && \
+    apt-get install -y git curl telnet python3 g++ make jq nano cron bash netcat-traditional procps && \
     rm -rf /var/lib/apt/lists/* && \
     npm -g install pnpm@10 && \
     npm cache clean --force
@@ -52,7 +53,8 @@ RUN PLAYWRIGHT_VERSION=$(jq -r '.devDependencies["@playwright/test"]' ./libs/jit
 # Fetch pnpm dependencies (only populates the store, doesn't create node_modules)
 # This populates the standard pnpm store at /root/.local/share/pnpm/store/v10
 # The store will be available to all.Dockerfile when it uses this image as builder
-RUN pnpm fetch && \
+# Use --ignore-scripts to skip compilation - only fetch source packages
+RUN pnpm fetch --ignore-scripts && \
     rm -rf /package.json /pnpm-lock.yaml /pnpm-workspace.yaml /libs
 
 # Install Playwright globally with pnpm

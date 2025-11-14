@@ -121,36 +121,26 @@ jobs:
 
       - name: 🏷️ Create and push git tag
         if: steps.version.outputs.channel != 'canary'
-        env:
-          GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Configure git user (use actor if available, otherwise github-actions[bot])
-          GIT_USER_NAME="${{ github.actor }}"
-          GIT_USER_EMAIL="${{ github.actor }}@users.noreply.github.com"
-
-          if [ -z "$GIT_USER_NAME" ]; then
-            GIT_USER_NAME="github-actions[bot]"
-            GIT_USER_EMAIL="github-actions[bot]@users.noreply.github.com"
-          fi
-
-          git config user.name "$GIT_USER_NAME"
-          git config user.email "$GIT_USER_EMAIL"
+          # Configure git user
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Create annotated tag
           git tag -a "$TAG" -m "Release $VERSION"
 
-          # Push tag using token with branch protection bypass
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git "$TAG"
+          # Push tag using GITHUB_TOKEN
+          git push origin "$TAG"
 
           echo "Created and pushed tag: $TAG"
 
       - name: 📝 Create GitHub release
         if: steps.version.outputs.channel != 'canary'
         env:
-          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
@@ -208,7 +198,7 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} jitsu-services [${{ steps.version.outputs.channel || 'unknown' }}] build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} Jitsu Services (`${{ steps.version.outputs.channel || 'unknown' }}` channel) build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Branch
               value: ${{ github.ref_name }}

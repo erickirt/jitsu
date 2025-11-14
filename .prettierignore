@@ -30,3 +30,7 @@ libs/jitsu-js/dist/
 /cli/jitsu-cli/dist/
 /libs/functions/dist/
 .turbo
+/libs/jsondiffpatch/dist/
+/libs/jsondiffpatch/coverage/
+.github
+services/rotor/__tests__/artifacts

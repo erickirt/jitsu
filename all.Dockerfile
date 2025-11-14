@@ -2,11 +2,13 @@
 # Build & push it with
 #    docker buildx build --platform linux/amd64 . -f console.Dockerfile --push -t jitsucom/console:latest
 
-FROM node:24-bookworm AS base
+FROM node:24-bookworm-slim AS base
 
 WORKDIR /app
-RUN apt-get update -y
-RUN apt-get install nano curl cron bash netcat-traditional procps jq -y
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends nano curl cron bash netcat-traditional procps jq && \
+    rm -rf /var/lib/apt/lists/*
 
 FROM ghcr.io/jitsucom/jitsu-builder:latest AS builder
 
@@ -20,7 +22,8 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
 # Fetch dependencies into pnpm store (cached unless lockfile changes)
 # ghcr.io/jitsucom/jitsu-builder:latest should contain most of the deps already
-RUN pnpm fetch
+# Use --ignore-scripts to skip compilation - that happens during install
+RUN pnpm fetch --ignore-scripts
 
 # Copy source code
 COPY . .
