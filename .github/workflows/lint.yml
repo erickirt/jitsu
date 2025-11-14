@@ -94,6 +94,4 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
     uses: ./.github/workflows/services-build.yaml
     secrets: inherit
-    with:
-      branch: ${{ github.ref_name }}
-      #skip_install: true
+    # Note: skip_install doesn't work as packages are installed inside docker
