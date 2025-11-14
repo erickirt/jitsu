@@ -31,7 +31,8 @@ RUN rm -f .env*
 
 # Install from cached store (fast since fetch already downloaded)
 # This layer is still invalidated by source changes, but install is much faster
-RUN pnpm install -r --frozen-lockfile --offline --unsafe-perm
+# Use --prefer-offline to allow native modules to download/compile as needed
+RUN pnpm install -r --frozen-lockfile --prefer-offline --unsafe-perm
 
 ENV NEXTJS_STANDALONE_BUILD=1
 ENV CI=${CI}
