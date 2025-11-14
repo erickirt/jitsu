@@ -8,11 +8,6 @@
       "name": "newjitsu",
       "channel": "beta",
       "prerelease": "beta"
-    },
-    {
-      "name": "*",
-      "channel": "canary",
-      "prerelease": true
     }
   ],
   "tagFormat": "jitsu-services-v${version}",

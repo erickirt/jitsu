@@ -68,20 +68,41 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - name: 📦 Install dev dependencies (for semantic-release)
+      - name: 📦 Install semantic-release
         if: ${{ !inputs.skip_install }}
-        run: pnpm install --frozen-lockfile --prod=false
+        run: |
+          pnpm add -g semantic-release@^23.0.0 \
+            @semantic-release/changelog@^6.0.3 \
+            @semantic-release/exec@^6.0.3 \
+            @semantic-release/git@^10.0.1 \
+            @semantic-release/commit-analyzer \
+            @semantic-release/release-notes-generator
 
       - name: 🏷️ Generate version with semantic-release
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pnpm exec semantic-release --extends ./.releaserc.server.json
-          VERSION=$(cat /tmp/semantic-release-version.txt)
+          CHANNEL="${{ steps.channel.outputs.channel }}"
+          BRANCH="${{ github.ref_name }}"
+
+          if [ "$CHANNEL" = "canary" ]; then
+            # For canary: simple branch.short-commit format (no semver, no git tags)
+            SHORT_SHA=$(git rev-parse --short=7 HEAD)
+            BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\\/\\_]/-/g' | sed 's/[^a-z0-9.-]//g')
+            VERSION="${BRANCH_SANITIZED}.${SHORT_SHA}"
+            echo "Generated canary version (no git tag): ${VERSION}"
+          else
+            # For stable/beta: use semantic-release
+            pnpm exec semantic-release --extends ./.releaserc.server.json
+            VERSION=$(cat /tmp/semantic-release-version.txt)
+            echo "Using semantic-release version: ${VERSION}"
+          fi
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: 📝 Update versions
+        if: steps.channel.outputs.channel != 'canary'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -97,6 +118,7 @@ jobs:
           done
 
       - name: 🚀 Push tags
+        if: steps.channel.outputs.channel != 'canary'
         run: git push --follow-tags origin
 
       - name: 🔐 Login to GitHub Container Registry
