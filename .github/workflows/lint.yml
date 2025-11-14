@@ -19,6 +19,11 @@ jobs:
     name: ✨ Lint & Format
     timeout-minutes: 20
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -58,6 +63,11 @@ jobs:
     name: 🏗️ Build & Test
     timeout-minutes: 40
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -100,6 +110,11 @@ jobs:
     name: 🎭 E2E Tests
     timeout-minutes: 30
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -164,6 +179,11 @@ jobs:
     needs: [lint-and-format, build-and-test, playwright]
     if: always() && github.ref == 'refs/heads/newjitsu'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -208,6 +228,11 @@ jobs:
     name: 🐳 Build Docker Images
     needs: [lint-and-format, build-and-test, playwright]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     uses: ./.github/workflows/services-build.yaml
     secrets: inherit
     # Note: skip_install doesn't work as packages are installed inside docker
