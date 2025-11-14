@@ -10,6 +10,10 @@ on:
         default: false
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: 🚀 Build and Release Backend Docker Images
@@ -155,6 +159,7 @@ jobs:
               --build-arg JITSU_BUILD_VERSION=${VERSION} \
               --build-arg JITSU_BUILD_DOCKER_TAG=${CHANNEL} \
               --build-arg JITSU_BUILD_COMMIT_SHA=${COMMIT_SHA} \
+              --build-arg CI=true \
               --cache-from type=registry,ref=${REGISTRY}/${TARGET}:buildcache \
               --cache-to type=registry,ref=${REGISTRY}/${TARGET}:buildcache,mode=max \
               ${TAGS} \

@@ -8,11 +8,9 @@ WORKDIR /app
 RUN apt-get update -y
 RUN apt-get install nano curl cron bash netcat-traditional procps jq -y
 
-FROM base AS builder
+FROM ghcr.io/jitsucom/jitsu-builder:latest AS builder
 
-RUN apt-get update -y
-RUN apt-get install git openssl1.1 procps python3 make g++ -y
-RUN npm -g install pnpm@^10.0.0
+ARG CI=false
 
 # Create app directory
 WORKDIR /app
@@ -24,6 +22,7 @@ RUN rm .env*
 RUN --mount=type=cache,id=onetag_pnpm,target=/root/.local/share/pnpm/store/v3 pnpm install -r --unsafe-perm
 
 ENV NEXTJS_STANDALONE_BUILD=1
+ENV CI=${CI}
 #Tubo cache is not working well ?
 #RUN --mount=type=cache,id=onetag_turbo,target=/app/node_modules/.cache/turbo pnpm build
 RUN pnpm build

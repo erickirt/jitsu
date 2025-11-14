@@ -10,6 +10,10 @@ env:
   BETA_BRANCH: newjitsu
   STABLE_BRANCH: stable-services
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: 🏗️ Build Project
@@ -37,7 +41,7 @@ jobs:
       - name: 🐳 Pull and start builder container
         run: |
           docker pull ghcr.io/jitsucom/jitsu-builder:latest
-          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Install dependencies
         run: docker exec builder pnpm install --frozen-lockfile
