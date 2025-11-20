@@ -1,4 +1,4 @@
-name: 🐳 Services Docker Build
+name: 🐳 Build Docker Images and CLI tools
 
 on:
   workflow_call:
@@ -8,7 +8,26 @@ on:
         required: false
         type: boolean
         default: false
+      scope:
+        description: "Build scope: all, docker, npm"
+        required: false
+        type: string
+        default: "all"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual version override (e.g., 1.2.3-canary.1)"
+        required: false
+        type: string
+      tag:
+        description: "Manual tag/channel override (canary, beta, stable)"
+        required: false
+        type: string
+      scope:
+        description: "Build scope: all, docker, npm"
+        required: false
+        type: string
+        default: "all"
 
 concurrency:
   # Use a shared concurrency group for both direct runs and calls from lint.yml
@@ -17,7 +36,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: 🏷️ Generate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.manual.outputs.version || steps.generated.outputs.version }}
+      channel: ${{ steps.manual.outputs.channel || steps.generated.outputs.channel }}
+      tag: ${{ steps.manual.outputs.tag || steps.generated.outputs.tag }}
+    steps:
+      - name: 📥 Checkout code
+        if: ${{ !inputs.version }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🏷️ Generate version
+        if: ${{ !inputs.version }}
+        id: generated
+        uses: ./.github/actions/version
+        with:
+          version_file: .services.version.json
+
+      - name: 📝 Use manual version
+        if: ${{ inputs.version }}
+        id: manual
+        run: |
+          echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          echo "channel=${{ inputs.tag || 'canary' }}" >> $GITHUB_OUTPUT
+          echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+
   build:
+    needs: [version]
+    if: ${{ inputs.scope == 'all' || inputs.scope == 'docker' }}
     name: 🚀 Build and Release Backend Docker Images
     timeout-minutes: 60
     runs-on: ubuntu-latest
@@ -34,12 +85,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: 🏷️ Generate version
-        id: version
-        uses: ./.github/actions/version
-        with:
-          version_file: .services.version.json
-
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -47,9 +92,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: 📝 Update versions
-        if: steps.version.outputs.channel != 'canary'
+        if: needs.version.outputs.channel != 'canary'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           echo "Updating all package.json files to version ${VERSION}"
           find . -name "package.json" -type f ! -path "*/node_modules/*" | while read -r file; do
@@ -66,8 +111,8 @@ jobs:
 
       - name: 🏗️ Build and push Docker images
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          CHANNEL: ${{ steps.version.outputs.channel }}
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
@@ -120,10 +165,10 @@ jobs:
           done
 
       - name: 🏷️ Create and push git tag
-        if: steps.version.outputs.channel != 'canary'
+        if: needs.version.outputs.channel != 'canary'
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ needs.version.outputs.tag }}"
+          VERSION="${{ needs.version.outputs.version }}"
 
           # Configure git user
           git config user.name "github-actions[bot]"
@@ -138,13 +183,13 @@ jobs:
           echo "Created and pushed tag: $TAG"
 
       - name: 📝 Create GitHub release
-        if: steps.version.outputs.channel != 'canary'
+        if: needs.version.outputs.channel != 'canary'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
-          CHANNEL="${{ steps.version.outputs.channel }}"
+          TAG="${{ needs.version.outputs.tag }}"
+          VERSION="${{ needs.version.outputs.version }}"
+          CHANNEL="${{ needs.version.outputs.channel }}"
 
           # Determine if prerelease
           PRERELEASE_FLAG=""
@@ -166,8 +211,8 @@ jobs:
             --repo jitsucom/jitsu-cloud-infra \
             --ref main \
             -f release_type=jitsu-services \
-            -f channel=${{ steps.version.outputs.channel }} \
-            -f version=${{ steps.version.outputs.version }} \
+            -f channel=${{ needs.version.outputs.channel }} \
+            -f version=${{ needs.version.outputs.version }} \
             -f triggerAuthor=${{ github.actor }} \
             -f triggerUrl=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
@@ -195,12 +240,12 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} Jitsu Services `${{ steps.version.outputs.channel || 'unknown' }}` build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} 🐳 Jitsu Services `${{ needs.version.outputs.channel || 'unknown' }}` build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Branch
               value: ${{ github.ref_name }}
             - title: Version
-              value: ${{ steps.version.outputs.version || 'N/A' }}
+              value: ${{ needs.version.outputs.version || 'N/A' }}
             - title: Commit
               value: ${{ steps.short-sha.outputs.sha }}
               url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
@@ -213,3 +258,139 @@ jobs:
             - title: ${{ job.status == 'success' && 'Deploy lifecycle' || 'Triggered by' }}
               value: ${{ job.status == 'success' && 'View deployment run' || github.actor }}
               url: ${{ job.status == 'success' && steps.notify.outputs.deploy_run_url || '' }}
+
+  npm-publish:
+    needs: [version]
+    if: ${{ inputs.scope == 'all' || inputs.scope == 'npm' }}
+    name: 📦 Build and Publish NPM Packages
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🔍 Validate NPM token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+        run: |
+          echo "Validating NPM token..."
+          WHOAMI=$(curl -s -H "Authorization: Bearer ${NPM_TOKEN}" https://registry.npmjs.org/-/whoami)
+          echo "Authenticated as: ${WHOAMI}"
+          if [ -z "${WHOAMI}" ] || [ "${WHOAMI}" = "null" ]; then
+            echo "ERROR: Invalid NPM token"
+            exit 1
+          fi
+
+      - name: 🐳 Pull and start builder container
+        run: |
+          docker pull ghcr.io/jitsucom/jitsu-builder:latest
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+
+      - name: 🔐 Configure npm authentication
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+        run: |
+          docker exec -e NPM_TOKEN builder sh -c "echo '//registry.npmjs.org/:_authToken='\${NPM_TOKEN} >> /workspace/.npmrc"
+
+      - name: 🔐 Validate npm authentication
+        run: |
+          docker exec builder npm whoami || {
+            echo "npm whoami failed, dumping debug logs:"
+            docker exec builder sh -c "cat /root/.npm/_logs/*.log"
+            exit 1
+          }
+
+      - name: 📦 Fetch dependencies from store
+        run: |
+          docker exec builder sh -c 'echo "pnpm store path: $(pnpm store path)"'
+          docker exec builder pnpm fetch
+
+      - name: 📦 Install dependencies
+        if: ${{ !inputs.skip_install }}
+        run: docker exec builder pnpm install --frozen-lockfile --offline
+
+      - name: 📝 Update package versions
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          echo "Updating package.json files to version ${VERSION}"
+
+          # Update CLI
+          docker exec builder sh -c "cd cli/jitsu-cli && jq --arg version \"${VERSION}\" '.version = \$version' package.json > package.json.tmp && mv package.json.tmp package.json"
+
+          # Update Functions Library
+          docker exec builder sh -c "cd libs/functions && jq --arg version \"${VERSION}\" '.version = \$version' package.json > package.json.tmp && mv package.json.tmp package.json"
+
+          echo "Updated versions:"
+          docker exec builder sh -c "cd cli/jitsu-cli && cat package.json | grep version"
+          docker exec builder sh -c "cd libs/functions && cat package.json | grep version"
+
+      - name: 🏗️ Build packages
+        run: docker exec builder pnpm --filter jitsu-cli --filter @jitsu/functions-lib build
+
+
+      - name: 📤 Publish to NPM
+        env:
+          CHANNEL: ${{ needs.version.outputs.channel }}
+        run: |
+          # Determine NPM tag based on channel
+          if [ "${CHANNEL}" = "stable" ]; then
+            NPM_TAG="latest"
+          else
+            NPM_TAG="${CHANNEL}"
+          fi
+
+          echo "Publishing packages to NPM with tag: ${NPM_TAG}"
+
+          # Publish jitsu-cli
+          echo "Publishing jitsu-cli..."
+          docker exec builder sh -c "cd cli/jitsu-cli && npm publish --tag ${NPM_TAG} --access public"
+
+          # Publish @jitsu/functions-lib
+          echo "Publishing @jitsu/functions-lib..."
+          docker exec builder sh -c "cd libs/functions && npm publish --tag ${NPM_TAG} --access public"
+
+      - name: 🧹 Cleanup container
+        if: always()
+        run: docker stop builder && docker rm builder
+
+      - name: 📝 Get short SHA
+        if: always()
+        id: short-sha
+        run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 💬 Send notification to Slack
+        if: always()
+        uses: ./.github/actions/slack-notify
+        with:
+          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
+          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
+          header: "${{ job.status == 'success' && '✅' || '❌' }} 📦 NPM Packages `${{ needs.version.outputs.channel || 'unknown' }}` publish ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          blocks: |
+            - title: Branch
+              value: ${{ github.ref_name }}
+            - title: Version
+              value: ${{ needs.version.outputs.version || 'N/A' }}
+            - title: NPM Tag
+              value: ${{ needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel }}
+            - title: Packages
+              value: "jitsu-cli, @jitsu/functions-lib"
+            - title: Commit
+              value: ${{ steps.short-sha.outputs.sha }}
+              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            - title: Commit message
+              value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || 'N/A' }}
+              is_code: true
+            - title: Workflow run
+              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
+              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - title: Triggered by
+              value: ${{ github.actor }}
