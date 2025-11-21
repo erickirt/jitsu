@@ -110,7 +110,6 @@ export default createRoute()
              ? "ReplicatedMergeTree('/clickhouse/tables/{shard}/" + metricsSchema + "/dead_letter', '{replica}')"
              : "MergeTree()"
          } 
-        PARTITION BY toYYYYMM(timestamp)
         ORDER BY (workspaceId, actorId, timestamp)
         TTL toDateTime(timestamp) + INTERVAL 1 MONTH DELETE`;
 

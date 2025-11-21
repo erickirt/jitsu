@@ -220,7 +220,7 @@ function ingestMessage(connectionId: string, messageId: string, event: any): Ing
 
 function testName() {
   const currentTestName = expect.getState().currentTestName as string;
-  return currentTestName.replace("Test Functions Chain", "").trim();
+  return currentTestName.replace("Test Functions Chain > ", "").trim();
 }
 
 const messageId = "message1";
