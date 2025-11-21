@@ -87,9 +87,6 @@ RUN pnpm install -r --frozen-lockfile --prefer-offline --unsafe-perm
 # This layer invalidates on ANY source file change, but the install layer above remains cached
 COPY . .
 
-# Remove any .env files to prevent accidentally baking secrets into the image
-RUN rm -f .env*
-
 # STEP 6: Build all TypeScript/JavaScript code
 # Environment variables:
 #   NEXTJS_STANDALONE_BUILD=1: tells Next.js to create minimal standalone output
