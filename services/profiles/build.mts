@@ -1,18 +1,18 @@
 import * as esbuild from "esbuild";
-import { writeFileSync, mkdirSync, statSync, readdirSync, readFileSync } from "fs";
+import { writeFileSync, mkdirSync, statSync, readdirSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 
-// Read package.json to get dependency versions
-const packageJson = JSON.parse(readFileSync("package.json", "utf-8"));
+// Native modules that need to be external and installed with their versions
+const nativeDeps = {
+  "isolated-vm": "6.0.0",
+  "@confluentinc/kafka-javascript": "1.4.1",
+  "@mongodb-js/zstd": "2.0.0",
+  mongodb: "6.12.0",
+};
 
-// Native modules that need to be external and installed
-const nativeModules = ["isolated-vm", "@confluentinc/kafka-javascript", "@mongodb-js/zstd", "mongodb"];
 // pg-native is optional for pg package, mark as external but don't install
-const externalModules = [...nativeModules, "pg-native"];
-
-// Extract versions from package.json dependencies
-const nativeDeps = Object.fromEntries(nativeModules.map(mod => [mod, packageJson.dependencies[mod]]));
+const externalModules = [...Object.keys(nativeDeps), "pg-native"];
 
 // Bundle the app
 await esbuild.build({
