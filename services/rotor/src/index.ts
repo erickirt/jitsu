@@ -17,12 +17,14 @@ import { createRedis } from "./lib/redis";
 import * as util from "util";
 import { getHeapSnapshot } from "node:v8";
 import { ProfileUDFRunHandler } from "./http/profiles-udf";
+import { getServerEnv } from "./serverEnv";
 const log = getLog("rotor");
 
 disableService("prisma");
 disableService("pg");
 
-setServerJsonFormat(process.env.LOG_FORMAT === "json");
+const serverEnv = getServerEnv();
+setServerJsonFormat(serverEnv.LOG_FORMAT === "json");
 
 const http = express();
 http.use(express.json({ limit: "20mb" }));
@@ -30,8 +32,8 @@ http.use(express.urlencoded({ limit: "20mb" }));
 
 const metricsHttp = express();
 
-const rotorHttpPort = process.env.ROTOR_HTTP_PORT || process.env.PORT || 3401;
-const rotorMetricsPort = process.env.ROTOR_METRICS_PORT || 9091;
+const rotorHttpPort = serverEnv.ROTOR_HTTP_PORT || serverEnv.PORT || 3401;
+const rotorMetricsPort = serverEnv.ROTOR_METRICS_PORT || 9091;
 
 let started = false;
 
@@ -59,14 +61,14 @@ async function main() {
     try {
       await mongodb.waitInit();
     } catch (e: any) {
-      log.atWarn().log("Failed to connect to mongodb. Functions Persistent Store won't work: " + e.message);
+      log.atWarn().log("Failed to connect to mongodb. Rotor will use local in-memory store which is fine for dev",);
     }
-    if (process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL) {
+    if (serverEnv.CLICKHOUSE_HOST || serverEnv.CLICKHOUSE_URL) {
       eventsLogger = createClickhouseLogger();
     } else {
       eventsLogger = DummyEventsStore;
     }
-    if (process.env.REDIS_URL) {
+    if (serverEnv.REDIS_URL) {
       redisClient = createRedis();
     }
 
@@ -82,9 +84,9 @@ async function main() {
     }
 
     geoResolver = await initMaxMindClient({
-      licenseKey: process.env.MAXMIND_LICENSE_KEY,
-      url: process.env.MAXMIND_URL,
-      s3Bucket: process.env.MAXMIND_S3_BUCKET,
+      licenseKey: serverEnv.MAXMIND_LICENSE_KEY,
+      url: serverEnv.MAXMIND_URL,
+      s3Bucket: serverEnv.MAXMIND_S3_BUCKET,
     });
     metricsServer = initMetricsServer();
   } catch (e) {
@@ -103,8 +105,8 @@ async function main() {
     if (redisClient) {
       redisClient.disconnect();
     }
-    const extraDelay = process.env.SHUTDOWN_EXTRA_DELAY_SEC
-      ? 1000 * parseInt(process.env.SHUTDOWN_EXTRA_DELAY_SEC)
+    const extraDelay = serverEnv.SHUTDOWN_EXTRA_DELAY_SEC
+      ? 1000 * parseInt(serverEnv.SHUTDOWN_EXTRA_DELAY_SEC)
       : 5000;
     if (extraDelay > 0) {
       log.atInfo().log(`Giving extra ${extraDelay / 1000}s. to flush logs and scrape metrics...`);
@@ -118,7 +120,7 @@ async function main() {
     }
   };
 
-  if (process.env.KAFKA_BOOTSTRAP_SERVERS && !isTruish(process.env.HTTP_ONLY)) {
+  if (serverEnv.KAFKA_BOOTSTRAP_SERVERS && !isTruish(serverEnv.HTTP_ONLY)) {
     //kafka consumer mode
     const kafkaTopics = [destinationMessagesTopic()];
     const consumerGroupId = rotorConsumerGroupId();
@@ -191,13 +193,13 @@ function initHTTP(rotorContext: Omit<MessageHandlerContext, "connectionStore" | 
         version: process.version,
         platform: process.platform,
         arch: process.arch,
-        env: process.env.NODE_ENV,
+        env: serverEnv.NODE_ENV,
       },
-      diagnostics: isTruish(process.env.__DANGEROUS_ENABLE_FULL_DIAGNOSTICS) ? getDiagnostics() : undefined,
+      diagnostics: isTruish(serverEnv.__DANGEROUS_ENABLE_FULL_DIAGNOSTICS) ? getDiagnostics() : undefined,
     });
   });
   http.get("/health", async (req, res) => {
-    const mongoRequired = (process.env.REQUIRED_STORES ?? "").split(",").includes("mongodb");
+    const mongoRequired = (serverEnv.REQUIRED_STORES ?? "").split(",").includes("mongodb");
     if (mongoRequired) {
       try {
         await pingMongo();
@@ -277,11 +279,11 @@ async function pingMongo() {
 function checkAuth(token: string): boolean {
   let tokens: string[] = [];
   let checkFunction: (token: string, secret: string) => boolean = () => false;
-  if (process.env.ROTOR_AUTH_TOKENS) {
-    tokens = process.env.ROTOR_AUTH_TOKENS.split(",");
+  if (serverEnv.ROTOR_AUTH_TOKENS) {
+    tokens = serverEnv.ROTOR_AUTH_TOKENS.split(",");
     checkFunction = checkHash;
-  } else if (process.env.ROTOR_RAW_AUTH_TOKENS) {
-    tokens = process.env.ROTOR_RAW_AUTH_TOKENS.split(",");
+  } else if (serverEnv.ROTOR_RAW_AUTH_TOKENS) {
+    tokens = serverEnv.ROTOR_RAW_AUTH_TOKENS.split(",");
     checkFunction = checkRawToken;
   } else {
     log.atWarn().log("No auth tokens are configured. Rotor is open for everyone.");

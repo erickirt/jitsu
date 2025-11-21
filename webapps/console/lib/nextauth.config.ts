@@ -90,7 +90,17 @@ const credentialsProvider =
           name: user.name,
         };
       }
-      log.atDebug().log(`Unsuccessful login attempt: user ${username} exists, but password is invalid`);
+      if (!user) {
+        log.atWarn().log(`Can't proceed with login, ${username} not found`);
+      } else if (!user.password) {
+        log.atWarn().log(`Can't proceed with login, ${username} doesn't have a password`);
+      } else {
+        log
+          .atDebug()
+          .log(
+            `Unsuccessful login attempt: user ${username} exists, but password is invalid: ${user?.password} / ${credentials.password}`
+          );
+      }
       return null;
     },
     credentials: {

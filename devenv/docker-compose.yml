@@ -1,24 +1,37 @@
-version: "3.8"
-services:
-  jitsu-dev-redis:
-    tty: true
-    image: redis:6.2-alpine
-    restart: always
-    ports:
-      - "${REDIS_PORT:-6380}:6379"
-    command: redis-server --save 20 1 --loglevel warning --requirepass redis-mqf3nzx
-    volumes:
-      - ./data/redis:/var/lib/redis
+# Jitsu Development Environment
+# =============================
+#
+# == Core Services ==
+# PostgreSQL:         postgresql://postgres:postgres-mqf3nzx@localhost:5438/postgres
+# MongoDB:            mongodb://admin:mongodb-pass@localhost:27017/admin
+# ClickHouse HTTP:    http://default:clickhouse-pass@localhost:8123/default
+# ClickHouse Native:  clickhouse://default:clickhouse-pass@localhost:9000/default
+# Redpanda (Kafka):   kafka://localhost:19092 (no auth)
+#
+# == Debug/Admin Tools ==
+# Redpanda Console:     http://localhost:11801 (no auth)
+# PgWeb (PostgreSQL):   http://localhost:11802 (no auth, auto-connected)
+# ClickHouse Play UI:   http://localhost:8123/play?user=default#c2VsZWN0IE5PVygpOw== (default / clickhouse-pass)
+# Mongo Express:        http://localhost:11803 (admin/mongodb-pass)
+# Keycloak:             http://localhost:11804 (admin/admin)
+#
+# Data directories: ./data/{postgres,redpanda,mongodb,clickhouse,cloudbeaver}
+#
 
-  jitsu-dev-redisinsight:
-    tty: true
-    image: redislabs/redisinsight:latest
-    ports:
-      - "${RI_PORT:-3011}:8001"
-    volumes:
-      - ./data/redis-insights:/db
+version: "3.8"
+
+networks:
+  jitsu-dev-network:
+    name: jitsu-dev-network
+    driver: bridge
+
+services:
+  # == Core Services ==
 
   jitsu-dev-postgres:
+    container_name: jitsu-dev-postgres
+    networks:
+      - jitsu-dev-network
     tty: true
     image: postgres:14
     restart: always
@@ -38,62 +51,122 @@ services:
       - "${PG_PORT:-5438}:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-  jitsu-dev-kafka:
-    image: bitnamilegacy/kafka:3.4
-    #    ports:
-    #      - "19092:19092"
-    #      - "19093:19093"
-    environment:
-      KAFKA_CFG_NODE_ID: 0
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:19093,CONTROLLER://:9093,EXTERNAL://:19092
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://jitsu-dev-kafka:19093,EXTERNAL://localhost:19092
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@jitsu-dev-kafka:9093
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
-      ALLOW_PLAINTEXT_LISTENER: yes
 
-  jitsu-dev-kafka-console:
+  jitsu-dev-mongodb:
+    container_name: jitsu-dev-mongodb
+    networks:
+      - jitsu-dev-network
+    image: mongo:7
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: mongodb-pass
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - ./data/mongodb:/data/db
+
+  jitsu-dev-clickhouse:
+    container_name: jitsu-dev-clickhouse
+    networks:
+      - jitsu-dev-network
+    image: clickhouse/clickhouse-server:latest
+    restart: always
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse-pass
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  jitsu-dev-redpanda:
+    container_name: jitsu-dev-redpanda
+    networks:
+      - jitsu-dev-network
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://jitsu-dev-redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://jitsu-dev-redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr jitsu-dev-redpanda:33145
+      - --advertise-rpc-addr jitsu-dev-redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --memory 1G
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "19644:9644"
+    volumes:
+      - ./data/redpanda:/var/lib/redpanda/data
+
+  # == Debug/Admin Tools ==
+
+  jitsu-dev-redpanda-console:
+    container_name: jitsu-dev-redpanda-console
+    networks:
+      - jitsu-dev-network
     image: docker.redpanda.com/redpandadata/console:latest
     ports:
-      - "${KAFKA_CONSOLE_PORT:-3032}:8080"
+      - "${REDPANDA_CONSOLE_PORT:-11801}:8080"
     environment:
-      KAFKA_BROKERS: "jitsu-dev-kafka:19093"
+      KAFKA_BROKERS: "jitsu-dev-redpanda:9092"
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://jitsu-dev-redpanda:8081"
     depends_on:
-      - jitsu-dev-kafka
+      - jitsu-dev-redpanda
 
-  bulker-dev:
-    tty: true
-    image: jitsucom/bulker:latest
-    restart: on-failure
-    ports:
-      - "${BULKER_PORT:-3042}:3042"
-    volumes:
-      - ./utils:/utils
+  jitsu-dev-pgweb:
+    container_name: jitsu-dev-pgweb
+    networks:
+      - jitsu-dev-network
+    image: sosedoff/pgweb:latest
+    restart: always
     environment:
-      TERM: "xterm-256color"
-      BULKER_KAFKA_BOOTSTRAP_SERVERS: "jitsu-dev-kafka:19093"
-      BULKER_DESTINATION_POSTGRES: "{id: 'postgres', type: 'postgres', mode: 'stream', credentials: {host: 'jitsu-dev-postgres', username: 'postgres', password: 'postgres-mqf3nzx', port: 5432, database: 'postgres', parameters: {sslmode: 'disable'}}}"
-      BULKER_AUTH_TOKENS: "4ba41958f341469993fd8ea1c0c932f0"
-    command: [
-        #'chmod', '755', '/utils/wait-for-it.sh', '&&',
-        "/utils/wait-for-it.sh",
-        "jitsu-dev-kafka:19093",
-        "--",
-        "/utils/wait-for-it.sh",
-        "jitsu-dev-postgres:5432",
-        "--",
-        "/app/bulkerapp",
-      ]
+      DATABASE_URL: "postgres://postgres:postgres-mqf3nzx@jitsu-dev-postgres:5432/postgres?sslmode=disable"
+    ports:
+      - "${PGWEB_PORT:-11802}:8081"
     depends_on:
       - jitsu-dev-postgres
-      - jitsu-dev-kafka
-  keycloak:
+
+  jitsu-dev-mongo-express:
+    container_name: jitsu-dev-mongo-express
+    networks:
+      - jitsu-dev-network
+    image: mongo-express:latest
+    restart: always
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: mongodb-pass
+      ME_CONFIG_MONGODB_URL: mongodb://admin:mongodb-pass@jitsu-dev-mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: mongodb-pass
+    ports:
+      - "${MONGO_EXPRESS_PORT:-11803}:8081"
+    depends_on:
+      - jitsu-dev-mongodb
+
+  jitsu-dev-keycloak:
+    container_name: jitsu-dev-keycloak
+    networks:
+      - jitsu-dev-network
     command: start-dev
     image: "quay.io/keycloak/keycloak:26.0.4"
     environment:
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
     ports:
-      - "8080:8080"
+      - "${KEYCLOAK_PORT:-11804}:8080"

@@ -1,7 +1,10 @@
 import { Redis } from "ioredis";
 import { requireDefined, getLog } from "juava";
+import { getServerEnv } from "../serverEnv";
 
 const log = getLog("redis");
+
+const serverEnv = getServerEnv();
 
 function hideSensitiveInfoFromURL(url: string) {
   let parsed: URL;
@@ -60,8 +63,8 @@ function resolveRedisConnectionOptions(
  * - Redis Sentinel Address: `sentinel1:26379,sentinel2:26379,sentinel3:26379`
  */
 export function createRedis(): Redis {
-  const redisUrl = requireDefined(process.env.REDIS_URL, "env REDIS_URL is not defined");
-  const redisSentinelAddress = process.env.REDIS_SENTINEL_ADDRESS;
+  const redisUrl = requireDefined(serverEnv.REDIS_URL, "env REDIS_URL is not defined");
+  const redisSentinelAddress = serverEnv.REDIS_SENTINEL_ADDRESS;
 
   let sanitizedRedisUrl: string = hideSensitiveInfoFromURL(redisUrl);
   if (redisSentinelAddress) {

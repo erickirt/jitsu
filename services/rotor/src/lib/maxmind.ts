@@ -5,8 +5,11 @@ import { Geo } from "@jitsu/protocols/analytics";
 import NodeCache from "node-cache";
 import { getLog, isTruish, requireDefined } from "juava";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getServerEnv } from "../serverEnv";
 
 const log = getLog("maxmind");
+
+const serverEnv = getServerEnv();
 
 const InvalidLicenseKey = "Invalid license key";
 
@@ -40,26 +43,17 @@ const DummyResolver: GeoResolver = {
 
 const createS3Client = () => {
   const region = requireDefined(
-    process.env.MAXMIND_S3_REGION ?? process.env.S3_REGION,
+    serverEnv.MAXMIND_S3_REGION ?? serverEnv.S3_REGION,
     "MAXMIND_S3_REGION or S3_REGION is not provided"
   );
-  const accessKeyId = requireDefined(
-    process.env.MAXMIND_S3_ACCESS_KEY_ID ?? process.env.S3_ACCESS_KEY_ID,
-    "MAXMIND_S3_ACCESS_KEY_ID or S3_ACCESS_KEY_ID is not provided"
-  );
-  const secretAccessKey = requireDefined(
-    process.env.MAXMIND_S3_SECRET_ACCESS_KEY ?? process.env.S3_SECRET_ACCESS_KEY,
-    "MAXMIND_S3_SECRET_ACCESS_KEY or S3_SECRET_ACCESS_KEY is not provided"
-  );
+  const accessKeyId = serverEnv.MAXMIND_S3_ACCESS_KEY_ID ?? serverEnv.S3_ACCESS_KEY_ID;
+  const secretAccessKey = serverEnv.MAXMIND_S3_SECRET_ACCESS_KEY ?? serverEnv.S3_SECRET_ACCESS_KEY;
 
-  const endpoint = process.env.MAXMIND_S3_ENDPOINT; // Optional: AWS S3 will be used if not provided
-  const forcePathStyle = isTruish(process.env.MAXMIND_S3_FORCE_PATH_STYLE); // Optional: virtual-hosted style is used by default
+  const endpoint = serverEnv.MAXMIND_S3_ENDPOINT; // Optional: AWS S3 will be used if not provided
+  const forcePathStyle = isTruish(serverEnv.MAXMIND_S3_FORCE_PATH_STYLE); // Optional: virtual-hosted style is used by default
 
   return new S3Client({
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
+    ...(accessKeyId && secretAccessKey ? { credentials: { accessKeyId, secretAccessKey } } : {}),
     endpoint,
     forcePathStyle,
     region,
@@ -68,7 +62,7 @@ const createS3Client = () => {
 
 async function test() {
   const maxMindClient = await initMaxMindClient({
-    licenseKey: process.env.MAXMIND_LICENSE_KEY || "",
+    licenseKey: serverEnv.MAXMIND_LICENSE_KEY || "",
   });
 
   log.atInfo().log(`IP 209.142.68.29:`, JSON.stringify(await maxMindClient.resolve("209.142.68.29"), null, 2));
@@ -93,9 +87,9 @@ export async function initMaxMindClient(opts: {
     loadFunc = (edition: Edition) => loadFromURL(composeURL(licenseKey || url || "", edition));
   }
   let getLocalizedName: GetLocalizedNameFunction;
-  if (process.env.MAXMIND_LOCALE) {
+  if (serverEnv.MAXMIND_LOCALE) {
     getLocalizedName = (names: Names) => {
-      return names[process.env.MAXMIND_LOCALE!] || names.en;
+      return names[serverEnv.MAXMIND_LOCALE!] || names.en;
     };
   } else {
     getLocalizedName = (names: Names) => names.en;

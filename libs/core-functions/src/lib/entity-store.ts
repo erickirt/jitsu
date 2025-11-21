@@ -44,9 +44,10 @@ function refreshFunc<T>(storeId: string) {
       if (ifModifiedSince) {
         headers["If-Modified-Since"] = ifModifiedSince.toUTCString();
       }
+      const base = repositoryBase.endsWith("/") ? repositoryBase : `${repositoryBase}/`;
+      const url = `${base}${storeId}`;
       try {
-        const base = repositoryBase.endsWith("/") ? repositoryBase : `${repositoryBase}/`;
-        const res = await fetch(`${base}${storeId}`, {
+        const res = await fetch(url, {
           method: "GET",
           headers: headers,
           keepalive: true,
@@ -85,7 +86,7 @@ function refreshFunc<T>(storeId: string) {
           lastModified: lastModified,
         };
       } catch (e) {
-        throw new Error(`Failed to load ${storeId} from repository: ${e}`);
+        throw new Error(`Failed to load ${storeId} from repository url ${url}: ${e}`);
       }
     } else {
       return { store: DisabledStore, lastModified: new Date() };
