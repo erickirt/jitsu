@@ -95,11 +95,7 @@ const credentialsProvider =
       } else if (!user.password) {
         log.atWarn().log(`Can't proceed with login, ${username} doesn't have a password`);
       } else {
-        log
-          .atDebug()
-          .log(
-            `Unsuccessful login attempt: user ${username} exists, but password is invalid`
-          );
+        log.atDebug().log(`Unsuccessful login attempt: user ${username} exists, but password is invalid`);
       }
       return null;
     },
