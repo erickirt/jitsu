@@ -260,7 +260,7 @@ export async function getUser(
   if (bearerToken) {
     const [keyId, secret] = bearerToken.split(":");
     if (!secret) {
-      throw new ApiError("Bearer token should have a format of keyId:secret")
+      throw new ApiError("Bearer token should have a format of keyId:secret");
     }
     const serviceAccount = findServiceAccount({ keyId, secret });
     if (serviceAccount) {

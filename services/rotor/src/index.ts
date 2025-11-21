@@ -61,7 +61,7 @@ async function main() {
     try {
       await mongodb.waitInit();
     } catch (e: any) {
-      log.atWarn().log("Failed to connect to mongodb. Rotor will use local in-memory store which is fine for dev",);
+      log.atWarn().log("Failed to connect to mongodb. Rotor will use local in-memory store which is fine for dev");
     }
     if (serverEnv.CLICKHOUSE_HOST || serverEnv.CLICKHOUSE_URL) {
       eventsLogger = createClickhouseLogger();
@@ -105,9 +105,7 @@ async function main() {
     if (redisClient) {
       redisClient.disconnect();
     }
-    const extraDelay = serverEnv.SHUTDOWN_EXTRA_DELAY_SEC
-      ? 1000 * parseInt(serverEnv.SHUTDOWN_EXTRA_DELAY_SEC)
-      : 5000;
+    const extraDelay = serverEnv.SHUTDOWN_EXTRA_DELAY_SEC ? 1000 * parseInt(serverEnv.SHUTDOWN_EXTRA_DELAY_SEC) : 5000;
     if (extraDelay > 0) {
       log.atInfo().log(`Giving extra ${extraDelay / 1000}s. to flush logs and scrape metrics...`);
       //extra time to flush logs

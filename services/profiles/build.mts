@@ -12,9 +12,7 @@ const nativeModules = ["isolated-vm", "@confluentinc/kafka-javascript", "@mongod
 const externalModules = [...nativeModules, "pg-native"];
 
 // Extract versions from package.json dependencies
-const nativeDeps = Object.fromEntries(
-  nativeModules.map((mod) => [mod, packageJson.dependencies[mod]])
-);
+const nativeDeps = Object.fromEntries(nativeModules.map(mod => [mod, packageJson.dependencies[mod]]));
 
 // Bundle the app
 await esbuild.build({
