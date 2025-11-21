@@ -98,7 +98,7 @@ const credentialsProvider =
         log
           .atDebug()
           .log(
-            `Unsuccessful login attempt: user ${username} exists, but password is invalid: ${user?.password} / ${credentials.password}`
+            `Unsuccessful login attempt: user ${username} exists, but password is invalid`
           );
       }
       return null;
