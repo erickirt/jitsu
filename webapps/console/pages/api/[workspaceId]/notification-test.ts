@@ -60,6 +60,7 @@ export default createRoute()
         name: "Test Slack Channel",
       };
       const statusChange: StatusChange = {
+        type: con?.type === "sync" ? "sync" : "batch",
         status: "SUCCESS",
         id: BigInt(1),
         actorId: con?.id || "test",
@@ -82,7 +83,7 @@ export default createRoute()
         changesPerHours: 1,
         changesPerDay: 1,
       };
-      await sendSlackNotification(channel, entity, [statusChange], publicEndpoints.baseUrl);
+      await sendSlackNotification(channel, entity, [statusChange], publicEndpoints.baseUrl, false);
       return { ok: true };
     } catch (e: any) {
       log.atError().withCause(e).log("Error sending test notification");
