@@ -19,7 +19,7 @@ export const clickhouse = createClient({
   url: clickhouseHost(),
   username: process.env.CLICKHOUSE_USERNAME || "default",
   password: process.env.CLICKHOUSE_PASSWORD || "",
-  request_timeout: 120000,
+  request_timeout: 180000,
   compression: {
     response: true,
   },

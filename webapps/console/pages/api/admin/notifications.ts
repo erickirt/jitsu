@@ -678,7 +678,7 @@ async function loadBatchStatusesChanges(
       },
       format: "JSONEachRow",
       clickhouse_settings: {
-        max_execution_time: 120,
+        max_execution_time: 180,
         wait_end_of_query: 1,
       },
     });
@@ -730,8 +730,8 @@ async function loadBatchStatusesChanges(
 
   //process by chunks of 500 actorIds
   const promises: Promise<void>[] = [];
-  for (let i = 0; i < actorIds.length; i += 500) {
-    const chunk = actorIds.slice(i, i + 500);
+  for (let i = 0; i < actorIds.length; i += 1500) {
+    const chunk = actorIds.slice(i, i + 1500);
     promises.push(processChunk(chunk));
   }
   await Promise.all(promises);
@@ -776,7 +776,7 @@ async function loadDeadStatusesChanges(
       },
       format: "JSONEachRow",
       clickhouse_settings: {
-        max_execution_time: 120,
+        max_execution_time: 180,
         wait_end_of_query: 1,
       },
     });
@@ -825,8 +825,8 @@ async function loadDeadStatusesChanges(
   };
   //process by chunks of 500 actorIds
   const promises: Promise<void>[] = [];
-  for (let i = 0; i < actorIds.length; i += 500) {
-    const chunk = actorIds.slice(i, i + 500);
+  for (let i = 0; i < actorIds.length; i += 1500) {
+    const chunk = actorIds.slice(i, i + 1500);
     promises.push(processChunk(chunk));
   }
   await Promise.all(promises);
