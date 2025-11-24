@@ -1,0 +1,18 @@
+go 1.24
+
+use (
+	./admin
+	./bulkerapp
+	./bulkerlib
+	./config-keeper
+	./connectors/airbytecdk
+	./connectors/firebase
+	./eventslog
+	./ingest
+	./ingress-manager
+	./jitsubase
+	./kafkabase
+	./reprocessing-worker
+	./sync-controller
+	./sync-sidecar
+)

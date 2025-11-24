@@ -1,0 +1,31 @@
+/bulkerapp/config.yaml
+*.env
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+.idea/*
+
+**/.logs
+
+#Compiled binaries
+bulkerapp/bulkerapp
+bulker
+ingest/ingest
+sync-controller/syncctl
+syncctl
+sync-sidecar/sidecar
+sidecar
+
+#Go workspace files
+#go.work
+#go.work.sum
