@@ -23,6 +23,7 @@ runs:
   steps:
     - name: Make script executable
       run: chmod +x versions.sh
+      shell: bash
     - name: Generate version
       id: generate
       shell: bash
