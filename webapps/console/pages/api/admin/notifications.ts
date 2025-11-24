@@ -669,9 +669,7 @@ async function loadBatchStatusesChanges(
                                     and has({actorIds:Array(String)}, actorId)
                                   order by timestamp
                                           asc`;
-  //process by chunks of 500 actorIds
-  for (let i = 0; i < actorIds.length; i += 500) {
-    const chunk = actorIds.slice(i, i + 500);
+  const processChunk = async (chunk: string[]) => {
     const chResult = await clickhouse.query({
       query: eventsLogQuery,
       query_params: {
@@ -728,7 +726,15 @@ async function loadBatchStatusesChanges(
         }
       }
     }
+  };
+
+  //process by chunks of 500 actorIds
+  const promises: Promise<void>[] = [];
+  for (let i = 0; i < actorIds.length; i += 500) {
+    const chunk = actorIds.slice(i, i + 500);
+    promises.push(processChunk(chunk));
   }
+  await Promise.all(promises);
   log
     .atInfo()
     .log(`Events log processed. Rows: ${processed}. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
@@ -761,9 +767,7 @@ async function loadDeadStatusesChanges(
                                   from ${metricsSchema}.dead_letter
                                   where has({actorIds:Array(String)}, actorId)
                                   GROUP BY workspaceId, actorId, type`;
-  //process by chunks of 500 actorIds
-  for (let i = 0; i < actorIds.length; i += 500) {
-    const chunk = actorIds.slice(i, i + 500);
+  const processChunk = async (chunk: string[]) => {
     const chResult = await clickhouse.query({
       query: eventsLogQuery,
       query_params: {
@@ -818,7 +822,14 @@ async function loadDeadStatusesChanges(
         }
       }
     }
+  };
+  //process by chunks of 500 actorIds
+  const promises: Promise<void>[] = [];
+  for (let i = 0; i < actorIds.length; i += 500) {
+    const chunk = actorIds.slice(i, i + 500);
+    promises.push(processChunk(chunk));
   }
+  await Promise.all(promises);
   log
     .atInfo()
     .log(`Dead log processed. Rows: ${processed}. Status changes: ${statusChanges}. Elapsed: ${sw.elapsedPretty()}`);
@@ -1350,5 +1361,5 @@ function extractDescription(statusChange: StatusChange): string | null | undefin
 }
 
 export const config = {
-  maxDuration: 800,
+  maxDuration: 300,
 };
