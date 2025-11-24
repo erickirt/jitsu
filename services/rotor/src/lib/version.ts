@@ -1,4 +1,7 @@
 import { isTruish } from "juava";
+import { getServerEnv } from "../serverEnv";
+
+const serverEnv = getServerEnv();
 
 /**
  * A little code duplication with console. Not ideal, although better than
@@ -40,11 +43,10 @@ function getGit(env: EnvVars): ApplicationVersion["git"] {
 }
 
 export function getApplicationVersion(): ApplicationVersion {
-  const env = process.env as EnvVars;
   return {
-    version: env.JITSU_VERSION_STRING || "dev",
-    stream: env.JITSU_VERSION_DOCKER_TAG || "dev",
-    git: getGit(env),
+    version: serverEnv.JITSU_VERSION_STRING || "dev",
+    stream: serverEnv.JITSU_VERSION_DOCKER_TAG || "dev",
+    git: getGit(serverEnv as any),
   };
 }
 
@@ -53,9 +55,9 @@ function sortByKey(dict: Record<string, any>): Record<string, any> {
 }
 
 export function getDiagnostics() {
-  if (isTruish(process.env.__DANGEROUS_ENABLE_FULL_DIAGNOSTICS)) {
+  if (isTruish(serverEnv.__DANGEROUS_ENABLE_FULL_DIAGNOSTICS)) {
     return {
-      env: sortByKey(process.env),
+      env: sortByKey(serverEnv as any),
       proc: {
         config: sortByKey(process.config),
         versions: sortByKey(process.versions),

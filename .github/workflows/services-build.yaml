@@ -142,7 +142,7 @@ jobs:
 
             # Use AMD64 only for canary (faster), multi-arch for stable/beta
             if [ "${CHANNEL}" = "canary" ]; then
-              PLATFORM="linux/amd64"
+              PLATFORM="linux/amd64,linux/arm64"
             else
               #PLATFORM="linux/amd64"
               PLATFORM="linux/amd64,linux/arm64"

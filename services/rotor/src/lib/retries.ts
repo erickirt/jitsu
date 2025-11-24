@@ -2,16 +2,18 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 dayjs.extend(utc);
 import { RetryErrorName, DropRetryErrorName } from "@jitsu/functions-lib";
+import { getServerEnv } from "../serverEnv";
 
-const MESSAGES_RETRY_COUNT = process.env.MESSAGES_RETRY_COUNT ? parseInt(process.env.MESSAGES_RETRY_COUNT) : 3;
+const serverEnv = getServerEnv();
+const MESSAGES_RETRY_COUNT = serverEnv.MESSAGES_RETRY_COUNT ? parseInt(serverEnv.MESSAGES_RETRY_COUNT) : 3;
 // MESSAGES_RETRY_BACKOFF_BASE defines base for exponential backoff in minutes.
 // For example, if MESSAGES_RETRY_COUNT is 3 and base is 5, then retry delays will be 5, 25, 125 minutes.
-const MESSAGES_RETRY_BACKOFF_BASE = process.env.MESSAGES_RETRY_BACKOFF_BASE
-  ? parseInt(process.env.MESSAGES_RETRY_BACKOFF_BASE)
+const MESSAGES_RETRY_BACKOFF_BASE = serverEnv.MESSAGES_RETRY_BACKOFF_BASE
+  ? parseInt(serverEnv.MESSAGES_RETRY_BACKOFF_BASE)
   : 10;
 // MESSAGES_RETRY_BACKOFF_MAX_DELAY defines maximum possible retry delay in minutes. Default: 1440 minutes = 24 hours
-const MESSAGES_RETRY_BACKOFF_MAX_DELAY = process.env.MESSAGES_RETRY_BACKOFF_MAX_DELAY
-  ? parseInt(process.env.MESSAGES_RETRY_BACKOFF_MAX_DELAY)
+const MESSAGES_RETRY_BACKOFF_MAX_DELAY = serverEnv.MESSAGES_RETRY_BACKOFF_MAX_DELAY
+  ? parseInt(serverEnv.MESSAGES_RETRY_BACKOFF_MAX_DELAY)
   : 1440;
 
 export type retryPolicy = {

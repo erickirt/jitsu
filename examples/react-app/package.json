@@ -36,6 +36,7 @@
     "@types/react-dom": "catalog:",
     "@types/react": "catalog:",
     "@types/lodash": "catalog:",
-    "tailwindcss": "catalog:"
+    "tailwindcss": "catalog:",
+    "eslint": "catalog:"
   }
 }

@@ -259,6 +259,9 @@ export async function getUser(
   const bearerToken = getAuthBearerToken(req);
   if (bearerToken) {
     const [keyId, secret] = bearerToken.split(":");
+    if (!secret) {
+      throw new ApiError("Bearer token should have a format of keyId:secret");
+    }
     const serviceAccount = findServiceAccount({ keyId, secret });
     if (serviceAccount) {
       return serviceAccount;

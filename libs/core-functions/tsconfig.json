@@ -9,7 +9,6 @@
   },
   "include": ["src/**/*"],
   "exclude": [
-    "__tests__",
     "dist",
     "test_projects",
     "test",

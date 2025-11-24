@@ -20,6 +20,7 @@ import { functionFilter, MessageHandlerContext } from "./message-handler";
 import { connectionsStore, functionsStore, streamsStore } from "./repositories";
 import { FuncChainResult, RotorMetrics } from "@jitsu/core-functions";
 import { IngestMessage } from "@jitsu/protocols/async-request";
+import { getServerEnv } from "../serverEnv";
 
 dayjs.extend(utc);
 
@@ -32,9 +33,10 @@ const ORIGINAL_TOPIC_HEADER = "original_topic";
 const FUNCTION_ID_HEADER = "function_id";
 export const CONNECTION_IDS_HEADER = "connection_ids";
 
-const concurrency = parseNumber(process.env.CONCURRENCY, 10);
-const fetchTimeoutMs = parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
-const rotorIndex = parseNumber(process.env.INSTANCE_INDEX, 0);
+const serverEnv = getServerEnv();
+const concurrency = parseNumber(serverEnv.CONCURRENCY, 10);
+const fetchTimeoutMs = parseNumber(serverEnv.FETCH_TIMEOUT_MS, 2000);
+const rotorIndex = parseNumber(serverEnv.INSTANCE_INDEX, 0);
 
 export type KafkaRotorConfig = {
   credentials: KafkaCredentials;
@@ -77,12 +79,12 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
           autoCommitInterval: 10000,
           autoCommit: true,
         },
-        ...(isTruish(process.env.CONSUMER_PROTOCOL)
+        ...(isTruish(serverEnv.CONSUMER_PROTOCOL)
           ? {
               "group.protocol": "consumer",
             }
           : {}),
-        "group.instance.id": process.env.INSTANCE_ID || process.env.ROTOR_INSTANCE_ID,
+        "group.instance.id": serverEnv.INSTANCE_ID || serverEnv.ROTOR_INSTANCE_ID,
       });
       await consumer.connect();
       log.atInfo().log("Subscribing to kafka topics: ", kafkaTopics);
@@ -271,7 +273,7 @@ export function kafkaRotor(cfg: KafkaRotorConfig): KafkaRotor {
 }
 
 export function getCompressionType() {
-  switch (process.env.KAFKA_TOPIC_COMPRESSION) {
+  switch (serverEnv.KAFKA_TOPIC_COMPRESSION) {
     case "gzip":
       return KafkaJS.CompressionTypes.GZIP;
     case "snappy":

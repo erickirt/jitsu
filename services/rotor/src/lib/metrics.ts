@@ -5,9 +5,11 @@ import { KafkaJS } from "@confluentinc/kafka-javascript";
 import { Readable } from "stream";
 import { Counter, Gauge, Histogram } from "prom-client";
 import { createClient } from "@clickhouse/client";
+import { getServerEnv } from "../serverEnv";
 
 const log = getLog("metrics");
-const metricsDestinationId = process.env.METRICS_DESTINATION_ID;
+const serverEnv = getServerEnv();
+const metricsDestinationId = serverEnv.METRICS_DESTINATION_ID;
 const billingMetricsTable = "active_incoming";
 const metricsTable = "metrics";
 
@@ -99,12 +101,12 @@ export const DummyMetrics: RotorMetrics = {
 
 export function createMetrics(producer?: KafkaJS.Producer): RotorMetrics {
   const buffer: MetricsEvent[] = [];
-  const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
+  const metricsSchema = serverEnv.CLICKHOUSE_METRICS_SCHEMA || serverEnv.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
   const clickhouse = createClient({
     url: clickhouseHost(),
-    username: process.env.CLICKHOUSE_USERNAME || "default",
-    password: requireDefined(process.env.CLICKHOUSE_PASSWORD, `env CLICKHOUSE_PASSWORD is not defined`),
+    username: serverEnv.CLICKHOUSE_USERNAME || "default",
+    password: requireDefined(serverEnv.CLICKHOUSE_PASSWORD, `env CLICKHOUSE_PASSWORD is not defined`),
     clickhouse_settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
@@ -319,11 +321,11 @@ export function createMetrics(producer?: KafkaJS.Producer): RotorMetrics {
 }
 
 function clickhouseHost() {
-  if (process.env.CLICKHOUSE_URL) {
-    return process.env.CLICKHOUSE_URL;
+  if (serverEnv.CLICKHOUSE_URL) {
+    return serverEnv.CLICKHOUSE_URL;
   }
-  return `${isTruish(process.env.CLICKHOUSE_SSL) ? "https://" : "http://"}${requireDefined(
-    process.env.CLICKHOUSE_HOST,
+  return `${isTruish(serverEnv.CLICKHOUSE_SSL) ? "https://" : "http://"}${requireDefined(
+    serverEnv.CLICKHOUSE_HOST,
     "env CLICKHOUSE_HOST is not defined"
   )}`;
 }

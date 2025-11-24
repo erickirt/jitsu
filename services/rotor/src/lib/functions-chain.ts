@@ -32,8 +32,10 @@ import NodeCache from "node-cache";
 import isEqual from "lodash/isEqual";
 import { MessageHandlerContext } from "./message-handler";
 import { promFunctionsInFlight, promFunctionsTime } from "./metrics";
+import { getServerEnv } from "../serverEnv";
 
-const fastStoreWorkspaceId = (process.env.FAST_STORE_WORKSPACE_ID ?? "").split(",").filter(x => x.length > 0);
+const serverEnv = getServerEnv();
+const fastStoreWorkspaceId = (serverEnv.FAST_STORE_WORKSPACE_ID ?? "").split(",").filter(x => x.length > 0);
 
 export type Func = {
   id: string;
@@ -50,8 +52,8 @@ export type FuncChain = {
 export type FuncChainFilter = "all" | "udf-n-dst" | "dst-only";
 
 const log = getLog("functions-chain");
-const bulkerBase = requireDefined(process.env.BULKER_URL, "env BULKER_URL is not defined");
-const bulkerAuthKey = requireDefined(process.env.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
+const bulkerBase = requireDefined(serverEnv.BULKER_URL, "env BULKER_URL is not defined");
+const bulkerAuthKey = requireDefined(serverEnv.BULKER_AUTH_KEY, "env BULKER_AUTH_KEY is not defined");
 
 //cache compiled udfs for 5min
 const udfTTL = 60 * 10;
@@ -113,7 +115,7 @@ export function buildFunctionChain(
   if (!store) {
     let mongodbStore: TTLStore | undefined, redisStore: TTLStore | undefined;
 
-    if (process.env.MONGODB_URL) {
+    if (serverEnv.MONGODB_URL) {
       mongodbStore = createMongoStore(
         conWorkspaceId,
         mongodb,
