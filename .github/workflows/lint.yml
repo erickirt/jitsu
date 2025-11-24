@@ -87,9 +87,61 @@ jobs:
         if: always()
         run: docker stop builder && docker rm builder
 
+  bulker-test:
+    name: 🧪 Bulker Test
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.9'
+          cache: false
+
+      - name: 🧪 Run Bulker tests
+        working-directory: ./bulker
+        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+#          BULKER_TEST_BIGQUERY: ${{ secrets.BULKER_TEST_BIGQUERY }}
+#          BULKER_TEST_REDSHIFT_IAM: ${{ secrets.BULKER_TEST_REDSHIFT_IAM }}
+#          BULKER_TEST_S3: ${{ secrets.BULKER_TEST_S3 }}
+#          BULKER_TEST_MOTHERDUCK: ${{ secrets.BULKER_TEST_MOTHERDUCK }}
+#          BULKER_TEST_REDSHIFT_SERVERLESS: ${{ secrets.BULKER_TEST_REDSHIFT_SERVERLESS }}
+#          BULKER_TEST_SNOWFLAKE: ${{ secrets.BULKER_TEST_SNOWFLAKE }}
+#          BULKER_TEST_MILLION_ROWS_BATCHED: postgres
+#          TESTCONTAINERS_RYUK_DISABLED: true
+        run: |
+          go test -parallel=10 -timeout 60m -json ./jitsubase/... ./kafkabase/... ./eventslog/... ./bulkerlib/... ./bulkerapp/... > test_report.json
+
+      - name: 📊 Generate test report
+        if: always()
+        working-directory: ./bulker
+        run: |
+          go install github.com/vakenbolt/go-test-report@latest
+          cat test_report.json | ~/go/bin/go-test-report
+
+      - name: 📤 Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulker-test-report
+          path: |
+            bulker/test_report.html
+            bulker/test_report.json
+
   notify:
     name: 📢 Notify
-    needs: [lint-and-format]
+    needs: [lint-and-format, bulker-test]
     if: always() && github.ref == 'refs/heads/newjitsu'
     runs-on: ubuntu-latest
     permissions:
@@ -108,14 +160,17 @@ jobs:
       - name: 🔍 Check job statuses
         id: status
         run: |
-          if [[ "${{ needs.lint-and-format.result }}" == "success" ]]; then
+          if [[ "${{ needs.lint-and-format.result }}" == "success" && "${{ needs.bulker-test.result }}" == "success" ]]; then
             echo "success=true" >> $GITHUB_OUTPUT
             echo "color=#36a64f" >> $GITHUB_OUTPUT
             echo "header=✅ Lint & Test on branch \`${{ github.ref_name }}\` SUCCEEDED" >> $GITHUB_OUTPUT
           else
             echo "success=false" >> $GITHUB_OUTPUT
             echo "color=#ff0000" >> $GITHUB_OUTPUT
-            echo "header=❌ Lint & Test on branch \`${{ github.ref_name }}\` FAILED" >> $GITHUB_OUTPUT
+            FAILED_JOBS=""
+            [[ "${{ needs.lint-and-format.result }}" != "success" ]] && FAILED_JOBS="lint-and-format"
+            [[ "${{ needs.bulker-test.result }}" != "success" ]] && FAILED_JOBS="$FAILED_JOBS bulker-test"
+            echo "header=❌ Lint & Test on branch \`${{ github.ref_name }}\` FAILED ($FAILED_JOBS)" >> $GITHUB_OUTPUT
           fi
 
       - name: 💬 Send notification to Slack
@@ -139,7 +194,7 @@ jobs:
 
   deploy:
     name: 🐳 Build Docker Images
-    needs: [lint-and-format]
+    needs: [lint-and-format, bulker-test]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
     permissions:
       contents: write

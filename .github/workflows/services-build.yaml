@@ -43,9 +43,9 @@ jobs:
       version: ${{ steps.manual.outputs.version || steps.generated.outputs.version }}
       channel: ${{ steps.manual.outputs.channel || steps.generated.outputs.channel }}
       tag: ${{ steps.manual.outputs.tag || steps.generated.outputs.tag }}
+      short_sha: ${{ steps.short-sha.outputs.sha }}
     steps:
       - name: 📥 Checkout code
-        if: ${{ !inputs.version }}
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -66,10 +66,14 @@ jobs:
           echo "channel=${{ inputs.tag || 'canary' }}" >> $GITHUB_OUTPUT
           echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
 
-  build:
+      - name: 📝 Get short SHA
+        id: short-sha
+        run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
+  nodejs_build:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'docker' }}
-    name: 🚀 Build and Release Backend Docker Images
+    name: 🚀 Build and Release Nodejs Services
     timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
@@ -163,8 +167,111 @@ jobs:
               .
           done
 
+  build_bulker:
+    needs: [version]
+    if: ${{ inputs.scope == 'all' || inputs.scope == 'docker' }}
+    name: 🚀 Build and Release Bulker Docker Images
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: cloud
+          endpoint: "jitsucom/newjitsu"
+
+      - name: 🏗️ Build and push Bulker Docker images
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          TARGETS="bulker ingest sidecar syncctl ingmgr cfgkpr admin reprocessing-worker"
+          REGISTRY="${{ secrets.DOCKERHUB_USERNAME }}"
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Sanitize branch name for Docker tag (lowercase, replace / and _ with -, remove special chars)
+          BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\/\_]/-/g' | sed 's/[^a-z0-9.-]//g')
+
+          for TARGET in $TARGETS; do
+            echo "🚀 Building ${TARGET} for AMD64 and ARM64..."
+
+            # Build tags list
+            # 1. Version tag (e.g., 1.2.3-canary.1.20251113.abc1234)
+            TAGS="-t ${REGISTRY}/${TARGET}:${VERSION}"
+
+            # 2. Channel-based tag (map stable to "latest")
+            if [ "${CHANNEL}" = "stable" ]; then
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:latest"
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:stable"
+            else
+              TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${CHANNEL}"
+            fi
+
+            # 3. Branch + commit tag (e.g., feat-a.abc1234)
+            TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${BRANCH_SANITIZED}.${SHORT_SHA}"
+
+            # Use AMD64 only for canary (faster), multi-arch for stable/beta
+            if [ "${CHANNEL}" = "canary" ]; then
+              PLATFORM="linux/amd64,linux/arm64"
+            else
+              PLATFORM="linux/amd64,linux/arm64"
+            fi
+
+            docker buildx build \
+              --target ${TARGET} \
+              --platform ${PLATFORM} \
+              --build-arg VERSION=${VERSION} \
+              --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              ${TAGS} \
+              -f bulker/all.Dockerfile \
+              --push \
+              ./bulker
+          done
+
+
+  finalize_release:
+    needs: [version, nodejs_build, build_bulker, npm_publish]
+    if: ${{ needs.version.outputs.channel != 'canary' && !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.build_bulker.result == 'success' || needs.build_bulker.result == 'skipped') && (needs.npm_publish.result == 'success' || needs.npm_publish.result == 'skipped') }}
+    name: 🏷️ Finalize Release
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: 🏷️ Create and push git tag
-        if: needs.version.outputs.channel != 'canary'
         run: |
           TAG="${{ needs.version.outputs.tag }}"
           VERSION="${{ needs.version.outputs.version }}"
@@ -182,7 +289,6 @@ jobs:
           echo "Created and pushed tag: $TAG"
 
       - name: 📝 Create GitHub release
-        if: needs.version.outputs.channel != 'canary'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -228,37 +334,36 @@ jobs:
 
           echo "deploy_run_url=${DEPLOY_RUN_URL}" >> $GITHUB_OUTPUT
 
-      - name: 📝 Get short SHA
-        if: always()
-        id: short-sha
-        run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
-
       - name: 💬 Send notification to Slack
         if: always()
         uses: ./.github/actions/slack-notify
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 🐳 Jitsu Services `${{ needs.version.outputs.channel || 'unknown' }}` build ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
             - title: Branch
               value: ${{ github.ref_name }}
             - title: Version
               value: ${{ needs.version.outputs.version || 'N/A' }}
+            - title: Tag
+              value: ${{ needs.version.outputs.tag || 'N/A' }}
+            - title: NPM Tag
+              value: ${{ needs.npm_publish.result == 'success' && (needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel) || 'Not published' }}
             - title: Commit
-              value: ${{ steps.short-sha.outputs.sha }}
+              value: ${{ needs.version.outputs.short_sha }}
               url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
             - title: Commit message
               value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || 'N/A' }}
               is_code: true
-            - title: Build workflow
+            - title: Workflow run
               value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
               url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             - title: ${{ job.status == 'success' && 'Deploy lifecycle' || 'Triggered by' }}
               value: ${{ job.status == 'success' && 'View deployment run' || github.actor }}
               url: ${{ job.status == 'success' && steps.notify.outputs.deploy_run_url || '' }}
 
-  npm-publish:
+  npm_publish:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'npm' }}
     name: 📦 Build and Publish NPM Packages
@@ -360,36 +465,3 @@ jobs:
       - name: 🧹 Cleanup container
         if: always()
         run: docker stop builder && docker rm builder
-
-      - name: 📝 Get short SHA
-        if: always()
-        id: short-sha
-        run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
-
-      - name: 💬 Send notification to Slack
-        if: always()
-        uses: ./.github/actions/slack-notify
-        with:
-          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 📦 NPM Packages `${{ needs.version.outputs.channel || 'unknown' }}` publish ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
-          blocks: |
-            - title: Branch
-              value: ${{ github.ref_name }}
-            - title: Version
-              value: ${{ needs.version.outputs.version || 'N/A' }}
-            - title: NPM Tag
-              value: ${{ needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel }}
-            - title: Packages
-              value: "jitsu-cli, @jitsu/functions-lib"
-            - title: Commit
-              value: ${{ steps.short-sha.outputs.sha }}
-              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-            - title: Commit message
-              value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || 'N/A' }}
-              is_code: true
-            - title: Workflow run
-              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
-              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            - title: Triggered by
-              value: ${{ github.actor }}
