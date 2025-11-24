@@ -68,7 +68,7 @@ function refreshFunc<T>(storeId: string) {
         if (lmString) {
           lastModified = new Date(lmString);
         }
-        log.atInfo().log(`${storeId} updated: ${lastModified} previous update date: ${ifModifiedSince}`);
+        log.atInfo().log(`${storeId} updated: ${lastModified?.toISOString()} previous update date is ${ifModifiedSince?.toISOString()}`);
         return {
           store: {
             enabled: true,

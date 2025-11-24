@@ -75,7 +75,7 @@ export async function initMaxMindClient(opts: {
 }): Promise<GeoResolver> {
   const { licenseKey, s3Bucket, url } = opts;
   if (!licenseKey && !url && !s3Bucket) {
-    log.atError().log("licenseKey, url or s3Bucket must be provided. GeoIP resolution will not work.");
+    log.atWarn().log("licenseKey, url or s3Bucket must be provided. GeoIP resolution will not work.");
     return DummyResolver;
   }
   let loadFunc: LoadFunction;
@@ -133,7 +133,7 @@ export async function initMaxMindClient(opts: {
   }
 
   if (!cityReader && !countryReader && !ispReader && !asnReader && !domainReader && !connectionTypeReader) {
-    log.atError().log("Failed to load MaxMind databases. GeoIP resolution will not work.");
+    log.atWarn().log("Failed to load MaxMind databases. GeoIP resolution will not work.");
     return DummyResolver;
   } else {
     return {
