@@ -1350,5 +1350,5 @@ function extractDescription(statusChange: StatusChange): string | null | undefin
 }
 
 export const config = {
-  maxDuration: 300,
+  maxDuration: 800,
 };
