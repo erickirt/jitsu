@@ -197,7 +197,7 @@ jobs:
           fi
 
           # Create release without notes
-          gh release create "$TAG" --notes "$VERSION ($CHANNEL)" --title "Release $VERSION" $PRERELEASE_FLAG
+          gh release create "$TAG" --notes "$VERSION ($CHANNEL)" --title "Jitsu Release $VERSION" $PRERELEASE_FLAG
 
           echo "Created GitHub release: $TAG"
 
