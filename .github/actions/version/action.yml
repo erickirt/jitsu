@@ -21,6 +21,8 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Make script executable
+      run: chmod +x versions.sh
     - name: Generate version
       id: generate
       shell: bash
