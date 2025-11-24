@@ -35,3 +35,4 @@ libs/jitsu-js/dist/
 .github
 services/rotor/__tests__/artifacts
 devenv/data
+bulker
