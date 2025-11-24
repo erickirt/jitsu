@@ -730,8 +730,8 @@ async function loadBatchStatusesChanges(
 
   //process by chunks of 500 actorIds
   const promises: Promise<void>[] = [];
-  for (let i = 0; i < actorIds.length; i += 1500) {
-    const chunk = actorIds.slice(i, i + 1500);
+  for (let i = 0; i < actorIds.length; i += 200) {
+    const chunk = actorIds.slice(i, i + 200);
     promises.push(processChunk(chunk));
   }
   await Promise.all(promises);
@@ -825,8 +825,8 @@ async function loadDeadStatusesChanges(
   };
   //process by chunks of 500 actorIds
   const promises: Promise<void>[] = [];
-  for (let i = 0; i < actorIds.length; i += 1500) {
-    const chunk = actorIds.slice(i, i + 1500);
+  for (let i = 0; i < actorIds.length; i += 200) {
+    const chunk = actorIds.slice(i, i + 200);
     promises.push(processChunk(chunk));
   }
   await Promise.all(promises);
@@ -882,7 +882,9 @@ async function updateStatusChange(
       });
       newEntity.id = b.id;
       changed = true;
-      log.atInfo().log(`${entity.actorId} ${entity.tableName} status changed from ${entity.status} to ${status}`);
+      log
+        .atInfo()
+        .log(`${entity.actorId} ${entity.tableName} status changed from ${entity.status} to ${status} at ${timestamp}`);
     } else {
       const newDescription = description || entity.description || "";
       if (increments) {
