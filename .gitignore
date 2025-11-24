@@ -32,3 +32,4 @@ webapps/**/__tests__/**/*.js
 libs/jitsu-js/package/
 libs/jsondiffpatch/lib/
 .pnpm-store
+**/tsconfig.tsbuildinfo
