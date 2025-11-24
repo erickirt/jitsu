@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       scope:
-        description: "Build scope: all, docker, npm"
+        description: "Build scope: all, nodejs, bulker, npm"
         required: false
         type: string
         default: "all"
@@ -24,7 +24,7 @@ on:
         required: false
         type: string
       scope:
-        description: "Build scope: all, docker, npm"
+        description: "Build scope: all, nodejs, bulker, npm"
         required: false
         type: string
         default: "all"
@@ -72,7 +72,7 @@ jobs:
 
   nodejs_build:
     needs: [version]
-    if: ${{ inputs.scope == 'all' || inputs.scope == 'docker' }}
+    if: ${{ inputs.scope == 'all' || inputs.scope == 'nodejs' }}
     name: 🚀 Build and Release Nodejs Services
     timeout-minutes: 60
     runs-on: ubuntu-latest
@@ -159,8 +159,8 @@ jobs:
               --build-arg JITSU_BUILD_DOCKER_TAG=${CHANNEL} \
               --build-arg JITSU_BUILD_COMMIT_SHA=${COMMIT_SHA} \
               --build-arg CI=true \
-              --cache-from type=gha \
-              --cache-to type=gha,mode=max \
+#              --cache-from type=gha \
+#              --cache-to type=gha,mode=max \
               ${TAGS} \
               -f all.Dockerfile \
               --push \
@@ -169,7 +169,7 @@ jobs:
 
   build_bulker:
     needs: [version]
-    if: ${{ inputs.scope == 'all' || inputs.scope == 'docker' }}
+    if: ${{ inputs.scope == 'all' || inputs.scope == 'bulker' }}
     name: 🚀 Build and Release Bulker Docker Images
     timeout-minutes: 60
     runs-on: ubuntu-latest
@@ -244,8 +244,8 @@ jobs:
               --platform ${PLATFORM} \
               --build-arg VERSION=${VERSION} \
               --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
-              --cache-from type=gha \
-              --cache-to type=gha,mode=max \
+#              --cache-from type=gha \
+#              --cache-to type=gha,mode=max \
               ${TAGS} \
               -f bulker/all.Dockerfile \
               --push \
@@ -255,7 +255,7 @@ jobs:
 
   finalize_release:
     needs: [version, nodejs_build, build_bulker, npm_publish]
-    if: ${{ needs.version.outputs.channel != 'canary' && !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.build_bulker.result == 'success' || needs.build_bulker.result == 'skipped') && (needs.npm_publish.result == 'success' || needs.npm_publish.result == 'skipped') }}
+    if: ${{ needs.version.outputs.channel != 'canary' && !cancelled() && (needs.nodejs_build.result == 'success' || needs.nodejs_build.result == 'skipped') && (needs.build_bulker.result == 'success' || needs.build_bulker.result == 'skipped') && (needs.npm_publish.result == 'success' || needs.npm_publish.result == 'skipped') }}
     name: 🏷️ Finalize Release
     timeout-minutes: 10
     runs-on: ubuntu-latest
