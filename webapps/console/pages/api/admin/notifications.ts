@@ -669,58 +669,62 @@ async function loadBatchStatusesChanges(
                                     and has({actorIds:Array(String)}, actorId)
                                   order by timestamp
                                           asc`;
-  const chResult = await clickhouse.query({
-    query: eventsLogQuery,
-    query_params: {
-      fromTimestamp: dateToClickhouse(fromTimestamp),
-      actorIds: actorIds,
-    },
-    format: "JSONEachRow",
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-  for await (const rows of chResult.stream()) {
-    for (const r of rows) {
-      processed++;
-      const row = r.json() as any;
-      let entity = entities[key(row.actorId, "batch")];
-      const status = row.level === "error" ? "FAILED" : "SUCCESS";
-      let message: any = {};
-      try {
-        message = JSON.parse(row.message);
-      } catch (e) {}
-      let tableName = message.representation?.targetName || message.representation?.name;
-      if (tableName) {
-        tableName = tableName
-          .replace(/_tmp\d{12,16}$/, "")
-          .replace(/_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}(?:_\d+)?[.](?:ndjson|csv)(?:[.]gz)?$/, "");
-        let entityWithTable = entities[key(row.actorId, "batch", tableName)];
-        if (!entityWithTable) {
-          entityWithTable = { ...entity, tableName, type: "batch" };
-          entities[key(row.actorId, "batch", tableName)] = entityWithTable;
+  //process by chunks of 1000 actorIds
+  for (let i = 0; i < actorIds.length; i += 1000) {
+    const chunk = actorIds.slice(i, i + 1000);
+    const chResult = await clickhouse.query({
+      query: eventsLogQuery,
+      query_params: {
+        fromTimestamp: dateToClickhouse(fromTimestamp),
+        actorIds: chunk,
+      },
+      format: "JSONEachRow",
+      clickhouse_settings: {
+        wait_end_of_query: 1,
+      },
+    });
+    for await (const rows of chResult.stream()) {
+      for (const r of rows) {
+        processed++;
+        const row = r.json() as any;
+        let entity = entities[key(row.actorId, "batch")];
+        const status = row.level === "error" ? "FAILED" : "SUCCESS";
+        let message: any = {};
+        try {
+          message = JSON.parse(row.message);
+        } catch (e) {}
+        let tableName = message.representation?.targetName || message.representation?.name;
+        if (tableName) {
+          tableName = tableName
+            .replace(/_tmp\d{12,16}$/, "")
+            .replace(/_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}(?:_\d+)?[.](?:ndjson|csv)(?:[.]gz)?$/, "");
+          let entityWithTable = entities[key(row.actorId, "batch", tableName)];
+          if (!entityWithTable) {
+            entityWithTable = { ...entity, tableName, type: "batch" };
+            entities[key(row.actorId, "batch", tableName)] = entityWithTable;
+          }
+          entity = entityWithTable;
         }
-        entity = entityWithTable;
-      }
-      const queueSize = message.queueSize || 0;
-      //log.atInfo().log(`Batch ${row.actorId} ${entity.tableName} ${status} ${row.timestamp} ${entity.timestamp}`);
-      if (!entity) {
-        log.atWarn().log(`Batch ${row.actorId} not found`);
-        continue;
-      }
-      const rowTimestamp = dayjs(row.timestamp, { utc: true }).toDate();
+        const queueSize = message.queueSize || 0;
+        //log.atInfo().log(`Batch ${row.actorId} ${entity.tableName} ${status} ${row.timestamp} ${entity.timestamp}`);
+        if (!entity) {
+          log.atWarn().log(`Batch ${row.actorId} not found`);
+          continue;
+        }
+        const rowTimestamp = dayjs(row.timestamp, { utc: true }).toDate();
 
-      const chId = await updateStatusChange(
-        entities,
-        entity,
-        rowTimestamp,
-        status,
-        queueSize,
-        message.error,
-        increments
-      );
-      if (chId) {
-        statusChanges++;
+        const chId = await updateStatusChange(
+          entities,
+          entity,
+          rowTimestamp,
+          status,
+          queueSize,
+          message.error,
+          increments
+        );
+        if (chId) {
+          statusChanges++;
+        }
       }
     }
   }
@@ -756,48 +760,60 @@ async function loadDeadStatusesChanges(
                                   from ${metricsSchema}.dead_letter
                                   where has({actorIds:Array(String)}, actorId)
                                   GROUP BY workspaceId, actorId, type`;
-  const chResult = await clickhouse.query({
-    query: eventsLogQuery,
-    query_params: {
-      // fromTimestamp: dateToClickhouse(fromTimestamp),
-      actorIds: actorIds,
-    },
-    format: "JSONEachRow",
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-  for await (const rows of chResult.stream()) {
-    for (const r of rows) {
-      processed++;
-      const row = r.json() as any;
-      const rowTimestamp = dayjs(row.last_failed_at, { utc: true }).toDate();
-      const hoursSinceLastFailure = (currentRunTime.getTime() - rowTimestamp.getTime()) / 36e5;
-      log
-        .atInfo()
-        .log(
-          `Dead letter ${
-            row.actorId
-          } last failed at ${rowTimestamp.toISOString()} hours since last failure: ${hoursSinceLastFailure}`
+  //process by chunks of 1000 actorIds
+  for (let i = 0; i < actorIds.length; i += 1000) {
+    const chunk = actorIds.slice(i, i + 1000);
+    const chResult = await clickhouse.query({
+      query: eventsLogQuery,
+      query_params: {
+        // fromTimestamp: dateToClickhouse(fromTimestamp),
+        actorIds: chunk,
+      },
+      format: "JSONEachRow",
+      clickhouse_settings: {
+        wait_end_of_query: 1,
+      },
+    });
+    for await (const rows of chResult.stream()) {
+      for (const r of rows) {
+        processed++;
+        const row = r.json() as any;
+        const rowTimestamp = dayjs(row.last_failed_at, { utc: true }).toDate();
+        const hoursSinceLastFailure = (currentRunTime.getTime() - rowTimestamp.getTime()) / 36e5;
+        log
+          .atInfo()
+          .log(
+            `Dead letter ${
+              row.actorId
+            } last failed at ${rowTimestamp.toISOString()} hours since last failure: ${hoursSinceLastFailure}`
+          );
+        const status = hoursSinceLastFailure >= 24 ? "SUCCESS" : "FAILED";
+
+        let entity = entities[key(row.actorId, "dead")];
+        if (!entity) {
+          log.atWarn().log(`Dead-letter ${row.actorId} not found`);
+          continue;
+        }
+        const queueSize = parseInt(row.cnt);
+
+        let errrorObj: any = {};
+        try {
+          errrorObj = JSON.parse(row.last_error);
+        } catch (e) {}
+        let description = errrorObj.error || row.last_error;
+
+        const chId = await updateStatusChange(
+          entities,
+          entity,
+          rowTimestamp,
+          status,
+          queueSize,
+          description,
+          increments
         );
-      const status = hoursSinceLastFailure >= 24 ? "SUCCESS" : "FAILED";
-
-      let entity = entities[key(row.actorId, "dead")];
-      if (!entity) {
-        log.atWarn().log(`Dead-letter ${row.actorId} not found`);
-        continue;
-      }
-      const queueSize = parseInt(row.cnt);
-
-      let errrorObj: any = {};
-      try {
-        errrorObj = JSON.parse(row.last_error);
-      } catch (e) {}
-      let description = errrorObj.error || row.last_error;
-
-      const chId = await updateStatusChange(entities, entity, rowTimestamp, status, queueSize, description, increments);
-      if (chId) {
-        statusChanges++;
+        if (chId) {
+          statusChanges++;
+        }
       }
     }
   }
@@ -1291,7 +1307,7 @@ function fillNotificationProps(
   let detailsUrl = `${baseUrl}/${entity.slug}/data?query={activeView%3A'bulker'%2CviewState%3A{bulker%3A{actorId%3A'${entity.actorId}'}}}`;
   switch (entity.type) {
     case "dead":
-      detailsUrl = `${baseUrl}/${entity.slug}/data?query={activeView%3A'dead-letter'%2CviewState%3A{dead-letter%3A{actorId%3A'${entity.actorId}'}}}`;
+      detailsUrl = `${baseUrl}/${entity.slug}/data?query={activeView%3A'dead-letter'%2CviewState%3A{%22dead-letter%22%3A{actorId%3A'${entity.actorId}'}}}`;
       break;
     case "sync":
       detailsUrl = `${baseUrl}/${entity.slug}/syncs/tasks?query={syncId:'${entity.actorId}'}`;
