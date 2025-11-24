@@ -102,7 +102,7 @@ jobs:
           endpoint: "jitsucom/newjitsu"
 
       - name: 📝 Update versions
-        if: needs.version.outputs.channel != 'canary'
+        if: ${{ needs.version.outputs.channel != 'canary' }}
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
