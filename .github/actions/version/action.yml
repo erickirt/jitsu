@@ -27,4 +27,4 @@ runs:
     - name: Generate version
       id: generate
       shell: bash
-      run: ./versions.sh
+      run: ./versions.sh ${{ inputs.version_file }}

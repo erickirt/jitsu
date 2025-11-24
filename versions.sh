@@ -1,4 +1,4 @@
-VERSION_FILE="${{ inputs.version_file }}"
+VERSION_FILE=$1
 
 # Read version file
 if [ ! -f "$VERSION_FILE" ]; then
