@@ -104,7 +104,7 @@ jobs:
           docker exec builder sh -c "cd libs/jitsu-react && cat package.json | grep version"
 
       - name: 🏗️ Build libraries
-        run: docker exec builder pnpm --filter @jitsu/protocols --filter @jitsu/js --filter @jitsu/jitsu-react build
+        run: docker exec builder pnpm --filter @jitsu/protocols --filter @jitsu/js... --filter @jitsu/jitsu-react build
 
       - name: 🔐 Configure npm authentication
         env:
