@@ -669,9 +669,9 @@ async function loadBatchStatusesChanges(
                                     and has({actorIds:Array(String)}, actorId)
                                   order by timestamp
                                           asc`;
-  //process by chunks of 1000 actorIds
-  for (let i = 0; i < actorIds.length; i += 1000) {
-    const chunk = actorIds.slice(i, i + 1000);
+  //process by chunks of 500 actorIds
+  for (let i = 0; i < actorIds.length; i += 500) {
+    const chunk = actorIds.slice(i, i + 500);
     const chResult = await clickhouse.query({
       query: eventsLogQuery,
       query_params: {
@@ -680,6 +680,7 @@ async function loadBatchStatusesChanges(
       },
       format: "JSONEachRow",
       clickhouse_settings: {
+        max_execution_time: 120,
         wait_end_of_query: 1,
       },
     });
@@ -760,9 +761,9 @@ async function loadDeadStatusesChanges(
                                   from ${metricsSchema}.dead_letter
                                   where has({actorIds:Array(String)}, actorId)
                                   GROUP BY workspaceId, actorId, type`;
-  //process by chunks of 1000 actorIds
-  for (let i = 0; i < actorIds.length; i += 1000) {
-    const chunk = actorIds.slice(i, i + 1000);
+  //process by chunks of 500 actorIds
+  for (let i = 0; i < actorIds.length; i += 500) {
+    const chunk = actorIds.slice(i, i + 500);
     const chResult = await clickhouse.query({
       query: eventsLogQuery,
       query_params: {
@@ -771,6 +772,7 @@ async function loadDeadStatusesChanges(
       },
       format: "JSONEachRow",
       clickhouse_settings: {
+        max_execution_time: 120,
         wait_end_of_query: 1,
       },
     });
