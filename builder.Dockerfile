@@ -54,8 +54,8 @@ RUN PLAYWRIGHT_VERSION=$(jq -r '.devDependencies["@playwright/test"]' ./libs/jit
 # This populates the pnpm store at /pnpm-store
 # The store will be available to all.Dockerfile when it uses this image as builder
 # Use --ignore-scripts to skip compilation - only fetch source packages
-RUN echo "pnpm store path: $(pnpm store path)" && pnpm fetch --ignore-scripts && \
-    rm -rf /package.json /pnpm-lock.yaml /pnpm-workspace.yaml /libs
+RUN pnpm fetch --ignore-scripts
+RUN rm -rf /package.json /pnpm-lock.yaml /pnpm-workspace.yaml /libs
 
 # Install Playwright globally with pnpm
 RUN PLAYWRIGHT_VERSION=$(cat /tmp/playwright-version.txt) && \
