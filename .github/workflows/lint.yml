@@ -53,8 +53,8 @@ jobs:
 
       - name: 🐳 Pull and start builder container
         run: |
-          docker pull ghcr.io/jitsucom/jitsu-builder:latest
-          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+          docker pull jitsucom/jitsu-builder:latest
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Fetch dependencies from store
         run: |
@@ -123,7 +123,7 @@ jobs:
         run: |
            exit 0
 #          go test -parallel=10 -timeout 60m -json ./jitsubase/... ./kafkabase/... ./eventslog/... ./bulkerlib/... ./bulkerapp/... > test_report.json
-          
+
 
       - name: 📊 Generate test report
         if: always()

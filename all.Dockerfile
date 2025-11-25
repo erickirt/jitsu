@@ -38,7 +38,7 @@ RUN apt-get update && \
 # - Node.js 24, pnpm 10, build tools (g++, make, python)
 # - Pre-populated pnpm store with all dependencies at /pnpm-store
 # - Playwright browsers pre-installed
-FROM ghcr.io/jitsucom/jitsu-builder:latest AS builder
+FROM jitsucom/jitsu-builder:latest AS builder
 
 ARG CI=false
 

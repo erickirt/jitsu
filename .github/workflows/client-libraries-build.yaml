@@ -87,8 +87,8 @@ jobs:
 
       - name: 🐳 Pull and start builder container
         run: |
-          docker pull ghcr.io/jitsucom/jitsu-builder:latest
-          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+          docker pull jitsucom/jitsu-builder:latest
+          docker run -d --name builder -v ${{ github.workspace }}:/workspace -w /workspace -e CI=true jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 🔐 Configure npm authentication
         env:

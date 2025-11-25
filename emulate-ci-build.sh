@@ -15,7 +15,7 @@ log_error() { echo -e "${RED}❌ $1${NC}"; }
 
 # Cleanup function
 cleanup() {
-  
+
     if docker ps -a --format '{{.Names}}' | grep -q '^builder-ci$'; then
         log_info "Cleaning up builder-ci container..."
         docker stop builder-ci >/dev/null 2>&1 || true
@@ -97,11 +97,11 @@ if [ "$SKIP_LINT" == "false" ] || [ "$BUILD_BUILDER" == "true" ]; then
         if [ "$NO_CACHE" == "true" ]; then
             BUILDER_CACHE_FLAG="--no-cache"
         fi
-        docker build --progress=plain ${BUILDER_CACHE_FLAG} -f builder.Dockerfile -t ghcr.io/jitsucom/jitsu-builder:latest .
+        docker build --progress=plain ${BUILDER_CACHE_FLAG} -f builder.Dockerfile -t jitsucom/jitsu-builder:latest .
         log_success "Builder image built successfully"
     else
         log_info "Pulling builder image from GitHub Container Registry..."
-        docker pull ghcr.io/jitsucom/jitsu-builder:latest
+        docker pull jitsucom/jitsu-builder:latest
         log_success "Builder image pulled successfully"
     fi
 fi
@@ -119,7 +119,7 @@ if [ "$SKIP_LINT" == "false" ]; then
 
     # Start builder container
     log_info "Starting builder container..."
-    docker run -d --name builder-ci -v "$(pwd)":/workspace -w /workspace -e CI=true ghcr.io/jitsucom/jitsu-builder:latest tail -f /dev/null
+    docker run -d --name builder-ci -v "$(pwd)":/workspace -w /workspace -e CI=true jitsucom/jitsu-builder:latest tail -f /dev/null
     log_success "Builder container started"
 
     # Fetch dependencies from store
