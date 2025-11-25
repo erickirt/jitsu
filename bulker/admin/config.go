@@ -1,0 +1,48 @@
+package main
+
+import (
+	"os"
+
+	"github.com/jitsucom/bulker/jitsubase/appbase"
+	"github.com/jitsucom/bulker/jitsubase/utils"
+	"github.com/jitsucom/bulker/kafkabase"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	// # BASE CONFIG - base setting for jitsu apps
+	appbase.Config `mapstructure:",squash"`
+	// # KAFKA CONFIG - base kafka setting
+	kafkabase.KafkaConfig `mapstructure:",squash"`
+
+	// Cache dir for repository data
+	CacheDir string `mapstructure:"CACHE_DIR"`
+
+	// # DATABASE CONFIG - PostgreSQL connection for job status tracking
+	DatabaseURL string `mapstructure:"DATABASE_URL" default:""`
+
+	// # KUBERNETES CONFIG - settings for K8s job management
+	KubernetesClientConfig string `mapstructure:"KUBERNETES_CLIENT_CONFIG" default:"local"`
+	KubernetesNamespace    string `mapstructure:"KUBERNETES_NAMESPACE" default:"default"`
+	KubernetesContext      string `mapstructure:"KUBERNETES_CONTEXT"`
+	KubernetesNodeSelector string `mapstructure:"KUBERNETES_NODE_SELECTOR"`
+
+	K8sMaxParallelWorkers   int    `mapstructure:"K8S_MAX_PARALLEL_WORKERS" default:"10"`
+	ReprocessingWorkerImage string `mapstructure:"REPROCESSING_WORKER_IMAGE" default:"jitsucom/reprocessing-worker:latest"`
+
+	WorkerKafkaBootstrapServers string `mapstructure:"REPROCESSING_WORKER_KAFKA_BOOTSTRAP_SERVERS"`
+
+	RepositoryURL       string `mapstructure:"REPOSITORY_URL"`
+	RepositoryAuthToken string `mapstructure:"REPOSITORY_AUTH_TOKEN"`
+}
+
+func init() {
+	viper.SetDefault("HTTP_PORT", utils.NvlString(os.Getenv("PORT"), "3049"))
+}
+
+func (c *Config) PostInit(settings *appbase.AppSettings) error {
+	if err := c.Config.PostInit(settings); err != nil {
+		return err
+	}
+	return nil
+}

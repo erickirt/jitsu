@@ -297,13 +297,16 @@ async function loadNotificationsChannels() {
       ...row.globalPref?.notifications,
       ...row.workspacePref?.notifications,
     };
-    if (settings.syncs || settings.batches) {
-      const events: ("all" | "sync" | "batch")[] = [];
+    if (settings.syncs || settings.batches || settings.dead) {
+      const events: ("all" | "sync" | "batch" | "dead")[] = [];
       if (settings.syncs) {
         events.push("sync");
       }
       if (settings.batches) {
         events.push("batch");
+      }
+      if (settings.dead) {
+        events.push("dead");
       }
       let channelsByWorkspace = channels[row.workspaceId];
       if (!channelsByWorkspace) {
