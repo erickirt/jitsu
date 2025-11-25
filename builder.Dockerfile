@@ -16,6 +16,7 @@ ENV PNPM_HOME=/root/.local/share/pnpm
 ENV PATH="${PNPM_HOME}:${PATH}"
 # Override pnpm store location to avoid workspace-local stores
 ENV NPM_CONFIG_STORE_DIR=/pnpm-store
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Copy only the files needed for dependency fetching and Playwright version extraction
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
