@@ -155,8 +155,6 @@ jobs:
               --build-arg JITSU_BUILD_DOCKER_TAG=${CHANNEL} \
               --build-arg JITSU_BUILD_COMMIT_SHA=${COMMIT_SHA} \
               --build-arg CI=true \
-              --cache-from type=registry,ref=${REGISTRY}/all:buildcache \
-              --cache-to type=registry,ref=${REGISTRY}/all:buildcache,mode=max \
               ${TAGS} \
               -f all.Dockerfile \
               --push \
