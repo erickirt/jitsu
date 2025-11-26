@@ -31,3 +31,12 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Please review this pull request with a focus on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Security implications
+            - Performance considerations
+            - Documentation and code clarity
+
+            Provide constructive feedback and suggestions for improvement.
