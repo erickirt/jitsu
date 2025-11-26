@@ -3,7 +3,12 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened]
+    types:
+      - opened        # PR is created
+      - reopened      # PR was closed, then opened again
+      - synchronize   # New commits pushed to the PR (branch updated)
+      - edited        # PR title/body/base-branch changed
+      - ready_for_review   # PR moved from draft → ready
 
 jobs:
   claude-review:
