@@ -21,12 +21,10 @@ export default createRoute()
     if (!password.changeAtNextLogin && !checkHash(password.hash, body.currentPassword!)) {
       throw new Error("Current password is invalid");
     }
-    await db
-      .prisma()
-      .userPassword.update({
-        where: { userId: user.internalId },
-        data: { hash: createHash(body.newPassword), changeAtNextLogin: false },
-      });
+    await db.prisma().userPassword.update({
+      where: { userId: user.internalId },
+      data: { hash: createHash(body.newPassword), changeAtNextLogin: false },
+    });
     return {
       status: "ok",
     };
