@@ -12,6 +12,11 @@ import { mainDataDomain } from "../../lib/server/data-domains";
 import { customDomainCnames } from "../../lib/server/custom-domains";
 import { credentialsLoginEnabled, githubLoginEnabled, oidcLoginEnabled } from "../../lib/nextauth.config";
 
+function isSignupDisabled() {
+  return  isTruish(process.env.DISABLE_SIGNUP) //explicitly disabled 
+    || (!githubLoginEnabled && !oidcLoginEnabled) // we don't support credentials signup yet ;
+}
+
 export default createRoute()
   .GET({ result: AppConfig, auth: false })
   .handler(async ({ req }) => {
@@ -37,13 +42,13 @@ export default createRoute()
       dynamicOidc: isTruish(process.env.DYNAMIC_OIDC_ENABLED),
     };
     return {
-      docsUrl: process.env.JITSU_DOCUMENTATION_URL || "https://docs-jitsu-com.staging.jitsu.com/",
+      docsUrl: process.env.JITSU_DOCUMENTATION_URL || "https://docs.jitsu.com/",
       readOnlyUntil: readOnlyUntil?.toISOString(),
       ee: {
         available: isEEAvailable(),
         host: isEEAvailable() ? getEeConnection().host : undefined,
       },
-      disableSignup: process.env.DISABLE_SIGNUP === "true" || process.env.DISABLE_SIGNUP === "1",
+      disableSignup: isSignupDisabled(),
       auth,
       billingEnabled: isEEAvailable(),
       customDomainsEnabled: customDomainCnames && customDomainCnames.length > 0,
@@ -54,7 +59,6 @@ export default createRoute()
           provider: process.env.GOOGLE_SCHEDULER_KEY ? "google-cloud-scheduler" : undefined,
         },
       },
-      jitsuClassicUrl: process.env.JITSU_CLASSIC_URL || "https://cloud.jitsu.com",
       frontendTelemetry: {
         enabled: productTelemetryEnabled,
         host: productTelemetryHost === "__self__" ? publicEndpoints.baseUrl : productTelemetryHost,

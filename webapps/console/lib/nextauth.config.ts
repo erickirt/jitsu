@@ -112,9 +112,12 @@ export async function getOrCreateUser(opts: {
   email: string;
   // we only need this for product analytics, so it's optional
   req?: NextApiRequest;
-}): Promise<User & { loginProvider: string; externalId: string; admin: boolean | null }> {
+}): Promise<User & { loginProvider: string; externalId: string; admin: boolean | null; mustChangePassword: boolean }> {
   const { externalId, loginProvider, email, name = email } = opts;
-  let user = await db.prisma().userProfile.findFirst({ where: { externalId, loginProvider } });
+  let user = await db.prisma().userProfile.findFirst({
+    where: { externalId, loginProvider },
+    include: { password: true }
+  });
   if (!user) {
     if (process.env.DISABLE_SIGNUP === "true" || process.env.DISABLE_SIGNUP === "1") {
       throw new ApiError("Sign up is disabled", { code: "signup-disabled" });
@@ -131,6 +134,9 @@ export async function getOrCreateUser(opts: {
         loginProvider: loginProvider,
         admin,
       },
+      include: {
+        password: true
+      }
     });
     await withProductAnalytics(p => p.track("user_created"), {
       user: { email, name, internalId: user.id, externalId, loginProvider },
@@ -139,8 +145,19 @@ export async function getOrCreateUser(opts: {
     await onUserCreated({ email, name });
   } else if (user.name !== name || user.email !== email) {
     await db.prisma().userProfile.update({ where: { id: user.id }, data: { name, email } });
+    // Re-fetch to get updated data with password relation
+    user = await db.prisma().userProfile.findFirst({
+      where: { id: user.id },
+      include: { password: true }
+    });
+    if (!user) {
+      throw new ApiError("User not found after update");
+    }
   }
-  return user;
+  return {
+    ...user,
+    mustChangePassword: user.password?.changeAtNextLogin ?? false
+  };
 }
 
 function generateSecret(base: (string | undefined)[]) {
@@ -182,6 +199,7 @@ export const nextAuthConfig: NextAuthOptions = {
       return {
         internalId: user.id,
         externalId: externalId,
+        mustChangePassword: user.mustChangePassword,
         externalUsername: props.profile?.["login"],
         loginProvider: loginProvider,
         ...props.token,
@@ -190,6 +208,7 @@ export const nextAuthConfig: NextAuthOptions = {
     async session({ session, token }) {
       return {
         ...session,
+        mustChangePassword: token.mustChangePassword,
         internalId: token.internalId,
         loginProvider: token.loginProvider,
         externalId: token.externalId,

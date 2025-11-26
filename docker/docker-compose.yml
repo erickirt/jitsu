@@ -1,236 +1,595 @@
-version: "3.8"
+name: jitsu
+
+# Environment Variable Templates (YAML anchors for DRY configuration)
+# These are reusable environment configurations for services
+# Usage: environment: <<: *console-env (or rotor-env, bulker-env, etc.)
+
+# Common environment variable templates
+# Common environment shared by most services
+x-common-env: &common-env
+  NODE_ENV: development
+  LOG_LEVEL: debug
+  LOG_FORMAT: text
+
+# PostgreSQL database connection
+x-database-env: &database-env
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?schema=newjitsu
+  APP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?schema=newjitsu
+
+# ClickHouse analytics database connection
+x-clickhouse-env: &clickhouse-env
+  CLICKHOUSE_URL: http://dep-clickhouse:8123/
+  CLICKHOUSE_HOST: dep-clickhouse:8123
+  CLICKHOUSE_USERNAME: default
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+  CLICKHOUSE_DATABASE: default
+  CLICKHOUSE_SSL: false
+
+# MongoDB connection (for profile storage)
+x-mongodb-env: &mongodb-env
+  MONGODB_URL: mongodb://admin:${MONGODB_PASSWORD:-mongodb-pass}@dep-mongodb:27017/admin
+  MONGODB_TIMEOUT_MS: 1000
+
+# Kafka/Redpanda message queue connection
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: dep-redpanda:9092
+  KAFKA_SSL: false
+
+# Console service configuration
+x-console-env: &console-env
+  <<: [*common-env, *database-env, *clickhouse-env, *mongodb-env, *kafka-env]
+  NEXT_PUBLIC_LOG_LEVEL: debug
+  APP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?schema=newjitsu
+  JWT_SECRET: 6de1460fd8ba429285c9e72cc5339291
+  EE_API_AUTH_TOKENS: 5f92ff738db8432899737fbdc7259bbd
+  EE_CONNECTION: http://console:3000?jwtSecret=6de1460fd8ba429285c9e72cc5339291
+  CONSOLE_RAW_AUTH_TOKENS: ${CONSOLE_TOKEN:-dev-auth-key}
+  EE_DISABLE_AUTH: yes
+  DISABLE_SIGNUP: false
+  ENABLE_CREDENTIALS_LOGIN: true
+  SEED_USER_EMAIL: admin@jitsu.com
+  SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-admin123}
+  JITSU_INGEST_PUBLIC_URL: ${JITSU_INGEST_PUBLIC_URL:-http://localhost:${INGEST_PORT:-3049}}
+
+# Rotor service configuration (event processing)
+x-rotor-env: &rotor-env
+  <<: [*common-env, *database-env, *clickhouse-env, *mongodb-env, *kafka-env]
+  BULKER_URL: http://bulker:3042
+  BULKER_AUTH_KEY: ${BULKER_TOKEN:-dev-auth-key}
+  REPOSITORY_BASE_URL: http://console:3000/api/admin/export
+  REPOSITORY_AUTH_TOKEN: service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+  REPOSITORY_CACHE_DIR: /tmp/cache
+
+x-bulker-env: &bulker-env
+  LOG_LEVEL: debug
+  BULKER_KAFKA_BOOTSTRAP_SERVERS: dep-redpanda:9092
+  BULKER_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-dev-auth-key}
+  BULKER_CONFIG_SOURCE: http://console:3000/api/admin/export/bulker-connections
+  BULKER_CONFIG_SOURCE_HTTP_AUTH_TOKEN: service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+  BULKER_CACHE_DIR: /tmp/cache
+  BULKER_CLICKHOUSE_HOST: dep-clickhouse:8123
+  BULKER_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+  BULKER_CLICKHOUSE_DATABASE: default
+  KAFKA_COMPRESSION_TYPE: snappy
+  KAFKA_COMPRESSION_CODEC: snappy
+
+networks:
+  jitsu-dev-network:
+    name: jitsu-dev-network
+    driver: bridge
+
+volumes:
+  pnpm-store:
+
 services:
-  kafka:
-    tty: true
-    image: bitnamilegacy/kafka:3.6.0
-    environment:
-      TERM: "xterm-256color"
-      KAFKA_CFG_NODE_ID: 0
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list"]
-      interval: 5s
-      timeout: 10s
-      retries: 30
-  #    volumes:
-  #      - ./data/kafka:/bitnami/kafka
+  # Core Services
 
-  #
-  #  redis:
-  #    tty: true
-  #    image: redis:6.2-alpine
-  #    restart: "unless-stopped"
-  #    command: "redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-default}"
-  #  #    volumes:
-  #  #      - ./data/redis:/var/lib/redis
-
-  clickhouse:
-    tty: true
-    image: clickhouse/clickhouse-server:24.1
-    restart: "unless-stopped"
-    environment:
-      - CLICKHOUSE_DB=newjitsu_metrics
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-default}
-    logging:
-      options:
-        max-size: 10m
-        max-file: "3"
-
-  mongo:
-    image: mongo
-    restart: "unless-stopped"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: default
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-default}
-
-  postgres:
+  dep-postgres:
+    container_name: jitsu-dep-postgres
+    networks:
+      - jitsu-dev-network
     tty: true
     image: postgres:14
-    restart: "unless-stopped"
-    user: postgres
+    restart: always
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-default}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres-mqf3nzx}
     logging:
       options:
         max-size: 10m
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "postgres"]
+      test: ["CMD-SHELL", "pg_isready", "-d", "postgres", "-U", "postgres"]
       interval: 1s
       timeout: 10s
       retries: 10
     ports:
-      - "${EXTERNAL_POSTGRES_PORT:-5432}:5432"
-  ## permissions problem is not that trivial to solve https://forums.docker.com/t/data-directory-var-lib-postgresql-data-pgdata-has-wrong-ownership/17963/42
-  #    volumes:
-  #      - ./data/postgres:/var/lib/postgresql/data
+      - "${PG_PORT:-5438}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-mongodb:
+    container_name: jitsu-dep-mongodb
+    networks:
+      - jitsu-dev-network
+    image: mongo:7
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-mongodb-pass}
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - ./data/mongodb:/data/db
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-clickhouse:
+    container_name: jitsu-dep-clickhouse
+    networks:
+      - jitsu-dev-network
+    image: clickhouse/clickhouse-server:latest
+    restart: always
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-redpanda:
+    container_name: jitsu-dep-redpanda
+    networks:
+      - jitsu-dev-network
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://dep-redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://dep-redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr dep-redpanda:33145
+      - --advertise-rpc-addr dep-redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --memory 1G
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "19644:9644"
+    volumes:
+      - ./data/redpanda:/var/lib/redpanda/data
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  # Debug/Admin Tools
+
+  dep-redpanda-console:
+    container_name: jitsu-dep-redpanda-console
+    networks:
+      - jitsu-dev-network
+    image: docker.redpanda.com/redpandadata/console:latest
+    ports:
+      - "${REDPANDA_CONSOLE_PORT:-11801}:8080"
+    environment:
+      KAFKA_BROKERS: "dep-redpanda:9092"
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://dep-redpanda:8081"
+    depends_on:
+      - dep-redpanda
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-pgweb:
+    container_name: jitsu-dep-pgweb
+    networks:
+      - jitsu-dev-network
+    image: sosedoff/pgweb:latest
+    restart: always
+    environment:
+      DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?sslmode=disable"
+    ports:
+      - "${PGWEB_PORT:-11802}:8081"
+    depends_on:
+      - dep-postgres
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-mongo-express:
+    container_name: jitsu-dep-mongo-express
+    networks:
+      - jitsu-dev-network
+    image: mongo-express:latest
+    restart: always
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGODB_PASSWORD:-mongodb-pass}
+      ME_CONFIG_MONGODB_URL: mongodb://admin:${MONGODB_PASSWORD:-mongodb-pass}@dep-mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGODB_PASSWORD:-mongodb-pass}
+    ports:
+      - "${MONGO_EXPRESS_PORT:-11803}:8081"
+    depends_on:
+      - dep-mongodb
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
+
+  dep-keycloak:
+    container_name: jitsu-dep-keycloak
+    networks:
+      - jitsu-dev-network
+    command: start-dev
+    image: "quay.io/keycloak/keycloak:26.0.4"
+    environment:
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+    ports:
+      - "${KEYCLOAK_PORT:-11804}:8080"
+    profiles:
+      - jitsu-services
+      - jitsu-dependencies
+      - jitsu-services-dev
 
   console:
-    tty: true
-    image: jitsucom/console:${DOCKER_TAG:-latest}
-    restart: "unless-stopped"
-    platform: linux/amd64
-    environment:
-      ROTOR_URL: "http://rotor:3401"
-      ROTOR_AUTH_KEY: ${BULKER_TOKEN:-default}
-      BULKER_URL: "http://bulker:3042"
-      CONSOLE_RAW_AUTH_TOKENS: ${CONSOLE_TOKEN:-default}
-      BULKER_AUTH_KEY: ${BULKER_TOKEN:-default}
-      MIT_COMPLIANT: ${MIT_COMPLIANT:-false}
-      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD:-default}@postgres:5432/postgres?schema=newjitsu"
-      SEED_USER_EMAIL: ${SEED_USER_EMAIL:-}
-      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
-      ENABLE_CREDENTIALS_LOGIN: ${ENABLE_CREDENTIALS_LOGIN:-true}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      SYNCS_ENABLED: ${SYNCS_ENABLED:-false}
-      SYNCCTL_URL: "http://syncctl:${EXTERNAL_SYNCS_PORT:-3043}"
-      SYNCCTL_AUTH_KEY: ${SYNCCTL_TOKEN:-default}
-      GOOGLE_SCHEDULER_KEY: ${GOOGLE_SCHEDULER_KEY}
-      JITSU_INGEST_PUBLIC_URL: "${JITSU_INGEST_PUBLIC_URL:-http://localhost:${JITSU_INGEST_PORT:-8080}/}"
-      JITSU_PUBLIC_URL: "${JITSU_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:${JITSU_UI_PORT:-3000}/}}"
-      NEXTAUTH_URL: "${JITSU_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:${JITSU_UI_PORT:-3000}/}}"
-      CLICKHOUSE_HOST: "clickhouse:8123"
-      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
-      CLICKHOUSE_DATABASE: "newjitsu_metrics"
-      MONGODB_URL: "mongodb://default:${MONGO_PASSWORD:-default}@mongo/"
-      MONGODB_NETWORK_COMPRESSION: "none"
-      FORCE_UPDATE_DB: "true"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://console:3000/api/healthcheck"]
-      interval: 2s
-      timeout: 10s
-      retries: 30
-    extra_hosts:
-      - "syncctl:host-gateway"
-    depends_on:
-      clickhouse:
-        condition: service_started
-      postgres:
-        condition: service_healthy
+    container_name: jitsu-console
+    networks:
+      - jitsu-dev-network
+    build:
+      context: ..
+      dockerfile: all.Dockerfile
+      target: console
+    restart: unless-stopped
     ports:
-      - "${JITSU_UI_PORT:-3000}:3000"
-
-  sync-catalog-init:
-    tty: true
-    image: curlimages/curl
-    restart: "on-failure"
-    environment:
-      CONSOLE_TOKEN: ${CONSOLE_TOKEN:-default}
-    command: "curl --silent --output nul --show-error -H 'Authorization: Bearer service-admin-account:${CONSOLE_TOKEN:-default}' http://console:3000/api/admin/catalog-refresh?initial=true"
-    depends_on:
-      console:
-        condition: service_healthy
-
-  bulker:
-    tty: true
-    image: jitsucom/bulker:${DOCKER_TAG:-latest}
-    platform: linux/amd64
-    restart: "unless-stopped"
-    environment:
-      TERM: "xterm-256color"
-      BULKER_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      BULKER_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-default}
-      BULKER_CONFIG_SOURCE: "http://console:3000/api/admin/export/bulker-connections"
-      BULKER_CONFIG_SOURCE_HTTP_AUTH_TOKEN: "service-admin-account:${CONSOLE_TOKEN:-default}"
-      BULKER_CACHE_DIR: "/tmp/cache"
-      BULKER_CLICKHOUSE_HOST: "clickhouse:8123"
-      BULKER_CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
-      BULKER_CLICKHOUSE_DATABASE: "newjitsu_metrics"
+      - "${CONSOLE_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://bulker:3042/health"]
-      interval: 2s
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthcheck"]
+      interval: 10s
       timeout: 10s
-      retries: 15
+      retries: 5
+      start_period: 60s
+    environment:
+      <<: *console-env
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
     depends_on:
-      console:
+      dep-postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-mongodb:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+    profiles:
+      - jitsu-services
 
   rotor:
-    tty: true
-    image: jitsucom/rotor:${DOCKER_TAG:-latest}
-    platform: linux/amd64
-    restart: "unless-stopped"
-    environment:
-      ROTOR_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-default}
-      BULKER_URL: "http://bulker:3042"
-      BULKER_AUTH_KEY: ${BULKER_TOKEN:-default}
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      #      REDIS_URL: "redis://default:${REDIS_PASSWORD:-default}@redis:6379"
-      REPOSITORY_BASE_URL: "http://console:3000/api/admin/export/"
-      REPOSITORY_AUTH_TOKEN: "service-admin-account:${CONSOLE_TOKEN:-default}"
-      REPOSITORY_CACHE_DIR: "/tmp/cache"
-      MONGODB_URL: "mongodb://default:${MONGO_PASSWORD:-default}@mongo/"
-      CLICKHOUSE_HOST: "clickhouse:8123"
-      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
-      CLICKHOUSE_DATABASE: "newjitsu_metrics"
+    container_name: jitsu-rotor
+    networks:
+      - jitsu-dev-network
+    build:
+      context: ..
+      dockerfile: all.Dockerfile
+      target: rotor
+    restart: unless-stopped
+    ports:
+      - "${ROTOR_PORT:-3401}:3401"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://rotor:3401/health"]
-      interval: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:3401/health"]
+      interval: 30s
       timeout: 10s
-      retries: 15
+      retries: 3
+      start_period: 40s
+    environment:
+      <<: *rotor-env
     depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-mongodb:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
       console:
         condition: service_healthy
       bulker:
         condition: service_healthy
+    profiles:
+      - jitsu-services
+
+  bulker:
+    container_name: jitsu-bulker
+    networks:
+      - jitsu-dev-network
+    build:
+      context: ../bulker
+      dockerfile: all.Dockerfile
+      target: bulker
+    restart: unless-stopped
+    ports:
+      - "${BULKER_PORT:-3042}:3042"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3042/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    environment:
+      - LOG_LEVEL=debug
+      - BULKER_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
+      - BULKER_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
+      - BULKER_CONFIG_SOURCE=http://console:3000/api/admin/export/bulker-connections
+      - BULKER_CONFIG_SOURCE_HTTP_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+      - BULKER_CACHE_DIR=/tmp/cache
+      #      - BULKER_INTERNAL_TASK_LOG={"id":"task_log","metricsKeyPrefix":"syncs","usesBulker":true,"type":"postgres","options":{"mode":"stream"},"credentials":{"host":"dep-postgres","port":5432,"sslMode":"disable","database":"postgres","password":"${POSTGRES_PASSWORD:-postgres-mqf3nzx}","username":"postgres","defaultSchema":"newjitsu"}}
+      - BULKER_CLICKHOUSE_HOST=dep-clickhouse:8123
+      - BULKER_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+      - BULKER_CLICKHOUSE_DATABASE=default
+    depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+      console:
+        condition: service_healthy
+    profiles:
+      - jitsu-services
 
   ingest:
-    tty: true
-    image: jitsucom/ingest:${DOCKER_TAG:-latest}
-    platform: linux/amd64
-    restart: "unless-stopped"
-    environment:
-      TERM: "xterm-256color"
-      INGEST_PUBLIC_URL: "${JITSU_INGEST_PUBLIC_URL:-http://localhost:${JITSU_INGEST_PORT:-8080}/}"
-      INGEST_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      INGEST_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-default}
-      INGEST_REPOSITORY_URL: "http://console:3000/api/admin/export/streams-with-destinations"
-      INGEST_SCRIPT_ORIGIN: "http://console:3000/api/s/javascript-library"
-      INGEST_REPOSITORY_AUTH_TOKEN: "service-admin-account:${CONSOLE_TOKEN:-default}"
-      INGEST_CACHE_DIR: "/tmp/cache"
-      INGEST_ROTOR_URL: "http://rotor:3401"
-      INGEST_ROTOR_AUTH_KEY: ${BULKER_TOKEN:-default}
-      INGEST_CLICKHOUSE_HOST: "clickhouse:8123"
-      INGEST_CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-default}"
-      INGEST_CLICKHOUSE_DATABASE: "newjitsu_metrics"
+    container_name: jitsu-ingest
+    networks:
+      - jitsu-dev-network
+    build:
+      context: ../bulker
+      dockerfile: all.Dockerfile
+      target: ingest
+    restart: unless-stopped
+    ports:
+      - "${INGEST_PORT:-3049}:3049"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://ingest:3049/health"]
-      interval: 2s
+      test: ["CMD", "curl", "-f", "http://localhost:3049/health"]
+      interval: 10s
       timeout: 10s
-      retries: 15
+      retries: 5
+      start_period: 40s
+    environment:
+      - LOG_LEVEL=debug
+      - INGEST_PUBLIC_URL=${INGEST_PUBLIC_URL:-http://localhost:3049/}
+      - INGEST_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
+      - INGEST_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
+      - INGEST_REPOSITORY_URL=http://console:3000/api/admin/export/streams-with-destinations
+      - INGEST_SCRIPT_ORIGIN=http://console:3000/api/s/javascript-library
+      - INGEST_REPOSITORY_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+      - INGEST_CACHE_DIR=/tmp/cache
+      - INGEST_ROTOR_URL=http://rotor:3401
+      - INGEST_ROTOR_AUTH_KEY=${BULKER_TOKEN:-dev-auth-key}
+      - INGEST_CLICKHOUSE_HOST=dep-clickhouse:8123
+      - INGEST_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+      - INGEST_CLICKHOUSE_DATABASE=default
     depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
       console:
         condition: service_healthy
       rotor:
-        condition: service_started
-    ports:
-      - "${JITSU_INGEST_PORT:-8080}:3049"
+        condition: service_healthy
+    profiles:
+      - jitsu-services
 
   syncctl:
-    tty: true
-    image: jitsucom/syncctl:${DOCKER_TAG:-latest}
-    platform: linux/amd64
-    restart: "on-failure"
+    container_name: jitsu-syncctl
+    networks:
+      - jitsu-dev-network
+    build:
+      context: ../bulker
+      dockerfile: all.Dockerfile
+      target: syncctl
+    restart: "no"
+    ports:
+      - "${SYNCCTL_PORT:-3043}:3043"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$${SYNCCTL_KUBERNETES_CLIENT_CONFIG}" ]; then
+          echo "Syncctl: SYNCCTL_KUBERNETES_CLIENT_CONFIG not set, skipping sync controller (this is normal if you don't need syncs)"
+          exit 0
+        fi
+        exec /app/syncctl
     environment:
-      TERM: "xterm-256color"
-      HTTP_PORT: ${EXTERNAL_SYNCS_PORT:-3043}
-      SYNCCTL_SYNCS_ENABLED: ${SYNCS_ENABLED:-false}
-      SYNCCTL_RAW_AUTH_TOKENS: ${SYNCCTL_TOKEN:-default}
-      SYNCCTL_DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD:-default}@127.0.0.1:${EXTERNAL_POSTGRES_PORT:-5432}/postgres?search_path=newjitsu"
-      SYNCCTL_SIDECAR_DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD:-default}@${EXTERNAL_POSTGRES_HOST}:${EXTERNAL_POSTGRES_PORT:-5432}/postgres?search_path=newjitsu"
-      SYNCCTL_KUBERNETES_CLIENT_CONFIG: "${SYNCCTL_KUBERNETES_CLIENT_CONFIG:-local}"
-      SYNCCTL_KUBERNETES_CONTEXT: "${SYNCCTL_KUBERNETES_CONTEXT}"
-    network_mode: "host"
+      - LOG_LEVEL=debug
+      - HTTP_PORT=3043
+      - SYNCCTL_SYNCS_ENABLED=${SYNCS_ENABLED:-true}
+      - SYNCCTL_RAW_AUTH_TOKENS=${SYNCCTL_TOKEN:-dev-auth-key}
+      - SYNCCTL_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
+      - SYNCCTL_SIDECAR_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
+      - SYNCCTL_KUBERNETES_CLIENT_CONFIG=${SYNCCTL_KUBERNETES_CLIENT_CONFIG:-}
+      - SYNCCTL_KUBERNETES_CONTEXT=${SYNCCTL_KUBERNETES_CONTEXT:-}
     depends_on:
+      dep-postgres:
+        condition: service_healthy
       bulker:
         condition: service_healthy
+    profiles:
+      - jitsu-services
+
+  # Development Services (hot reload enabled)
+  # Use network aliases to maintain same hostnames as production
+
+  console-dev:
+    container_name: jitsu-console-dev
+    networks:
+      jitsu-dev-network:
+        aliases:
+          - console
+    image: ghcr.io/jitsucom/jitsu-builder:latest
+    command: sh -c "CI=true pnpm install --store-dir /pnpm-store && pnpm codegen && pnpm console:dev"
+    working_dir: /app
+    restart: "no"
+    ports:
+      - "${CONSOLE_PORT:-3000}:3000"
+    environment:
+      <<: *console-env
+      CI: "true"
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
+    volumes:
+      - ..:/app:delegated
+      - pnpm-store:/pnpm-store
+    depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-mongodb:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+    profiles:
+      - jitsu-services-dev
+
+  rotor-dev:
+    container_name: jitsu-rotor-dev
+    networks:
+      jitsu-dev-network:
+        aliases:
+          - rotor
+    image: ghcr.io/jitsucom/jitsu-builder:latest
+    command: sh -c "CI=true pnpm install --store-dir /pnpm-store && pnpm rotor:dev"
+    working_dir: /app
+    restart: "no"
+    ports:
+      - "${ROTOR_PORT:-3401}:3401"
+    environment:
+      <<: *rotor-env
+      CI: "true"
+    volumes:
+      - ..:/app:delegated
+      - pnpm-store:/pnpm-store
+    depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-mongodb:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+      console-dev:
+        condition: service_started
+      bulker-dev:
+        condition: service_started
+    profiles:
+      - jitsu-services-dev
+
+  bulker-dev:
+    container_name: jitsu-bulker-dev
+    networks:
+      jitsu-dev-network:
+        aliases:
+          - bulker
+    image: golang:1.22-alpine
+    command: sh -c "apk add --no-cache git && cd /app/bulker && go work sync && cd /app/bulker/bulkerapp && go install github.com/air-verse/air@latest && air -c /dev/null"
+    working_dir: /app/bulker/bulkerapp
+    restart: "no"
+    ports:
+      - "${BULKER_PORT:-3042}:3042"
+    environment:
+      <<: *bulker-env
+    volumes:
+      - ..:/app:delegated
+    depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+      console-dev:
+        condition: service_started
+    profiles:
+      - jitsu-services-dev
+
+  ingest-dev:
+    container_name: jitsu-ingest-dev
+    networks:
+      jitsu-dev-network:
+        aliases:
+          - ingest
+    image: golang:1.22-alpine
+    command: sh -c "apk add --no-cache git && cd /app/bulker && go work sync && cd /app/bulker/ingest && go install github.com/air-verse/air@latest && air -c /dev/null"
+    working_dir: /app/bulker/ingest
+    restart: "no"
+    ports:
+      - "${INGEST_PORT:-3049}:3049"
+    environment:
+      - LOG_LEVEL=debug
+      - INGEST_PUBLIC_URL=${INGEST_PUBLIC_URL:-http://localhost:3049/}
+      - INGEST_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
+      - INGEST_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
+      - INGEST_REPOSITORY_URL=http://console:3000/api/admin/export/streams-with-destinations
+      - INGEST_SCRIPT_ORIGIN=http://console:3000/api/s/javascript-library
+      - INGEST_REPOSITORY_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+      - INGEST_CACHE_DIR=/tmp/cache
+      - INGEST_ROTOR_URL=http://rotor:3401
+      - INGEST_ROTOR_AUTH_KEY=${BULKER_TOKEN:-dev-auth-key}
+      - INGEST_CLICKHOUSE_HOST=dep-clickhouse:8123
+      - INGEST_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+      - INGEST_CLICKHOUSE_DATABASE=default
+    volumes:
+      - ..:/app:delegated
+    depends_on:
+      dep-postgres:
+        condition: service_healthy
+      dep-clickhouse:
+        condition: service_started
+      dep-redpanda:
+        condition: service_started
+      console-dev:
+        condition: service_started
+      rotor-dev:
+        condition: service_started
+    profiles:
+      - jitsu-services-dev
+

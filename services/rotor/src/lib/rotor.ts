@@ -285,6 +285,6 @@ export function getCompressionType() {
     case "none":
       return KafkaJS.CompressionTypes.None;
     default:
-      return undefined;
+      return KafkaJS.CompressionTypes.None;
   }
 }
