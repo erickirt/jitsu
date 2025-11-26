@@ -36,6 +36,22 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: "/review-pr REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }}"
+          prompt: |
+            Please review pull request #${{ github.event.pull_request.number }} in repository ${{ github.repository }}.
+
+            PR Details:
+            - Head branch: ${{ github.event.pull_request.head.ref }}
+            - Base branch: ${{ github.event.pull_request.base.ref }}
+            - Author: ${{ github.event.pull_request.user.login }}
+
+            Steps:
+            1. Use mcp__github__pull_request_read with method="get_diff" to fetch the PR changes
+            2. Review the code changes for quality, bugs, performance, and security issues
+            3. Add inline comments on specific lines using mcp__github_inline_comment__create_inline_comment
+
+            Focus on actionable feedback and be constructive in your comments.
+          mcp_servers: |
+            github:
+              marketplace: true
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__list_commits,Bash(git:*),Bash(pnpm:*),Bash(npm:*),Bash(node:*),Bash(bun:*)"
