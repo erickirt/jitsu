@@ -7,7 +7,7 @@ import { ButtonLabel } from "../ButtonLabel/ButtonLabel";
 export const ChangePassword: React.FC<{
   onSuccess?: () => void | Promise<void>;
   dontAskForCurrentPassword?: boolean;
-}> = (props) => {
+}> = props => {
   const [loading, setLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -24,18 +24,20 @@ export const ChangePassword: React.FC<{
   return (
     <div className="px-8 py-6 border border-textDisabled rounded-lg space-y-4 mt-6">
       <p className="text-lg font-bold">Change Password</p>
-      {!props.dontAskForCurrentPassword && <div className="space-y-2">
-        <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
-          Current password
-        </label>
-        <Input
-          id="currentPassword"
-          required
-          type="password"
-          value={currentPassword}
-          onChange={e => setCurrentPassword(e.target.value)}
-        />
-      </div>}
+      {!props.dontAskForCurrentPassword && (
+        <div className="space-y-2">
+          <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
+            Current password
+          </label>
+          <Input
+            id="currentPassword"
+            required
+            type="password"
+            value={currentPassword}
+            onChange={e => setCurrentPassword(e.target.value)}
+          />
+        </div>
+      )}
       <div className="space-y-2">
         <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">
           New password
@@ -63,17 +65,19 @@ export const ChangePassword: React.FC<{
       <div className={`text-xs text-error my-0 py-0 ${error ? "visible" : "invisible"}`}>{error || "-"}</div>
       <Button
         type="primary"
-        disabled={!((currentPassword || props.dontAskForCurrentPassword) && newPassword && confirmNewPassword) || !!error}
+        disabled={
+          !((currentPassword || props.dontAskForCurrentPassword) && newPassword && confirmNewPassword) || !!error
+        }
         onClick={async () => {
           if (!loading) {
             try {
               setLoading(true);
               await rpc("/api/user/change-password", { body: { currentPassword, newPassword } });
               if (props.onSuccess) {
-                await props.onSuccess()
+                await props.onSuccess();
               } else {
                 feedbackSuccess("Password has been changed");
-              }  
+              }
             } catch (e: any) {
               feedbackError(`Failed to change password - ${e.message}`, e);
             } finally {

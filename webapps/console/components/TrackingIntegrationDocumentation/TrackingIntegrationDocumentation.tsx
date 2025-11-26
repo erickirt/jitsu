@@ -117,7 +117,7 @@ export const TrackingIntegrationDocumentation: React.FC<{ streamId: string; onCa
     }
   } else {
     domains = stream
-      ? appConfig.publicEndpoints.dataHost 
+      ? appConfig.publicEndpoints.dataHost
         ? [
             ...new Set([...staticDomains, ...(stream?.domains ?? [])]),
             `${stream.id}.${appConfig.publicEndpoints.dataHost}`,
@@ -125,12 +125,11 @@ export const TrackingIntegrationDocumentation: React.FC<{ streamId: string; onCa
         : ["{deploy domain}"]
       : [];
   }
-  const writeKey =
-    appConfig.publicEndpoints.dataHost 
-      ? undefined
-      : stream?.publicKeys?.[0]
-      ? `${stream.publicKeys[0].id}:${stream.publicKeys[0].hint}`
-      : streamId || "{write-key}";
+  const writeKey = appConfig.publicEndpoints.dataHost
+    ? undefined
+    : stream?.publicKeys?.[0]
+    ? `${stream.publicKeys[0].id}:${stream.publicKeys[0].hint}`
+    : streamId || "{write-key}";
   const serverWriteKey = stream?.privateKeys?.[0]
     ? `${stream.privateKeys[0].id}:${stream.privateKeys[0].hint}`
     : "{server-write-key}";

@@ -93,7 +93,17 @@ const InviteUserForm: React.FC<{ invite: (email: string, role?: WorkspaceRoleTyp
           </>
         )}
         <div className={"min-w-52 flex justify-end"}>
-          <JitsuButton requiredPermission={"manageUsers"} disabledReason={appConfig.disableSignup ? "Signup is disabled for your Jitsu instance, you can't invite new users" : undefined} loading={pending} type="primary" onClick={onSubmit}>
+          <JitsuButton
+            requiredPermission={"manageUsers"}
+            disabledReason={
+              appConfig.disableSignup
+                ? "Signup is disabled for your Jitsu instance, you can't invite new users"
+                : undefined
+            }
+            loading={pending}
+            type="primary"
+            onClick={onSubmit}
+          >
             {inputVisible ? "Send invitation" : "Add user to the workspace"}
           </JitsuButton>
         </div>

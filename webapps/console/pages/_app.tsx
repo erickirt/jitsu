@@ -170,7 +170,7 @@ const NextJsAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
               dontAskForCurrentPassword={true}
               onSuccess={async () => {
                 await signOut();
-                router.push("/signin")
+                router.push("/signin");
               }}
             />
           </div>

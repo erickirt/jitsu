@@ -13,8 +13,10 @@ import { customDomainCnames } from "../../lib/server/custom-domains";
 import { credentialsLoginEnabled, githubLoginEnabled, oidcLoginEnabled } from "../../lib/nextauth.config";
 
 function isSignupDisabled() {
-  return  isTruish(process.env.DISABLE_SIGNUP) //explicitly disabled 
-    || (!githubLoginEnabled && !oidcLoginEnabled) // we don't support credentials signup yet ;
+  return (
+    isTruish(process.env.DISABLE_SIGNUP) || //explicitly disabled
+    (!githubLoginEnabled && !oidcLoginEnabled)
+  ); // we don't support credentials signup yet ;
 }
 
 export default createRoute()

@@ -116,7 +116,7 @@ export async function getOrCreateUser(opts: {
   const { externalId, loginProvider, email, name = email } = opts;
   let user = await db.prisma().userProfile.findFirst({
     where: { externalId, loginProvider },
-    include: { password: true }
+    include: { password: true },
   });
   if (!user) {
     if (process.env.DISABLE_SIGNUP === "true" || process.env.DISABLE_SIGNUP === "1") {
@@ -135,8 +135,8 @@ export async function getOrCreateUser(opts: {
         admin,
       },
       include: {
-        password: true
-      }
+        password: true,
+      },
     });
     await withProductAnalytics(p => p.track("user_created"), {
       user: { email, name, internalId: user.id, externalId, loginProvider },
@@ -148,7 +148,7 @@ export async function getOrCreateUser(opts: {
     // Re-fetch to get updated data with password relation
     user = await db.prisma().userProfile.findFirst({
       where: { id: user.id },
-      include: { password: true }
+      include: { password: true },
     });
     if (!user) {
       throw new ApiError("User not found after update");
@@ -156,7 +156,7 @@ export async function getOrCreateUser(opts: {
   }
   return {
     ...user,
-    mustChangePassword: user.password?.changeAtNextLogin ?? false
+    mustChangePassword: user.password?.changeAtNextLogin ?? false,
   };
 }
 

@@ -23,7 +23,10 @@ export default createRoute()
     }
     await db
       .prisma()
-      .userPassword.update({ where: { userId: user.internalId }, data: { hash: createHash(body.newPassword), changeAtNextLogin: false } });
+      .userPassword.update({
+        where: { userId: user.internalId },
+        data: { hash: createHash(body.newPassword), changeAtNextLogin: false },
+      });
     return {
       status: "ok",
     };
