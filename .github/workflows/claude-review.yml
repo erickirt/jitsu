@@ -54,4 +54,4 @@ jobs:
             github:
               marketplace: true
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__list_commits,Bash(git:*),Bash(pnpm:*),Bash(npm:*),Bash(node:*),Bash(bun:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__list_commits,mcp__github__list_pull_request_files,Bash(git:*),Bash(pnpm:*),Bash(npm:*),Bash(node:*),Bash(bun:*)"
