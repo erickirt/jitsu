@@ -36,4 +36,11 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-#          claude_args: --model claude-opus-4-1-20250805
+          prompt: |
+            Review this pull request and provide feedback on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Security implications
+            - Performance considerations
+            - Documentation and code clarity
+          claude_args: --model claude-opus-4-1-20250805
