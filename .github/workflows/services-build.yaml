@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: "all"
+      dont_publish:
+        description: "Don't Publish - Build only without publishing to registries or creating tags"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   # Use a shared concurrency group for both direct runs and calls from lint.yml
@@ -90,6 +95,7 @@ jobs:
           fetch-tags: true
 
       - name: Log in to Docker Hub
+        if: ${{ !inputs.dont_publish }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -152,6 +158,12 @@ jobs:
               PLATFORM="linux/amd64,linux/arm64"
             fi
 
+            # Add --push flag only if we're publishing
+            PUSH_FLAG=""
+            if [ "${{ inputs.dont_publish }}" != "true" ]; then
+              PUSH_FLAG="--push"
+            fi
+
             docker buildx build \
               --target ${TARGET} \
               --platform ${PLATFORM} \
@@ -161,7 +173,7 @@ jobs:
               --build-arg CI=true \
               ${TAGS} \
               -f all.Dockerfile \
-              --push \
+              ${PUSH_FLAG} \
               .
           done
 
@@ -186,6 +198,7 @@ jobs:
           submodules: true
 
       - name: Log in to Docker Hub
+        if: ${{ !inputs.dont_publish }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -237,6 +250,12 @@ jobs:
               PLATFORM="linux/amd64,linux/arm64"
             fi
 
+            # Add --push flag only if we're publishing
+            PUSH_FLAG=""
+            if [ "${{ inputs.dont_publish }}" != "true" ]; then
+              PUSH_FLAG="--push"
+            fi
+
             docker buildx build \
               --target ${TARGET} \
               --platform ${PLATFORM} \
@@ -244,14 +263,14 @@ jobs:
               --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
               ${TAGS} \
               -f bulker/all.Dockerfile \
-              --push \
+              ${PUSH_FLAG} \
               ./bulker
           done
 
 
   finalize_release:
     needs: [version, nodejs_build, build_bulker, npm_publish]
-    if: ${{ needs.version.outputs.channel != 'canary' && !cancelled() && (needs.nodejs_build.result == 'success' || needs.nodejs_build.result == 'skipped') && (needs.build_bulker.result == 'success' || needs.build_bulker.result == 'skipped') && (needs.npm_publish.result == 'success' || needs.npm_publish.result == 'skipped') }}
+    if: ${{ !inputs.dont_publish && needs.version.outputs.channel != 'canary' && !cancelled() && (needs.nodejs_build.result == 'success' || needs.nodejs_build.result == 'skipped') && (needs.build_bulker.result == 'success' || needs.build_bulker.result == 'skipped') && (needs.npm_publish.result == 'success' || needs.npm_publish.result == 'skipped') }}
     name: 🏷️ Finalize Release
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -440,6 +459,7 @@ jobs:
       - name: 📤 Publish to NPM
         env:
           CHANNEL: ${{ needs.version.outputs.channel }}
+          DONT_PUBLISH: ${{ inputs.dont_publish }}
         run: |
           # Determine NPM tag based on channel
           if [ "${CHANNEL}" = "stable" ]; then
@@ -448,15 +468,22 @@ jobs:
             NPM_TAG="${CHANNEL}"
           fi
 
-          echo "Publishing packages to NPM with tag: ${NPM_TAG}"
+          # Add --dry-run if dont_publish is true
+          DRY_RUN_FLAG=""
+          if [ "${DONT_PUBLISH}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+            echo "Running in DRY-RUN mode - packages will NOT be published"
+          else
+            echo "Publishing packages to NPM with tag: ${NPM_TAG}"
+          fi
 
           # Publish jitsu-cli
           echo "Publishing jitsu-cli..."
-          docker exec builder sh -c "cd cli/jitsu-cli && npm publish --tag ${NPM_TAG} --access public"
+          docker exec builder sh -c "cd cli/jitsu-cli && npm publish --tag ${NPM_TAG} --access public ${DRY_RUN_FLAG}"
 
           # Publish @jitsu/functions-lib
           echo "Publishing @jitsu/functions-lib..."
-          docker exec builder sh -c "cd libs/functions && npm publish --tag ${NPM_TAG} --access public"
+          docker exec builder sh -c "cd libs/functions && npm publish --tag ${NPM_TAG} --access public ${DRY_RUN_FLAG}"
 
       - name: 🧹 Cleanup container
         if: always()
