@@ -104,6 +104,13 @@ x-syncctl-env: &syncctl-env
   SYNCCTL_KUBERNETES_CLIENT_CONFIG: ${SYNCCTL_KUBERNETES_CLIENT_CONFIG:-}
   SYNCCTL_KUBERNETES_CONTEXT: ${SYNCCTL_KUBERNETES_CONTEXT:-}
 
+# Environment files configuration
+x-env-files: &env-files
+  - path: .env
+    required: false
+  - path: .env.local
+    required: false
+
 networks:
   jitsu-dev-network:
     name: jitsu-dev-network
@@ -310,11 +317,7 @@ services:
       start_period: 60s
     environment:
       <<: *console-env
-    env_file:
-      - path: .env
-        required: false
-      - path: .env.local
-        required: false
+    env_file: *env-files
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -347,6 +350,7 @@ services:
       start_period: 40s
     environment:
       <<: *rotor-env
+    env_file: *env-files
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -383,6 +387,7 @@ services:
       start_period: 40s
     environment:
       <<: *bulker-env
+    env_file: *env-files
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -415,6 +420,7 @@ services:
       start_period: 40s
     environment:
       <<: *ingest-env
+    env_file: *env-files
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -451,6 +457,7 @@ services:
         exec /app/syncctl
     environment:
       <<: *syncctl-env
+    env_file: *env-files
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -477,11 +484,7 @@ services:
     environment:
       <<: *console-env
       CI: "true"
-    env_file:
-      - path: .env
-        required: false
-      - path: .env.local
-        required: false
+    env_file: *env-files
     volumes:
       - ..:/app:delegated
       - pnpm-store:/pnpm-store
@@ -512,6 +515,7 @@ services:
     environment:
       <<: *rotor-env
       CI: "true"
+    env_file: *env-files
     volumes:
       - ..:/app:delegated
       - pnpm-store:/pnpm-store
@@ -545,6 +549,7 @@ services:
       - "${BULKER_PORT:-3042}:3042"
     environment:
       <<: *bulker-env
+    env_file: *env-files
     volumes:
       - ..:/app:delegated
     depends_on:
@@ -573,6 +578,7 @@ services:
       - "${INGEST_PORT:-3049}:3049"
     environment:
       <<: *ingest-env
+    env_file: *env-files
     volumes:
       - ..:/app:delegated
     depends_on:

@@ -5,7 +5,7 @@
 Use the following command to start all necessary Jitsu services:
 
 ```bash
-docker compose -f ./docker/docker-compose.yml --profile jitsu-services up -d --no-build --force-recreate
+docker compose -f ./docker/docker-compose.yml up --force-recreate
 ```
 
 This will start all Jitsu services. Once running, open http://localhost:3000 in your browser and login with
@@ -15,16 +15,15 @@ see Configuration Variables section below).
 **Note:** This setup is for exploration and development only. For production deployment, see
 https://docs.jitsu.com/self-hosting/production-deployment
 
-## Start Jitsu in Dev Mode
+## Dev Mode
 
-For development with hot reload enabled, use:
+For development with hot reload enabled, use: `docker compose -f ./docker/docker-compose.yml --profile jitsu-services-dev up -d --force-recreate`. This starts all Jitsu services with hot reload, allowing you to make changes to the code and see them reflected
+immediately without restarting containers. **Note:** clean all `node_modules` dir to avoid conflicts between docker and local installs: `rm -rf .pnpm-store && rm -rf ./node_modules && rm -rf `find . -iname node_modules -type d`
 
-```bash
-docker compose -f ./docker/docker-compose.yml --profile jitsu-services-dev up -d --no-build --force-recreate
-```
+You can also start just 3rd-party services by: `docker compose -f ./docker/docker-compose.yml --profile jitsu-dependencies up --force-recreate`
 
-This starts all Jitsu services with hot reload, allowing you to make changes to the code and see them reflected
-immediately without restarting containers.
+If you want to start Jitsu in ordinary mode, but rebuild images from local sources use
+`docker compose -f ./docker/docker-compose.yml up --force-recreate --build`
 
 **Note:** The dev mode uses:
 - `jitsucom/jitsu-builder:latest` for Node.js services (Console, Rotor)
