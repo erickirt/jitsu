@@ -49,8 +49,10 @@ The fastest way to install jitsu is [docker compose](https://docs.jitsu.com/self
 # Clone the repository
 git clone --depth 1 https://github.com/jitsucom/jitsu
 cd jitsu/docker
-# Copy .env.example to .env, see instructions at https://docs.jitsu.com/self-hosting/quick-start#edit-env-file
-cp .env.example .env
+# Optionally, edit .env.local file and set env variables, see README.md in `docker` folder
+touch .env.local
+#
+
 ```
 
 ### Deploy at scale

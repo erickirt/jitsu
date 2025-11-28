@@ -34,5 +34,5 @@ libs/jitsu-js/dist/
 /libs/jsondiffpatch/coverage/
 .github
 services/rotor/__tests__/artifacts
-devenv/data
+docker/
 bulker

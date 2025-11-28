@@ -52,7 +52,7 @@ for arg in "$@"; do
             echo "Emulates the CI build process locally"
             echo ""
             echo "Options:"
-            echo "  --build-builder    Build the builder image from builder.Dockerfile (default: pull from ghcr.io)"
+            echo "  --build-builder    Build the builder image from builder.Dockerfile (default: pull from hub)"
             echo "  --no-cache         Build Docker images without using cache"
             echo "  --skip-lint        Skip lint, format, and test steps - go straight to Docker builds"
             echo "  --target <name>    Build only specific target(s) (default: 'console rotor profiles')"

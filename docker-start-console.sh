@@ -89,6 +89,13 @@ main() {
       echo "Updating database schema..."
       prisma db push --skip-generate --schema schema.prisma
     fi
+
+    # Run seed if SEED_DEMO_CONFIGURATION is set
+    if [ ! -z "$SEED_DEMO_CONFIGURATION" ]; then
+      echo "SEED_DEMO_CONFIGURATION is set, seeding demo configuration..."
+      node /app/webapps/console/build/manage.js seed || echo "Seed failed or skipped (this is ok if already seeded)"
+    fi
+
     echo "Starting the app"
     healthcheck $$ &
 

@@ -65,8 +65,8 @@ const ServerEnvSchema = z.object({
 
   // Message Processing Configuration
   MESSAGES_RETRY_COUNT: z.string().optional().default("3"),
-  MESSAGES_RETRY_BACKOFF_BASE: z.string().optional().default("1000"),
-  MESSAGES_RETRY_BACKOFF_MAX_DELAY: z.string().optional().default("60000"),
+  MESSAGES_RETRY_BACKOFF_BASE: z.string().optional().default("10"),
+  MESSAGES_RETRY_BACKOFF_MAX_DELAY: z.string().optional().default("1440"),
   CONCURRENCY: z.string().optional().default("10"),
   FETCH_TIMEOUT_MS: z.string().optional().default("2000"),
 

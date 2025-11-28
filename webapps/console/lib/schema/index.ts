@@ -11,6 +11,7 @@ export const SessionUser = z.object({
   externalId: z.string(),
   internalId: z.string(),
   externalUsername: z.string().nullish(),
+  mustChangePassword: z.boolean().nullish(),
   authType: z.string().nullish().optional(),
 });
 export type SessionUser = z.infer<typeof SessionUser>;
@@ -84,7 +85,6 @@ export const AppConfig = z.object({
     host: z.string().optional(),
   }),
   billingEnabled: z.boolean(),
-  jitsuClassicUrl: z.string(),
   publicEndpoints: z.object({
     protocol: z.enum(["http", "https"]),
     host: z.string(),

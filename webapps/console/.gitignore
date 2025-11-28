@@ -1,4 +1,5 @@
 /prisma/schema/
 /.next/
+/build/
 
 *storybook.log

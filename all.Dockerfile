@@ -93,6 +93,7 @@ COPY . .
 #   CI: some packages behave differently in CI (e.g., disable interactive prompts)
 ENV NEXTJS_STANDALONE_BUILD=1
 ENV CI=${CI}
+# Note: pnpm build now includes building the management CLI (build:manage)
 RUN pnpm build
 
 # ============================================================================
@@ -134,6 +135,10 @@ COPY --from=builder /app/webapps/console/prisma/schema.prisma ./
 COPY --from=builder /app/webapps/console/.next/standalone ./
 COPY --from=builder /app/webapps/console/.next/static ./webapps/console/.next/static
 COPY --from=builder /app/webapps/console/public ./webapps/console/public
+
+# Copy management CLI script (bundled with esbuild)
+# This allows running management commands like: node /app/webapps/console/build/manage.js seed
+COPY --from=builder /app/webapps/console/build/manage.js ./webapps/console/build/
 
 # Setup cron for scheduled tasks (e.g., cleanup, analytics aggregation)
 # chmod 0644: cron requires specific permissions (owner read/write, others read)

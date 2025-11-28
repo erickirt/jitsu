@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { NextAuthOptions, User } from "next-auth";
 import { db } from "./server/db";
 import { OIDCProvider, ParseJSONConfigFromEnv } from "./oidc";
-import { checkHash, createHash, hash, requireDefined } from "juava";
+import { checkHash, requireDefined } from "juava";
 import { ApiError } from "./shared/errors";
 import { getServerLog } from "./server/log";
 import { withProductAnalytics } from "./server/telemetry";
@@ -30,10 +30,6 @@ const githubProvider = githubLoginEnabled
 
 const oidcProvider = oidcLoginConfig ? OIDCProvider(oidcLoginConfig) : undefined;
 
-function toId(email: string) {
-  return hash("sha256", email.toLowerCase().trim());
-}
-
 const credentialsProvider =
   credentialsLoginEnabled &&
   CredentialsProvider({
@@ -49,38 +45,6 @@ const credentialsProvider =
       const user = await db.prisma().userProfile.findFirst({ where: { email: username }, include: { password: true } });
       if (!user) {
         log.atDebug().log(`Attempt to login with unknown user: ${username}`);
-        const profileCount = await db.prisma().userProfile.count();
-        if (profileCount === 0 && process.env.SEED_USER_EMAIL && process.env.SEED_USER_PASSWORD) {
-          log.atDebug().log(`There're no user profiles in DB, checking ${username} against seed user config`);
-          if (process.env.SEED_USER_EMAIL === username && process.env.SEED_USER_PASSWORD === credentials.password) {
-            const userId = toId(process.env.SEED_USER_EMAIL);
-            log.atDebug().log(`Adding a seed admin user with id ${userId} and email ${username}`);
-            await db.prisma().userProfile.create({
-              data: {
-                id: userId,
-                email: username,
-                name: username,
-                externalId: userId,
-                loginProvider: "credentials",
-                admin: true,
-                password: {
-                  create: {
-                    hash: createHash(credentials.password),
-                    changeAtNextLogin: true,
-                  },
-                },
-              },
-            });
-            return {
-              id: userId,
-              externalId: userId,
-              email: process.env.SEED_USER_EMAIL,
-              name: process.env.SEED_USER_EMAIL,
-            };
-          } else {
-            log.atWarn().log(`Attempt to login with unknown user: ${username} and invalid password`);
-          }
-        }
       } else if (user.password && checkHash(user.password.hash, credentials.password)) {
         log.atDebug().log(`User ${username} logged in successfully with password`);
         return {
@@ -112,9 +76,12 @@ export async function getOrCreateUser(opts: {
   email: string;
   // we only need this for product analytics, so it's optional
   req?: NextApiRequest;
-}): Promise<User & { loginProvider: string; externalId: string; admin: boolean | null }> {
+}): Promise<User & { loginProvider: string; externalId: string; admin: boolean | null; mustChangePassword: boolean }> {
   const { externalId, loginProvider, email, name = email } = opts;
-  let user = await db.prisma().userProfile.findFirst({ where: { externalId, loginProvider } });
+  let user = await db.prisma().userProfile.findFirst({
+    where: { externalId, loginProvider },
+    include: { password: true },
+  });
   if (!user) {
     if (process.env.DISABLE_SIGNUP === "true" || process.env.DISABLE_SIGNUP === "1") {
       throw new ApiError("Sign up is disabled", { code: "signup-disabled" });
@@ -131,6 +98,9 @@ export async function getOrCreateUser(opts: {
         loginProvider: loginProvider,
         admin,
       },
+      include: {
+        password: true,
+      },
     });
     await withProductAnalytics(p => p.track("user_created"), {
       user: { email, name, internalId: user.id, externalId, loginProvider },
@@ -139,8 +109,19 @@ export async function getOrCreateUser(opts: {
     await onUserCreated({ email, name });
   } else if (user.name !== name || user.email !== email) {
     await db.prisma().userProfile.update({ where: { id: user.id }, data: { name, email } });
+    // Re-fetch to get updated data with password relation
+    user = await db.prisma().userProfile.findFirst({
+      where: { id: user.id },
+      include: { password: true },
+    });
+    if (!user) {
+      throw new ApiError("User not found after update");
+    }
   }
-  return user;
+  return {
+    ...user,
+    mustChangePassword: user.password?.changeAtNextLogin ?? false,
+  };
 }
 
 function generateSecret(base: (string | undefined)[]) {
@@ -182,6 +163,7 @@ export const nextAuthConfig: NextAuthOptions = {
       return {
         internalId: user.id,
         externalId: externalId,
+        mustChangePassword: user.mustChangePassword,
         externalUsername: props.profile?.["login"],
         loginProvider: loginProvider,
         ...props.token,
@@ -190,6 +172,7 @@ export const nextAuthConfig: NextAuthOptions = {
     async session({ session, token }) {
       return {
         ...session,
+        mustChangePassword: token.mustChangePassword,
         internalId: token.internalId,
         loginProvider: token.loginProvider,
         externalId: token.externalId,

@@ -21,6 +21,7 @@
     "typecheck": "pnpm -r run typecheck",
     "ee-api:dev": "pnpm --filter ee-api ee-api:dev",
     "console:dev": "pnpm --filter console console:dev",
+    "console:manage": "pnpm --filter console manage",
     "rotor:dev": "pnpm --filter rotor rotor:dev",
     "console:start": "dotenv -e .env.local -- turbo run console:start",
     "console:db-prepare": "dotenv -e .env.local -- pnpm run --filter=console db:update-schema",

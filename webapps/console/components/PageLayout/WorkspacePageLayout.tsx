@@ -3,7 +3,7 @@ import { branding } from "../../lib/branding";
 import { HiSelector } from "react-icons/hi";
 import { FaDocker, FaSignOutAlt, FaUserCircle } from "react-icons/fa";
 import { FiSettings } from "react-icons/fi";
-import { Button, Drawer, Dropdown, Menu, MenuProps } from "antd";
+import { Drawer, Dropdown, Menu, MenuProps } from "antd";
 import MenuItem from "antd/lib/menu/MenuItem";
 import { ButtonLabel } from "../ButtonLabel/ButtonLabel";
 import styles from "./WorkspacePageLayout.module.css";
@@ -72,40 +72,8 @@ export type WorkspaceSelectorProps = {
   currentTitle: ReactNode;
 };
 
-export const WorkspaceMenu: React.FC<{ closeMenu: () => void; classicProject?: string; classicToken?: string }> = ({
-  classicToken,
-}) => {
-  const appConfig = useAppConfig();
-  return (
-    <div className="bg-backgroundLight rounded shadow">
-      <div className="border-t border-textDisabled px-4 py-2 flex flex-col">
-        {classicToken && (
-          <Link
-            key={"classic"}
-            href={`${appConfig.jitsuClassicUrl}/?token=${classicToken}`}
-            target={"_blank"}
-            rel={"noopener noreferrer"}
-            className="cursor-pointer"
-          >
-            <Button
-              type={"dashed"}
-              className={"w-full mt-1.5"}
-              icon={<span className={"anticon w-4 h-4"}>{branding.classicLogo}</span>}
-            >
-              Switch to Jitsu Classic
-            </Button>
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-};
-
 function WorkspacesMenu(props: { jitsuClassicAvailable: boolean }) {
   const router = useRouter();
-  const [classicLoading, setClassicLoading] = useState(false);
-
-  const workspace = useWorkspace();
   const appConfig = useAppConfig();
   const { data, error } = useApi(`/api/user/properties`);
   let additionalMenuItems: MenuItemType[] = [];

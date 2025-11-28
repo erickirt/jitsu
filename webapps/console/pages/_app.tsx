@@ -19,7 +19,7 @@ import {
 } from "../lib/context";
 import { AppConfig, ContextApiResponse, SessionUser } from "../lib/schema";
 import { ErrorBoundary, GlobalError, GlobalOverlay } from "../components/GlobalError/GlobalError";
-import { useTitle } from "../lib/ui";
+import { feedbackSuccess, useTitle } from "../lib/ui";
 import { useApi } from "../lib/useApi";
 import { AntdTheme } from "../components/AntdTheme/AntdTheme";
 import { AntdModalProvider } from "../lib/modal";
@@ -35,6 +35,7 @@ import { WorkspaceRoleType, WorkspaceRoleWithPermissions, WorkspaceRolePermissio
 import { RedirectToSignIn } from "../components/Redirect/Redirect";
 import { PreviousRouteContextProvider } from "../lib/previous-route";
 import { OidcAuthorizer } from "../components/OidcAuthorizer/OidcAuthorizer";
+import { ChangePassword } from "../components/ChangePassword/ChangePassword";
 
 const log = getLog("app");
 
@@ -160,6 +161,23 @@ const NextJsAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
 
   if (session && session.data) {
     const user = getUserFromNextJsSession(session);
+    if (user.mustChangePassword) {
+      return (
+        <div className="flex flex-col items-center p-12">
+          <h1 className="text-xl">You must change your password</h1>
+          <div className="max-w-96 min-w-96 mx-auto">
+            <ChangePassword
+              dontAskForCurrentPassword={true}
+              onSuccess={async () => {
+                await signOut();
+                router.push("/signin");
+                feedbackSuccess("Password has been changed. Please sign in with your new password.");
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <UserContextProvider
         user={user}

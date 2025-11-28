@@ -13,6 +13,8 @@ export type JitsuButtonProps = ButtonProps & {
   ws?: boolean;
   className?: string;
   requiredPermission?: WorkspacePermissionsType;
+  //if set, button will be disabled and reason will be displayed as tooltip
+  disabledReason?: string;
 };
 
 export const WJitsuButton: React.FC<JitsuButtonProps & Required<Pick<ButtonProps, "href">>> = p => {
@@ -30,11 +32,22 @@ const HJitsuButton: React.FC<JitsuButtonProps & Required<Pick<ButtonProps, "href
 function Button0(props: JitsuButtonProps) {
   const workspaceRole = useWorkspaceRole();
   const hasPerm = props.requiredPermission ? hasPermission(workspaceRole.role, props.requiredPermission) : true;
+
+  // Determine tooltip message
+  const tooltipTitle = props.disabledReason
+    ? props.disabledReason
+    : !hasPerm
+    ? `You don't have permission '${props.requiredPermission}'`
+    : undefined;
+
+  // Button is disabled if explicitly disabled, no permission, or disabledReason is set
+  const isDisabled = props.disabled || !hasPerm || !!props.disabledReason;
+
   return (
-    <Tooltip title={!hasPerm ? `You don't have permission '${props.requiredPermission}'` : undefined}>
+    <Tooltip title={tooltipTitle}>
       <Button
-        {...omit(props, "href", "children", "icon", "iconPosition")}
-        disabled={props.disabled || !hasPerm}
+        {...omit(props, "href", "children", "icon", "iconPosition", "disabledReason")}
+        disabled={isDisabled}
         className={`pr-1 ${props.className}`}
       >
         {props.icon ? (
