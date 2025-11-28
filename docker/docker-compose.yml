@@ -44,11 +44,16 @@ x-console-env: &console-env
   EE_API_AUTH_TOKENS: 5f92ff738db8432899737fbdc7259bbd
   EE_CONNECTION: http://console:3000?jwtSecret=6de1460fd8ba429285c9e72cc5339291
   CONSOLE_RAW_AUTH_TOKENS: ${CONSOLE_TOKEN:-dev-auth-key}
+  BULKER_URL: http://bulker:3042
+  BULKER_AUTH_KEY: ${BULKER_TOKEN:-dev-auth-key}
+  ROTOR_URL: http://rotor:3401
+  ROTOR_AUTH_KEY: ${ROTOR_TOKEN:-dev-auth-key}
   EE_DISABLE_AUTH: yes
   DISABLE_SIGNUP: false
   ENABLE_CREDENTIALS_LOGIN: true
   SEED_USER_EMAIL: admin@jitsu.com
   SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-admin123}
+  SEED_DEMO_CONFIGURATION: ${SEED_DEMO_CONFIGURATION:-}
   JITSU_INGEST_PUBLIC_URL: ${JITSU_INGEST_PUBLIC_URL:-http://localhost:${INGEST_PORT:-3049}}
 
 # Rotor service configuration (event processing)
@@ -56,6 +61,7 @@ x-rotor-env: &rotor-env
   <<: [*common-env, *database-env, *clickhouse-env, *mongodb-env, *kafka-env]
   BULKER_URL: http://bulker:3042
   BULKER_AUTH_KEY: ${BULKER_TOKEN:-dev-auth-key}
+  ROTOR_RAW_AUTH_TOKENS: ${ROTOR_TOKEN:-dev-auth-key}
   REPOSITORY_BASE_URL: http://console:3000/api/admin/export
   REPOSITORY_AUTH_TOKEN: service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
   REPOSITORY_CACHE_DIR: /tmp/cache
@@ -72,6 +78,31 @@ x-bulker-env: &bulker-env
   BULKER_CLICKHOUSE_DATABASE: default
   KAFKA_COMPRESSION_TYPE: snappy
   KAFKA_COMPRESSION_CODEC: snappy
+
+x-ingest-env: &ingest-env
+  LOG_LEVEL: debug
+  INGEST_PUBLIC_URL: ${INGEST_PUBLIC_URL:-http://localhost:3049/}
+  INGEST_KAFKA_BOOTSTRAP_SERVERS: dep-redpanda:9092
+  INGEST_RAW_AUTH_TOKENS: ${BULKER_TOKEN:-dev-auth-key}
+  INGEST_REPOSITORY_URL: http://console:3000/api/admin/export/streams-with-destinations
+  INGEST_SCRIPT_ORIGIN: http://console:3000/api/s/javascript-library
+  INGEST_REPOSITORY_AUTH_TOKEN: service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
+  INGEST_CACHE_DIR: /tmp/cache
+  INGEST_ROTOR_URL: http://rotor:3401
+  INGEST_ROTOR_AUTH_KEY: ${BULKER_TOKEN:-dev-auth-key}
+  INGEST_CLICKHOUSE_HOST: dep-clickhouse:8123
+  INGEST_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse-pass}
+  INGEST_CLICKHOUSE_DATABASE: default
+
+x-syncctl-env: &syncctl-env
+  LOG_LEVEL: debug
+  HTTP_PORT: 3043
+  SYNCCTL_SYNCS_ENABLED: ${SYNCS_ENABLED:-true}
+  SYNCCTL_RAW_AUTH_TOKENS: ${SYNCCTL_TOKEN:-dev-auth-key}
+  SYNCCTL_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
+  SYNCCTL_SIDECAR_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
+  SYNCCTL_KUBERNETES_CLIENT_CONFIG: ${SYNCCTL_KUBERNETES_CLIENT_CONFIG:-}
+  SYNCCTL_KUBERNETES_CONTEXT: ${SYNCCTL_KUBERNETES_CONTEXT:-}
 
 networks:
   jitsu-dev-network:
@@ -197,7 +228,7 @@ services:
     environment:
       KAFKA_BROKERS: "dep-redpanda:9092"
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
-      KAFKA_SCHEMAREGISTRY_URLS: "http://dep-redpanda:8081"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://dep-redpanda:8080"
     depends_on:
       - dep-redpanda
     profiles:
@@ -261,6 +292,7 @@ services:
 
   console:
     container_name: jitsu-console
+    image: jitsucom/console:${RELEASE_TAG:-latest}
     networks:
       - jitsu-dev-network
     build:
@@ -297,6 +329,7 @@ services:
 
   rotor:
     container_name: jitsu-rotor
+    image: jitsucom/rotor:${RELEASE_TAG:-latest}
     networks:
       - jitsu-dev-network
     build:
@@ -332,6 +365,7 @@ services:
 
   bulker:
     container_name: jitsu-bulker
+    image: jitsucom/bulker:${RELEASE_TAG:-latest}
     networks:
       - jitsu-dev-network
     build:
@@ -348,16 +382,7 @@ services:
       retries: 5
       start_period: 40s
     environment:
-      - LOG_LEVEL=debug
-      - BULKER_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
-      - BULKER_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
-      - BULKER_CONFIG_SOURCE=http://console:3000/api/admin/export/bulker-connections
-      - BULKER_CONFIG_SOURCE_HTTP_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
-      - BULKER_CACHE_DIR=/tmp/cache
-      #      - BULKER_INTERNAL_TASK_LOG={"id":"task_log","metricsKeyPrefix":"syncs","usesBulker":true,"type":"postgres","options":{"mode":"stream"},"credentials":{"host":"dep-postgres","port":5432,"sslMode":"disable","database":"postgres","password":"${POSTGRES_PASSWORD:-postgres-mqf3nzx}","username":"postgres","defaultSchema":"newjitsu"}}
-      - BULKER_CLICKHOUSE_HOST=dep-clickhouse:8123
-      - BULKER_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
-      - BULKER_CLICKHOUSE_DATABASE=default
+      <<: *bulker-env
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -372,6 +397,7 @@ services:
 
   ingest:
     container_name: jitsu-ingest
+    image: jitsucom/ingest:${RELEASE_TAG:-latest}
     networks:
       - jitsu-dev-network
     build:
@@ -388,19 +414,7 @@ services:
       retries: 5
       start_period: 40s
     environment:
-      - LOG_LEVEL=debug
-      - INGEST_PUBLIC_URL=${INGEST_PUBLIC_URL:-http://localhost:3049/}
-      - INGEST_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
-      - INGEST_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
-      - INGEST_REPOSITORY_URL=http://console:3000/api/admin/export/streams-with-destinations
-      - INGEST_SCRIPT_ORIGIN=http://console:3000/api/s/javascript-library
-      - INGEST_REPOSITORY_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
-      - INGEST_CACHE_DIR=/tmp/cache
-      - INGEST_ROTOR_URL=http://rotor:3401
-      - INGEST_ROTOR_AUTH_KEY=${BULKER_TOKEN:-dev-auth-key}
-      - INGEST_CLICKHOUSE_HOST=dep-clickhouse:8123
-      - INGEST_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
-      - INGEST_CLICKHOUSE_DATABASE=default
+      <<: *ingest-env
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -417,6 +431,7 @@ services:
 
   syncctl:
     container_name: jitsu-syncctl
+    image: jitsucom/syncctl:${RELEASE_TAG:-latest}
     networks:
       - jitsu-dev-network
     build:
@@ -435,14 +450,7 @@ services:
         fi
         exec /app/syncctl
     environment:
-      - LOG_LEVEL=debug
-      - HTTP_PORT=3043
-      - SYNCCTL_SYNCS_ENABLED=${SYNCS_ENABLED:-true}
-      - SYNCCTL_RAW_AUTH_TOKENS=${SYNCCTL_TOKEN:-dev-auth-key}
-      - SYNCCTL_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
-      - SYNCCTL_SIDECAR_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres-mqf3nzx}@dep-postgres:5432/postgres?search_path=newjitsu
-      - SYNCCTL_KUBERNETES_CLIENT_CONFIG=${SYNCCTL_KUBERNETES_CLIENT_CONFIG:-}
-      - SYNCCTL_KUBERNETES_CONTEXT=${SYNCCTL_KUBERNETES_CONTEXT:-}
+      <<: *syncctl-env
     depends_on:
       dep-postgres:
         condition: service_healthy
@@ -460,7 +468,7 @@ services:
       jitsu-dev-network:
         aliases:
           - console
-    image: ghcr.io/jitsucom/jitsu-builder:latest
+    image: jitsucom/jitsu-builder:latest
     command: sh -c "CI=true pnpm install --store-dir /pnpm-store && pnpm codegen && pnpm console:dev"
     working_dir: /app
     restart: "no"
@@ -495,7 +503,7 @@ services:
       jitsu-dev-network:
         aliases:
           - rotor
-    image: ghcr.io/jitsucom/jitsu-builder:latest
+    image: jitsucom/jitsu-builder:latest
     command: sh -c "CI=true pnpm install --store-dir /pnpm-store && pnpm rotor:dev"
     working_dir: /app
     restart: "no"
@@ -564,19 +572,7 @@ services:
     ports:
       - "${INGEST_PORT:-3049}:3049"
     environment:
-      - LOG_LEVEL=debug
-      - INGEST_PUBLIC_URL=${INGEST_PUBLIC_URL:-http://localhost:3049/}
-      - INGEST_KAFKA_BOOTSTRAP_SERVERS=dep-redpanda:9092
-      - INGEST_RAW_AUTH_TOKENS=${BULKER_TOKEN:-dev-auth-key}
-      - INGEST_REPOSITORY_URL=http://console:3000/api/admin/export/streams-with-destinations
-      - INGEST_SCRIPT_ORIGIN=http://console:3000/api/s/javascript-library
-      - INGEST_REPOSITORY_AUTH_TOKEN=service-admin-account:${CONSOLE_TOKEN:-dev-auth-key}
-      - INGEST_CACHE_DIR=/tmp/cache
-      - INGEST_ROTOR_URL=http://rotor:3401
-      - INGEST_ROTOR_AUTH_KEY=${BULKER_TOKEN:-dev-auth-key}
-      - INGEST_CLICKHOUSE_HOST=dep-clickhouse:8123
-      - INGEST_CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse-pass}
-      - INGEST_CLICKHOUSE_DATABASE=default
+      <<: *ingest-env
     volumes:
       - ..:/app:delegated
     depends_on:

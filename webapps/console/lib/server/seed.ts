@@ -37,7 +37,7 @@ function parseDatabaseUrl(url: string): ParsedPostgresUrl {
 
     const searchParams = new URLSearchParams(parsed.search);
     const schema = searchParams.get("schema") || "public";
-    const sslmode = searchParams.get("sslmode") || "require";
+    const sslmode = searchParams.get("sslmode") || "disable";
 
     // Map sslmode to valid values
     let sslMode: ParsedPostgresUrl["sslMode"];
@@ -120,7 +120,7 @@ export async function seedDemoConnections(): Promise<void> {
     log.atInfo().log(`Parsed database config: host=${dbConfig.host}, database=${dbConfig.database}`);
 
     // Use "jitsu-data" schema instead of the one from DATABASE_URL
-    const targetSchema = "jitsu-data";
+    const targetSchema = process.env.DEMO_DESTINATION_SCHEMA || "jitsu-data";
 
     // 1. Handle Demo Destination
     const existingDestinations = await db.prisma().configurationObject.findMany({

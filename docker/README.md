@@ -5,7 +5,7 @@
 Use the following command to start all necessary Jitsu services:
 
 ```bash
-docker compose -f ./docker/docker-compose.yml --build --profile jitsu-services up -d --force-recreate
+docker compose -f ./docker/docker-compose.yml --profile jitsu-services up -d --no-build --force-recreate
 ```
 
 This will start all Jitsu services. Once running, open http://localhost:3000 in your browser and login with
@@ -20,14 +20,14 @@ https://docs.jitsu.com/self-hosting/production-deployment
 For development with hot reload enabled, use:
 
 ```bash
-docker compose -f ./docker/docker-compose.yml --build --profile jitsu-services-dev up -d --force-recreate
+docker compose -f ./docker/docker-compose.yml --profile jitsu-services-dev up -d --no-build --force-recreate
 ```
 
 This starts all Jitsu services with hot reload, allowing you to make changes to the code and see them reflected
 immediately without restarting containers.
 
 **Note:** The dev mode uses:
-- `ghcr.io/jitsucom/jitsu-builder:latest` for Node.js services (Console, Rotor)
+- `jitsucom/jitsu-builder:latest` for Node.js services (Console, Rotor)
 - `golang:1.22-alpine` for Go services (Bulker, Ingest) - lightweight Alpine Linux image
 
 ## Services List

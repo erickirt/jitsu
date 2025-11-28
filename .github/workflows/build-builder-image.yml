@@ -15,7 +15,7 @@
 # HOW IT'S USED:
 # - The lint.yml workflow uses this image as a container for running builds, tests, and linting
 # - Workflow triggers: automatically on changes to builder.Dockerfile on newjitsu branch, or manually via workflow_dispatch
-# - Publishes to: ghcr.io/<owner>/jitsu-builder:latest
+# - Publishes to: <owner>/jitsu-builder:latest
 # - Uses GitHub Actions cache backend (type=gha) for fast layer caching (up to 10GB per repo)
 #
 name: 👷🏼‍♂️Create Builder Docker Image
