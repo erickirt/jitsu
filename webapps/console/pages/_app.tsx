@@ -19,7 +19,7 @@ import {
 } from "../lib/context";
 import { AppConfig, ContextApiResponse, SessionUser } from "../lib/schema";
 import { ErrorBoundary, GlobalError, GlobalOverlay } from "../components/GlobalError/GlobalError";
-import { useTitle } from "../lib/ui";
+import { feedbackSuccess, useTitle } from "../lib/ui";
 import { useApi } from "../lib/useApi";
 import { AntdTheme } from "../components/AntdTheme/AntdTheme";
 import { AntdModalProvider } from "../lib/modal";
@@ -171,6 +171,7 @@ const NextJsAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
               onSuccess={async () => {
                 await signOut();
                 router.push("/signin");
+                feedbackSuccess("Password has been changed. Please sign in with your new password.");
               }}
             />
           </div>
