@@ -280,7 +280,16 @@ export async function seedDemoConnections(): Promise<void> {
           fromId: streamId,
           toId: destinationId,
           type: "push",
-          data: {},
+          data: {
+            mode: "batch",
+            primaryKey: "message_id",
+            deduplicate: true,
+            deduplicateWindow: 31,
+            timestampColumn: "timestamp",
+            dataLayout: "segment-single-table",
+            batchSize: 10000,
+            frequency: 5,
+          },
         },
       });
     } else {
