@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { getServerLog } from "./log";
-import { randomId } from "juava";
+import { createHash, hash, randomId } from "juava";
+import { pickSlug, pickWorkspaceName } from "../shared/name-utils";
 
 const log = getServerLog("seed");
 
@@ -78,6 +79,43 @@ function isInitialDestination(config: any): boolean {
  */
 function isInitialStream(config: any): boolean {
   return config?.name === DEMO_STREAM_NAME;
+}
+
+export async function seedUserAndWorkspace(): Promise<void> {
+  const profileCount = await db.prisma().userProfile.count();
+  if (profileCount === 0 && process.env.SEED_USER_EMAIL && process.env.SEED_USER_PASSWORD) {
+    const email = process.env.SEED_USER_EMAIL;
+    const [username] = email.split("@");
+    const password = process.env.SEED_USER_PASSWORD;
+    const userId = toId(process.env.SEED_USER_EMAIL);
+    log.atDebug().log(`Adding a seed admin user with id ${userId} and email ${email}`);
+    await db.prisma().userProfile.create({
+      data: {
+        id: userId,
+        email: email,
+        name: username,
+        externalId: userId,
+        loginProvider: "credentials",
+        admin: true,
+        password: {
+          create: {
+            hash: createHash(password),
+            changeAtNextLogin: true,
+          },
+        },
+      },
+    });
+    const workspaceName = pickWorkspaceName(email, username);
+    const newWorkspace = await db.prisma().workspace.create({
+      data: {
+        name: workspaceName,
+        slug: pickSlug(email, workspaceName),
+      },
+    });
+    await db.prisma().workspaceAccess.create({
+      data: { userId: userId, workspaceId: newWorkspace.id, role: "owner" },
+    });
+  }
 }
 
 /**
@@ -254,4 +292,8 @@ export async function seedDemoConnections(): Promise<void> {
     log.atError().withCause(error).log("Failed to seed demo connections");
     throw error;
   }
+}
+
+function toId(email: string) {
+  return hash("sha256", email.toLowerCase().trim());
 }

@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { NextAuthOptions, User } from "next-auth";
 import { db } from "./server/db";
 import { OIDCProvider, ParseJSONConfigFromEnv } from "./oidc";
-import { checkHash, createHash, hash, requireDefined } from "juava";
+import { checkHash, requireDefined } from "juava";
 import { ApiError } from "./shared/errors";
 import { getServerLog } from "./server/log";
 import { withProductAnalytics } from "./server/telemetry";
@@ -30,10 +30,6 @@ const githubProvider = githubLoginEnabled
 
 const oidcProvider = oidcLoginConfig ? OIDCProvider(oidcLoginConfig) : undefined;
 
-function toId(email: string) {
-  return hash("sha256", email.toLowerCase().trim());
-}
-
 const credentialsProvider =
   credentialsLoginEnabled &&
   CredentialsProvider({
@@ -49,38 +45,6 @@ const credentialsProvider =
       const user = await db.prisma().userProfile.findFirst({ where: { email: username }, include: { password: true } });
       if (!user) {
         log.atDebug().log(`Attempt to login with unknown user: ${username}`);
-        const profileCount = await db.prisma().userProfile.count();
-        if (profileCount === 0 && process.env.SEED_USER_EMAIL && process.env.SEED_USER_PASSWORD) {
-          log.atDebug().log(`There're no user profiles in DB, checking ${username} against seed user config`);
-          if (process.env.SEED_USER_EMAIL === username && process.env.SEED_USER_PASSWORD === credentials.password) {
-            const userId = toId(process.env.SEED_USER_EMAIL);
-            log.atDebug().log(`Adding a seed admin user with id ${userId} and email ${username}`);
-            await db.prisma().userProfile.create({
-              data: {
-                id: userId,
-                email: username,
-                name: username,
-                externalId: userId,
-                loginProvider: "credentials",
-                admin: true,
-                password: {
-                  create: {
-                    hash: createHash(credentials.password),
-                    changeAtNextLogin: true,
-                  },
-                },
-              },
-            });
-            return {
-              id: userId,
-              externalId: userId,
-              email: process.env.SEED_USER_EMAIL,
-              name: process.env.SEED_USER_EMAIL,
-            };
-          } else {
-            log.atWarn().log(`Attempt to login with unknown user: ${username} and invalid password`);
-          }
-        }
       } else if (user.password && checkHash(user.password.hash, credentials.password)) {
         log.atDebug().log(`User ${username} logged in successfully with password`);
         return {

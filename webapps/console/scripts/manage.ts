@@ -15,7 +15,7 @@
 // When running in Docker, env vars should be set via -e flags
 
 import minimist from "minimist";
-import { seedDemoConnections } from "../lib/server/seed";
+import { seedDemoConnections, seedUserAndWorkspace } from "../lib/server/seed";
 import { createHash, randomId } from "juava";
 import { getServerLog } from "../lib/server/log";
 
@@ -33,6 +33,7 @@ const commands: Record<string, Command> = {
     usage: "pnpm manage seed",
     handler: async () => {
       console.log("🌱 Checking seed conditions...");
+      await seedUserAndWorkspace();
       await seedDemoConnections();
       // Note: seedDemoConnections() logs its own status messages
     },

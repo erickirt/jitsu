@@ -3,44 +3,8 @@ import React, { useState } from "react";
 import { Input } from "antd";
 import { get } from "../../lib/useApi";
 import { copyTextToClipboard, feedbackError, feedbackSuccess } from "../../lib/ui";
-import { publicEmailDomains } from "../../lib/shared/email-domains";
 import { JitsuButton } from "../JitsuButton/JitsuButton";
-import type { ContextApiResponse } from "../../lib/schema";
-
-function ensureLength(res): string {
-  return res.length < 5 ? res + "project" : res;
-}
-
-function pickSlug(email, name): string {
-  if (name) {
-    //remove 's workspace from name
-    name = name.replace(/'s workspace$/g, "");
-    return ensureLength(name.toLowerCase().replace(/[^a-z0-9]/g, ""));
-  }
-  const [username, domain] = email.split("@");
-  if (!publicEmailDomains.includes(domain.toLowerCase())) {
-    const [company] = domain.split(".");
-    return ensureLength(company.toLowerCase());
-  }
-  return ensureLength(username.replace(/[^a-z0-9]/g, ""));
-}
-
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function pickWorkspaceName(user: ContextApiResponse["user"]) {
-  if (!user.email) {
-    return `${user.name}'s workspace`;
-  }
-  const [username, domain] = user.email.split("@");
-  if (publicEmailDomains.includes((domain ?? "").toLowerCase())) {
-    return `${username}'s workspace`;
-  } else {
-    const [company, ...rest] = domain.split(".");
-    return `${capitalize(company)}'s workspace`;
-  }
-}
+import { pickSlug, pickWorkspaceName } from "../../lib/shared/name-utils";
 
 /**
  * @param onboarding if the dialog is shown on onboarding page. For onboarding,
@@ -61,7 +25,7 @@ export function WorkspaceNameAndSlugEditor({
   canEdit?: boolean;
 }) {
   const user = useUser();
-  const [name, setName] = useState(workspace?.name || pickWorkspaceName(user));
+  const [name, setName] = useState(workspace?.name || pickWorkspaceName(user.email, user.name));
   const [slug, setSlug] = useState(workspace?.slug || pickSlug(user.email, workspace?.name || name));
   const [changed, setChanged] = useState(false);
   const [loading, setLoading] = useState(false);

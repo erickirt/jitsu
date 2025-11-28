@@ -1,7 +1,6 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { db } from "../../../lib/server/db";
 import { getServerLog } from "../../../lib/server/log";
-import { seedDemoConnections } from "../../../lib/server/seed";
 
 const healthChecks: Record<string, () => Promise<any>> = {
   prisma: async () => {
@@ -18,8 +17,6 @@ const healthChecks: Record<string, () => Promise<any>> = {
 
 const log = getServerLog("healthcheck");
 
-let seedAttempted = false;
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const result: Record<string, any> = {};
   let hasErrors: boolean = false;
@@ -34,15 +31,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       result[service] = { status: "error" };
       hasErrors = true;
     }
-  }
-
-  // Seed demo connections after successful healthcheck (only once)
-  if (!hasErrors && !seedAttempted) {
-    seedAttempted = true;
-    // Run seed in background, don't block healthcheck response
-    seedDemoConnections().catch(err => {
-      log.atError().withCause(err).log("Background seed failed");
-    });
   }
 
   res.status(hasErrors ? 503 : 200).send({ status: hasErrors ? "error" : "ok", ...result });
