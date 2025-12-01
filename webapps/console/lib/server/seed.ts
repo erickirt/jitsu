@@ -2,7 +2,6 @@ import { db } from "./db";
 import { getServerLog } from "./log";
 import { createHash, hash, randomId } from "juava";
 import { pickSlug, pickWorkspaceName } from "../shared/name-utils";
-import { getServerEnv } from "./serverEnv";
 
 const log = getServerLog("seed");
 
@@ -83,13 +82,12 @@ function isInitialStream(config: any): boolean {
 }
 
 export async function seedUserAndWorkspace(): Promise<void> {
-  const serverEnv = getServerEnv();
   const profileCount = await db.prisma().userProfile.count();
-  if (profileCount === 0 && serverEnv.SEED_USER_EMAIL && serverEnv.SEED_USER_PASSWORD) {
-    const email = serverEnv.SEED_USER_EMAIL;
+  if (profileCount === 0 && process.env.SEED_USER_EMAIL && process.env.SEED_USER_PASSWORD) {
+    const email = process.env.SEED_USER_EMAIL;
     const [username] = email.split("@");
-    const password = serverEnv.SEED_USER_PASSWORD;
-    const userId = toId(serverEnv.SEED_USER_EMAIL);
+    const password = process.env.SEED_USER_PASSWORD;
+    const userId = toId(process.env.SEED_USER_EMAIL);
     log.atDebug().log(`Adding a seed admin user with id ${userId} and email ${email}`);
     await db.prisma().userProfile.create({
       data: {
@@ -125,13 +123,12 @@ export async function seedUserAndWorkspace(): Promise<void> {
  * This function is idempotent and only runs if SEED_DEMO_CONFIGURATION env var is set.
  */
 export async function seedDemoConnections(): Promise<void> {
-  const serverEnv = getServerEnv();
-  if (!serverEnv.SEED_DEMO_CONFIGURATION) {
+  if (!process.env.SEED_DEMO_CONFIGURATION) {
     log.atInfo().log("SEED_DEMO_CONFIGURATION not set, skipping seed");
     return;
   }
 
-  if (!serverEnv.DATABASE_URL) {
+  if (!process.env.DATABASE_URL) {
     log.atError().log("DATABASE_URL not set, cannot seed demo connections");
     throw new Error("DATABASE_URL not set, cannot seed demo connections");
   }
@@ -157,11 +154,11 @@ export async function seedDemoConnections(): Promise<void> {
     log.atInfo().log(`Seeding demo connections for workspace: ${workspaceId}`);
 
     // Parse DATABASE_URL
-    const dbConfig = parseDatabaseUrl(serverEnv.DATABASE_URL);
+    const dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
     log.atInfo().log(`Parsed database config: host=${dbConfig.host}, database=${dbConfig.database}`);
 
     // Use "jitsu-data" schema instead of the one from DATABASE_URL
-    const targetSchema = serverEnv.DEMO_DESTINATION_SCHEMA || "jitsu-data";
+    const targetSchema = process.env.DEMO_DESTINATION_SCHEMA || "jitsu-data";
 
     // 1. Handle Demo Destination
     const existingDestinations = await db.prisma().configurationObject.findMany({

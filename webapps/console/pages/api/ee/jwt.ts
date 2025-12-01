@@ -1,10 +1,9 @@
 import { Api, inferUrl, nextJsApiHandler, verifyAccess } from "../../../lib/api";
 import { z } from "zod";
 import { createJwt } from "../../../lib/server/ee";
-import { getServerEnv } from "../../../lib/server/serverEnv";
 
 export function isEEAvailable(): boolean {
-  return !!getServerEnv().EE_CONNECTION;
+  return !!process.env.EE_CONNECTION;
 }
 
 export const api: Api = {

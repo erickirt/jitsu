@@ -7,10 +7,8 @@ import { getServerLog } from "../../../../lib/server/log";
 import { tryManageOauthCreds } from "../../../../lib/server/oauth/services";
 import { syncError } from "../../../../lib/server/sync";
 import hash from "stable-hash";
-import { getServerEnv } from "../../../../lib/server/serverEnv";
 
 const log = getServerLog("sync-discover");
-const serverEnv = getServerEnv();
 
 const resultType = z.object({
   ok: z.boolean(),
@@ -44,10 +42,10 @@ export default createRoute()
     await verifyAccess(user, workspaceId);
 
     const syncURL = requireDefined(
-      serverEnv.SYNCCTL_URL,
+      process.env.SYNCCTL_URL,
       `env SYNCCTL_URL is not set. Sync Controller is required to run sources`
     );
-    const syncAuthKey = serverEnv.SYNCCTL_AUTH_KEY ?? "";
+    const syncAuthKey = process.env.SYNCCTL_AUTH_KEY ?? "";
     const authHeaders: any = {};
     if (syncAuthKey) {
       authHeaders["Authorization"] = `Bearer ${syncAuthKey}`;

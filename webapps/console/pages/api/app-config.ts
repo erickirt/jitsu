@@ -5,17 +5,16 @@ import { getEeConnection } from "../../lib/server/ee";
 import { isEEAvailable } from "./ee/jwt";
 import { isFirebaseEnabled, requireFirebaseOptions } from "../../lib/server/firebase-server";
 import { nangoConfig } from "../../lib/server/oauth/nango-config";
+import { isTruish } from "../../lib/shared/chores";
 import { readOnlyUntil } from "../../lib/server/read-only-mode";
 import { productTelemetryEnabled, productTelemetryHost } from "../../lib/server/telemetry";
 import { mainDataDomain } from "../../lib/server/data-domains";
 import { customDomainCnames } from "../../lib/server/custom-domains";
 import { credentialsLoginEnabled, githubLoginEnabled, oidcLoginEnabled } from "../../lib/nextauth.config";
-import { getServerEnv } from "../../lib/server/serverEnv";
 
 function isSignupDisabled() {
-  const serverEnv = getServerEnv();
   return (
-    serverEnv.DISABLE_SIGNUP || //explicitly disabled
+    isTruish(process.env.DISABLE_SIGNUP) || //explicitly disabled
     (!githubLoginEnabled && !oidcLoginEnabled)
   ); // we don't support credentials signup yet ;
 }
@@ -23,10 +22,9 @@ function isSignupDisabled() {
 export default createRoute()
   .GET({ result: AppConfig, auth: false })
   .handler(async ({ req }) => {
-    const serverEnv = getServerEnv();
     const publicEndpoints = getAppEndpoint(req);
     const dataHost = mainDataDomain;
-    const ingestUrl = serverEnv.JITSU_INGEST_PUBLIC_URL;
+    const ingestUrl = process.env.JITSU_INGEST_PUBLIC_URL;
     const nextAuth = credentialsLoginEnabled || githubLoginEnabled || oidcLoginEnabled;
     const auth = {
       ...(isFirebaseEnabled()
@@ -43,10 +41,10 @@ export default createRoute()
             },
           }
         : {}),
-      dynamicOidc: serverEnv.DYNAMIC_OIDC_ENABLED,
+      dynamicOidc: isTruish(process.env.DYNAMIC_OIDC_ENABLED),
     };
     return {
-      docsUrl: serverEnv.JITSU_DOCUMENTATION_URL || "https://docs.jitsu.com/",
+      docsUrl: process.env.JITSU_DOCUMENTATION_URL || "https://docs.jitsu.com/",
       readOnlyUntil: readOnlyUntil?.toISOString(),
       ee: {
         available: isEEAvailable(),
@@ -57,10 +55,10 @@ export default createRoute()
       billingEnabled: isEEAvailable(),
       customDomainsEnabled: customDomainCnames && customDomainCnames.length > 0,
       syncs: {
-        enabled: serverEnv.SYNCS_ENABLED,
+        enabled: isTruish(process.env.SYNCS_ENABLED),
         scheduler: {
-          enabled: !!serverEnv.GOOGLE_SCHEDULER_KEY,
-          provider: serverEnv.GOOGLE_SCHEDULER_KEY ? "google-cloud-scheduler" : undefined,
+          enabled: !!process.env.GOOGLE_SCHEDULER_KEY,
+          provider: process.env.GOOGLE_SCHEDULER_KEY ? "google-cloud-scheduler" : undefined,
         },
       },
       frontendTelemetry: {
@@ -70,19 +68,19 @@ export default createRoute()
       publicEndpoints: {
         protocol: publicEndpoints.protocol,
         host: publicEndpoints.hostname,
-        cname: serverEnv.CNAME || "cname.jitsu.com",
+        cname: process.env.CNAME || "cname.jitsu.com",
         dataHost,
         ingestUrl,
         port: publicEndpoints.isDefaultPort ? undefined : publicEndpoints.port,
       },
-      logLevel: (serverEnv.FRONTEND_LOG_LEVEL || serverEnv.LOG_LEVEL || "info") as any,
+      logLevel: (process.env.FRONTEND_LOG_LEVEL || process.env.LOG_LEVEL || "info") as any,
       nango: nangoConfig.enabled
         ? {
             publicKey: nangoConfig.publicKey,
             host: nangoConfig.nangoApiHost,
           }
         : undefined,
-      mitCompliant: serverEnv.MIT_COMPLIANT,
+      mitCompliant: isTruish(process.env.MIT_COMPLIANT),
     };
   })
   .toNextApiHandler();

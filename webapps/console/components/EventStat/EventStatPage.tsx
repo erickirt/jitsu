@@ -12,7 +12,6 @@ import { useConfigObjectLinks, useConfigObjectList, UseConfigObjectLinkResult } 
 import { DestinationTitle } from "../../pages/[workspaceId]/destinations";
 import { StreamTitle } from "../../pages/[workspaceId]/streams";
 import { Chart } from "chart.js/auto";
-import { getClientEnv } from "../../lib/shared/clientEnv";
 
 const TotalEvents: React.FC<{ val?: number; className?: string }> = ({ val, className }) => (
   <div className={className}>
@@ -165,7 +164,6 @@ export const ChartView: React.FC<{
   status: KnownEventStatus[];
 }> = ({ report, dateFormat, status }) => {
   const wrapperRef = React.useRef<HTMLCanvasElement>(null);
-  const clientEnv = getClientEnv();
   const data = [...report.breakdown].sort((a, b) => a.period.getTime() - b.period.getTime());
   useEffect(() => {
     if (wrapperRef.current) {
@@ -173,7 +171,7 @@ export const ChartView: React.FC<{
         type: "bar",
         options: {
           //for dev env double animation due to double rendering is just annoying
-          animation: clientEnv.NODE_ENV === "development" ? false : undefined,
+          animation: process.env.NODE_ENV === "development" ? false : undefined,
           maintainAspectRatio: false,
           plugins: {
             legend: {

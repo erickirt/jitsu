@@ -6,13 +6,11 @@ import { defaultDataRetentionSettings } from "../../../../../lib/shared/data-ret
 import merge from "lodash/merge";
 import { sendEmail } from "../../../../../lib/server/mail";
 import { SessionUser } from "../../../../../lib/schema";
-import { getServerEnv } from "../../../../../lib/server/serverEnv";
 
 async function updateEmailNotification(data: any, workspace, user: SessionUser) {
-  const serverEnv = getServerEnv();
-  if (serverEnv.ADMIN_EMAIL) {
+  if (process.env.ADMIN_EMAIL) {
     await sendEmail({
-      to: serverEnv.ADMIN_EMAIL,
+      to: process.env.ADMIN_EMAIL,
       subject: `Retention policy update on ${workspace.slug} has been requested`,
       html: [
         `<p><b>${user.name}</b> has requested retention policy update on workspace <b>${workspace.slug}</b> (<code>${workspace.id}</code>)</p>`,

@@ -6,7 +6,6 @@ import mjml2html from "mjml";
 
 import { randomUUID } from "crypto";
 import { renderToString } from "react-dom/server";
-import { getServerEnv } from "./serverEnv";
 
 function parseConnectionString(connectionString: string) {
   if (connectionString.startsWith("smtp://")) {
@@ -26,9 +25,8 @@ function parseConnectionString(connectionString: string) {
 }
 
 function initNodeMailer() {
-  const serverEnv = getServerEnv();
-  if (serverEnv.SMTP_CONNECTION_STRING) {
-    const { host, port, user, password } = parseConnectionString(serverEnv.SMTP_CONNECTION_STRING);
+  if (process.env.SMTP_CONNECTION_STRING) {
+    const { host, port, user, password } = parseConnectionString(process.env.SMTP_CONNECTION_STRING);
 
     try {
       const credentials = {
@@ -47,7 +45,7 @@ function initNodeMailer() {
       return nodemailer.createTransport(credentials);
     } catch (e) {
       console.error(
-        `Error initializing SMTP transport ${serverEnv.SMTP_CONNECTION_STRING}: ${getErrorMessage(e)}`,
+        `Error initializing SMTP transport ${process.env.SMTP_CONNECTION_STRING}: ${getErrorMessage(e)}`,
         e
       );
       throw new Error(`Can't connect to SMTP server`);
@@ -72,20 +70,18 @@ function initNodeMailer() {
 const transport = initNodeMailer();
 
 export function isMailAvailable() {
-  const serverEnv = getServerEnv();
-  return !!serverEnv.SMTP_CONNECTION_STRING;
+  return !!process.env.SMTP_CONNECTION_STRING;
 }
 
 export async function sendEmail(mailOptions: Mail.Options) {
-  const serverEnv = getServerEnv();
   if (!mailOptions.from) {
-    mailOptions.from = serverEnv.EMAIL_TRANSACTIONAL_SENDER
-      ? serverEnv.EMAIL_TRANSACTIONAL_SENDER.replace("Jitsu Support", "Jitsu Team")
+    mailOptions.from = process.env.EMAIL_TRANSACTIONAL_SENDER
+      ? process.env.EMAIL_TRANSACTIONAL_SENDER.replace("Jitsu Support", "Jitsu Team")
       : undefined;
   }
   if (!mailOptions.replyTo) {
-    mailOptions.replyTo = serverEnv.EMAIL_TRANSACTIONAL_REPLY_TO
-      ? serverEnv.EMAIL_TRANSACTIONAL_REPLY_TO.replace("Jitsu Support", "Jitsu Team")
+    mailOptions.replyTo = process.env.EMAIL_TRANSACTIONAL_REPLY_TO
+      ? process.env.EMAIL_TRANSACTIONAL_REPLY_TO.replace("Jitsu Support", "Jitsu Team")
       : undefined;
   }
   const logEntry = await db.prisma().emailLog.create({

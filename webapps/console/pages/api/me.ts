@@ -6,10 +6,8 @@ import { db } from "../../lib/server/db";
 import { getServerLog } from "../../lib/server/log";
 import { getUserPreferenceService } from "../../lib/server/user-preferences";
 import { SessionUser } from "../../lib/schema";
-import { getServerEnv } from "../../lib/server/serverEnv";
 
-const serverEnv = getServerEnv();
-const allowedOrigins = serverEnv.ALLOWED_API_ORIGINS || "*.[originTopLevelDomain],[originTopLevelDomain]";
+const allowedOrigins = process.env.ALLOWED_API_ORIGINS || "*.[originTopLevelDomain],[originTopLevelDomain]";
 
 function getMatcher(mask: string): (test: string) => boolean {
   if (mask.startsWith("*")) {

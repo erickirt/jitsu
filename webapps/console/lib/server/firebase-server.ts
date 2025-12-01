@@ -5,16 +5,15 @@ import admin from "firebase-admin";
 import * as JSON5 from "json5";
 import { getErrorMessage, getSingleton, requireDefined, Singleton } from "juava";
 import { getServerLog } from "./log";
-import { getServerEnv } from "./serverEnv";
 
 export type FirebaseOptions = {
   admin: any;
   client: any;
 };
 
-function parseEnv(envName: string, serverEnv: ReturnType<typeof getServerEnv>) {
+function parseEnv(envName: string) {
   try {
-    return JSON5.parse(serverEnv[envName as keyof typeof serverEnv] as string);
+    return JSON5.parse(process.env[envName] as string);
   } catch (e) {
     throw new Error(`env ${envName} is not a valid JSON: ${getErrorMessage(e)}`, e as Error);
   }
@@ -24,13 +23,12 @@ export function getFirebaseOptions(): FirebaseOptions | undefined {
   if (!isFirebaseEnabled()) {
     return undefined;
   }
-  const serverEnv = getServerEnv();
-  if (serverEnv.FIREBASE_AUTH) {
-    return parseEnv("FIREBASE_AUTH", serverEnv);
+  if (process.env.FIREBASE_AUTH) {
+    return parseEnv("FIREBASE_AUTH");
   } else {
     return {
-      admin: parseEnv("FIREBASE_ADMIN", serverEnv),
-      client: parseEnv("FIREBASE_CLIENT_CONFIG", serverEnv),
+      admin: parseEnv("FIREBASE_ADMIN"),
+      client: parseEnv("FIREBASE_CLIENT_CONFIG"),
     };
   }
 }
@@ -40,13 +38,11 @@ export function requireFirebaseOptions(): FirebaseOptions {
 }
 
 export function isFirebaseEnabled(): boolean {
-  const serverEnv = getServerEnv();
-  return !!(serverEnv.FIREBASE_AUTH || (serverEnv.FIREBASE_ADMIN && serverEnv.FIREBASE_CLIENT_CONFIG));
+  return !!(process.env.FIREBASE_AUTH || (process.env.FIREBASE_ADMIN && process.env.FIREBASE_CLIENT_CONFIG));
 }
 
 export function isGithubEnabled(): boolean {
-  const serverEnv = getServerEnv();
-  return !!(serverEnv.GITHUB_CLIENT_ID && serverEnv.GITHUB_CLIENT_SECRET);
+  return !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
 }
 
 const bearerPrefix = "bearer ";

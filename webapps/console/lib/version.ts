@@ -1,5 +1,3 @@
-import { getServerEnv } from "./server/serverEnv";
-
 export type ApplicationVersion = {
   /**
    * Version as 3.2.1 or "dev"
@@ -36,13 +34,7 @@ function getGit(env: EnvVars): ApplicationVersion["git"] {
 }
 
 export function getApplicationVersion(): ApplicationVersion {
-  const serverEnv = getServerEnv();
-  const env: EnvVars = {
-    JITSU_VERSION_COMMIT_SHA: serverEnv.JITSU_VERSION_COMMIT_SHA,
-    JITSU_VERSION_DOCKER_TAG: serverEnv.JITSU_VERSION_DOCKER_TAG,
-    JITSU_VERSION_STRING: serverEnv.JITSU_VERSION_STRING,
-    VERCEL_GIT_COMMIT_SHA: serverEnv.VERCEL_GIT_COMMIT_SHA,
-  };
+  const env = process.env as EnvVars;
   return {
     version: env.JITSU_VERSION_STRING || "dev",
     stream: env.JITSU_VERSION_DOCKER_TAG || "dev",

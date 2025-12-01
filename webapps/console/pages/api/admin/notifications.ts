@@ -21,13 +21,12 @@ import { sendEmail, UnsubscribeLinkProps, WorkspaceEmailProps } from "@jitsu-int
 import { DefaultUserNotificationsPreferences } from "../../../lib/server/user-preferences";
 import pick from "lodash/pick";
 import ConnectionDeadLettered from "../../../emails/connection-dead-lettered";
-import { getServerEnv } from "../../../lib/server/serverEnv";
 
 dayjs.extend(utc);
 
 const log = getServerLog("notifications");
 
-const SLACK_WEBHOOK_URL = getServerEnv().SLACK_WEBHOOK_URL;
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
 export type StatusChange = Omit<z.infer<typeof StatusChangeDbModel>, "id"> & { id?: bigint };
 
@@ -663,9 +662,7 @@ async function loadBatchStatusesChanges(
   let processed = 0;
   let statusChanges = 0;
 
-  const serverEnv = getServerEnv();
-  const metricsSchema = serverEnv.CLICKHOUSE_METRICS_SCHEMA ||
-    serverEnv.CLICKHOUSE_DATABASE || "newjitsu_metrics";
+  const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
   // noinspection SqlResolve
   const eventsLogQuery: string = `select actorId, level, timestamp, message
@@ -763,9 +760,7 @@ async function loadDeadStatusesChanges(
   let processed = 0;
   let statusChanges = 0;
 
-  const serverEnv = getServerEnv();
-  const metricsSchema = serverEnv.CLICKHOUSE_METRICS_SCHEMA ||
-    serverEnv.CLICKHOUSE_DATABASE || "newjitsu_metrics";
+  const metricsSchema = process.env.CLICKHOUSE_METRICS_SCHEMA || process.env.CLICKHOUSE_DATABASE || "newjitsu_metrics";
 
   // noinspection SqlResolve
   const eventsLogQuery: string = `select workspaceId, actorId, type, 

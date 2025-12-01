@@ -94,7 +94,7 @@ export const gtmPlugin: InternalPlugin<GtmDestinationCredentials> = {
         pushToDataLayer(identifyEvent);
         break;
     }
-    dataLayer.push(function (this: { reset: () => void }) {
+    dataLayer.push(function () {
       this.reset();
     });
   },

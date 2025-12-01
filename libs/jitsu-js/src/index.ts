@@ -276,7 +276,7 @@ export function jitsuAnalytics(_opts: JitsuOptions): AnalyticsInterface {
   // }
 }
 
-export type {
+export {
   Callback,
   DispatchedEvent,
   ID,

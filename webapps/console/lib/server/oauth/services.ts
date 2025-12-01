@@ -1,7 +1,6 @@
 import { ServiceConfig } from "../../schema";
 import { requireDefined, rpc } from "juava";
 import { nangoConfig } from "./nango-config";
-import { getServerEnv } from "../serverEnv";
 
 export type PackageId = `airbyte/${string}`;
 /**
@@ -195,12 +194,11 @@ const googleAds: OauthDecorator = {
     };
   },
   merge: (opts, integrationObj, connectionObj) => {
-    const serverEnv = getServerEnv();
     const mCred = { ...opts.credentials };
     mCred.developer_token = manage(
       mCred.developer_token,
       requireDefined(
-        serverEnv.GOOGLE_ADS_DEVELOPER_TOKEN,
+        process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
         "GOOGLE_ADS_DEVELOPER_TOKEN is not configured, google ads integration will not work"
       )
     );
