@@ -56,6 +56,21 @@ export const UserNotificationSettings: React.FC<{
               <Switch id="batches" />
             </Form.Item>{" "}
           </div>
+          <div className="flex flex-row w-full justify-between items-center border rounded-t-lg p-4">
+            <label htmlFor="dead" className="font-main flex flex-col gap-1">
+              Unrecoverable Functions Errors
+              <span className="text-xs text-textLight">
+                Send email reports when the number of{" "}
+                <a target={"_blank"} rel="noopener noreferrer" href={"https://docs.jitsu.com/functions/pipeline"}>
+                  Unrecoverable Errors
+                </a>{" "}
+                in a connection functions pipeline increases.
+              </span>
+            </label>
+            <Form.Item name="dead" noStyle>
+              <Switch id="dead" />
+            </Form.Item>{" "}
+          </div>
           <div className="flex flex-row w-full justify-between items-center border-x border-collapse p-4">
             <label htmlFor="syncs" className="font-main flex flex-col gap-1">
               Connector Sync statuses
@@ -83,7 +98,7 @@ export const UserNotificationSettings: React.FC<{
                 type={"number"}
                 min={0}
                 max={720}
-                defaultValue={24}
+                defaultValue={168}
                 className="w-10"
                 style={{ width: 75 }}
               />
