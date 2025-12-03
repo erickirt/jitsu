@@ -6,6 +6,7 @@ import { get, useApi } from "../../lib/useApi";
 import { ErrorCard } from "../GlobalError/GlobalError";
 import { LoadingAnimation } from "../GlobalLoader/GlobalLoader";
 import { useUser, WorkspaceContext } from "../../lib/context";
+import { eventTypeLabels } from "../../pages/[workspaceId]/settings/notifications";
 
 export const UserNotificationSettings: React.FC<{
   className?: string;
@@ -47,10 +48,8 @@ export const UserNotificationSettings: React.FC<{
         <div className="flex flex-col mt-4 w-full">
           <div className="flex flex-row w-full justify-between items-center border rounded-t-lg p-4">
             <label htmlFor="batches" className="font-main flex flex-col gap-1">
-              Events Batches statuses
-              <span className="text-xs text-textLight">
-                Send email reports on events batch processing failures and recoveries.
-              </span>
+              {eventTypeLabels["batch"].label}
+              <span className="text-xs text-textLight">{eventTypeLabels["batch"].description}</span>
             </label>
             <Form.Item name="batches" noStyle>
               <Switch id="batches" />
@@ -58,14 +57,8 @@ export const UserNotificationSettings: React.FC<{
           </div>
           <div className="flex flex-row w-full justify-between items-center border rounded-t-lg p-4">
             <label htmlFor="dead" className="font-main flex flex-col gap-1">
-              Unrecoverable Functions Errors
-              <span className="text-xs text-textLight">
-                Send email reports when the number of{" "}
-                <a target={"_blank"} rel="noopener noreferrer" href={"https://docs.jitsu.com/functions/pipeline"}>
-                  Unrecoverable Errors
-                </a>{" "}
-                in a connection functions pipeline increases.
-              </span>
+              {eventTypeLabels["dead"].label}
+              <span className="text-xs text-textLight">{eventTypeLabels["dead"].description}</span>
             </label>
             <Form.Item name="dead" noStyle>
               <Switch id="dead" />
@@ -73,10 +66,8 @@ export const UserNotificationSettings: React.FC<{
           </div>
           <div className="flex flex-row w-full justify-between items-center border-x border-collapse p-4">
             <label htmlFor="syncs" className="font-main flex flex-col gap-1">
-              Connector Sync statuses
-              <span className="text-xs text-textLight">
-                Send email reports on failed or partially successful sync runs and their recoveries.
-              </span>
+              {eventTypeLabels["sync"].label}
+              <span className="text-xs text-textLight">{eventTypeLabels["sync"].description}</span>
             </label>
             <Form.Item name="syncs" noStyle>
               <Switch id="syncs" />
