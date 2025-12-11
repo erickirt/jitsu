@@ -1,9 +1,7 @@
 import { createServer, SimpleSyrup } from "../simple-syrup";
 import { AnalyticsClientEvent, AnalyticsInterface } from "@jitsu/protocols/analytics";
 import { getTopLevelDomain } from "../../src/tlds";
-
-const jitsuAnalytics = require("../../dist/jitsu.cjs.js").jitsuAnalytics;
-const fetchImpl = require("node-fetch-commonjs");
+import { jitsuAnalytics } from "../../src";
 
 describe("Test Jitsu NodeJS client", () => {
   let server: SimpleSyrup;
@@ -279,7 +277,6 @@ describe("Test Jitsu NodeJS client", () => {
       writeKey: "key:secret",
       host: server.baseUrl,
       debug: true,
-      fetch: fetchImpl,
     });
     await jitsu.track("testTrack");
 

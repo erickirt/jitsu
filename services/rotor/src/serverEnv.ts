@@ -10,6 +10,7 @@ const ServerEnvSchema = z.object({
   ROTOR_HTTP_PORT: z.string().optional().default("3401"),
   PORT: z.string().optional().default("3401"),
   ROTOR_METRICS_PORT: z.string().optional().default("9091"),
+  ROTOR_MODE: z.enum(["rotor", "profiles", "functions"]).optional().default("rotor"),
   HTTP_ONLY: z.string().optional().default("false"),
 
   // ClickHouse Configuration
@@ -18,8 +19,8 @@ const ServerEnvSchema = z.object({
   CLICKHOUSE_SSL: z.string().optional().default("false"),
   CLICKHOUSE_USERNAME: z.string().optional().default("default"),
   CLICKHOUSE_PASSWORD: z.string().optional(),
-  CLICKHOUSE_DATABASE: z.string().optional(),
-  CLICKHOUSE_METRICS_SCHEMA: z.string().optional(),
+  CLICKHOUSE_DATABASE: z.string().optional().default("newjitsu_metrics"),
+  CLICKHOUSE_METRICS_SCHEMA: z.string().optional().default("newjitsu_metrics"),
 
   // Redis Configuration
   REDIS_URL: z.string().optional(),
@@ -39,7 +40,7 @@ const ServerEnvSchema = z.object({
   MAXMIND_LOCALE: z.string().optional(),
 
   // Kafka Configuration
-  KAFKA_BOOTSTRAP_SERVERS: z.string(),
+  KAFKA_BOOTSTRAP_SERVERS: z.string().optional(),
   KAFKA_SSL: z.string().optional().default("false"),
   KAFKA_SSL_SKIP_VERIFY: z.string().optional().default("false"),
   KAFKA_SASL: z.string().optional(),
@@ -50,12 +51,12 @@ const ServerEnvSchema = z.object({
   KAFKA_DESTINATIONS_RETRY_TOPIC_NAME: z.string().optional().default("destination-messages-retry"),
   KAFKA_DESTINATIONS_MT_TOPIC_NAME: z.string().optional().default("destination-messages-mt"),
   KAFKA_CONSUMER_GROUP_ID: z.string().optional(),
-  KAFKA_TOPIC_COMPRESSION: z.string().optional(),
+  KAFKA_TOPIC_COMPRESSION: z.string().optional().default("snappy"),
   CONSUMER_PROTOCOL: z.string().optional(),
 
   // Bulker Configuration
-  BULKER_URL: z.string(),
-  BULKER_AUTH_KEY: z.string(),
+  BULKER_URL: z.string().optional(),
+  BULKER_AUTH_KEY: z.string().optional(),
 
   // Application Configuration
   APPLICATION_ID: z.string().optional(),
@@ -104,7 +105,7 @@ const ServerEnvSchema = z.object({
   REPOSITORY_CACHE_DIR: z.string().optional(),
 
   // MongoDB Configuration
-  MONGODB_URL: z.string(),
+  MONGODB_URL: z.string().optional(),
   MONGODB_TIMEOUT_MS: z.string().optional().default("1000"),
   MONGODB_NETWORK_COMPRESSION: z.string().optional(),
 
@@ -125,11 +126,34 @@ const ServerEnvSchema = z.object({
   NANGO_PUBLIC_KEY: z.string().optional(),
   NANGO_CALLBACK: z.string().optional(),
   NANGO_HOST: z.string().optional(),
+
+  // Profile Builder's settings
+  INSTANCES_COUNT: z.string().optional().default("1"),
+  APP_DATABASE_URL: z.string().optional(),
+  DATABASE_URL: z.string().optional(),
+  KAFKA_TOPIC_PREFIX: z.string().optional().default(""),
+  KAFKA_TOPIC_REPLICATION_FACTOR: z.string().optional().default("1"),
+  KAFKA_TOPIC_RETENTION_HOURS: z.string().optional().default("48"),
+  KAFKA_TOPIC_SEGMENT_HOURS: z.string().optional().default("24"),
+  METRICS_INTERVAL_MS: z.string().optional().default("5000"),
+  PRIORITY_LEVELS: z.string().optional().default("3"),
+
+  // Functions Server settings
+  CONFIG_DIR: z.string().optional().default("./data"),
+  INIT_FILES: z
+    .string()
+    .optional()
+    .transform(v => v === "true" || v === "1"),
 });
 
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;
 
+let serverEnvCache: ServerEnv | undefined;
+
 export function getServerEnv(): ServerEnv {
+  if (serverEnvCache) {
+    return serverEnvCache;
+  }
   const result = ServerEnvSchema.safeParse(process.env);
 
   if (!result.success) {
@@ -151,6 +175,6 @@ export function getServerEnv(): ServerEnv {
 
     throw new Error(`Following env vars are misconfigured:\n${errors.join("\n")}`);
   }
-
-  return result.data;
+  serverEnvCache = result.data;
+  return serverEnvCache;
 }
