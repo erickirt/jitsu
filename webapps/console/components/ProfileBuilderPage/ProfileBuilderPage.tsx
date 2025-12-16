@@ -108,8 +108,8 @@ const statuses: Record<
     title: "BUILDING",
     documentation: (
       <>
-        Profile builder is building initial profiles. In can happen after the first configuration, or after a change has
-        been made in the code. You can monitor the progress in the progress section
+        Profile builder is processing the queue of profiles. You can monitor the progress in the <b>Build Progress</b>{" "}
+        section
       </>
     ),
     icon: <Hammer className="full" />,
@@ -137,7 +137,7 @@ const Header: React.FC<{ status: ProfileBuilderStatus | "loading"; pbEnabled: bo
   return (
     <div className="flex items-center gap-2 mb-4">
       <h3 className="text-3xl">Profile Builder</h3>
-      <Tag className="h-6 text-2xl" color={"blue"} rootClassName="cursor-pointer">
+      <Tag className="text-2xl" color={"blue"} rootClassName="cursor-pointer">
         <Tooltip title={statusDetails.documentation}>
           <div className="flex justify-between gap-2 items-center">
             <div className="w-4 h-4">{statusDetails.icon}</div>
@@ -558,53 +558,51 @@ function useProfileBuilderData(
       setLoading(true);
       return;
     }
-    (async () => {
-      get(`/api/${workspace.id}/config/profile-builder?init=true`)
-        .then(res => res.profileBuilders)
-        .then(profileBuilders => {
-          let status: ProfileBuilderStatus = "incomplete";
-          if (billing.enabled) {
-            if (billing.settings?.profileBuilderEnabled) {
-              setEnabled(true);
-            }
+    get(`/api/${workspace.id}/config/profile-builder?init=true`)
+      .then(res => res.profileBuilders)
+      .then(profileBuilders => {
+        let status: ProfileBuilderStatus = "incomplete";
+        if (billing.enabled) {
+          if (billing.settings?.profileBuilderEnabled) {
+            setEnabled(true);
           }
-          if (profileBuilders?.length) {
-            const pb = profileBuilders[0];
-            if (pb.version > 0 && pb.destinationId) {
-              status = "ready";
-            }
-            setData({
-              status: status,
-              id: pb.id,
-              name: pb.name,
-              version: pb.version,
-              functionId: pb.functions?.length ? pb.functions[0].functionId : undefined,
-              draft: pb.functions?.length ? pb.functions[0].function.config.draft : defaultProfileBuilderFunction,
-              draftUpdatedAt: pb.functions?.length ? pb.functions[0].function.updatedAt : undefined,
-              code: pb.functions?.length ? pb.functions[0].function.config.code : defaultProfileBuilderFunction,
-              cli: pb.functions?.length ? !!pb.functions[0].function.config.slug : undefined,
-              settings: {
-                storage: pb.intermediateStorageCredentials,
-                destinationId: pb.destinationId,
-                tableName: pb.connectionOptions?.tableName,
-                variables: pb.connectionOptions?.variables,
-                functions: pb.connectionOptions?.functions,
-                profileWindow: pb.connectionOptions?.profileWindow,
-              },
-              createdAt: pb.createdAt,
-              updatedAt: pb.updatedAt,
-            });
-            return;
-          } else {
-            setData({
-              ...defaultProfileBuilderData,
-              draft: defaultProfileBuilderFunction,
-            });
+        }
+        if (profileBuilders?.length) {
+          const pb = profileBuilders[0];
+          if (pb.version > 0 && pb.destinationId) {
+            status = "ready";
           }
-        })
-        .catch(e => setError(e))
-        .finally(() => setLoading(false));
-    })();
+          setData({
+            status: status,
+            id: pb.id,
+            name: pb.name,
+            version: pb.version,
+            functionId: pb.functions?.length ? pb.functions[0].functionId : undefined,
+            draft: pb.functions?.length ? pb.functions[0].function.config.draft : defaultProfileBuilderFunction,
+            draftUpdatedAt: pb.functions?.length ? pb.functions[0].function.updatedAt : undefined,
+            code: pb.functions?.length ? pb.functions[0].function.config.code : defaultProfileBuilderFunction,
+            cli: pb.functions?.length ? !!pb.functions[0].function.config.slug : undefined,
+            settings: {
+              storage: pb.intermediateStorageCredentials,
+              destinationId: pb.destinationId,
+              tableName: pb.connectionOptions?.tableName,
+              variables: pb.connectionOptions?.variables,
+              functions: pb.connectionOptions?.functions,
+              profileWindow: pb.connectionOptions?.profileWindow,
+            },
+            createdAt: pb.createdAt,
+            updatedAt: pb.updatedAt,
+          });
+          return;
+        } else {
+          setData({
+            ...defaultProfileBuilderData,
+            draft: defaultProfileBuilderFunction,
+          });
+        }
+      })
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
   }, [billing.enabled, billing.loading, workspace, billing.settings, refreshDate.getTime()]);
   return { isLoading: loading, error, data, enabled } as any;
 }

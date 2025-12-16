@@ -256,7 +256,7 @@ const EventsBrowser0 = ({
                 })
             : []),
         ];
-  }, [destinations, destinationsMap, mappedConnections, profileBuilders, streamType, streams]);
+  }, [destinations, hasActiveProfileBuilder, mappedConnections, profileBuilders, streamType, streams]);
 
   const entitiesMap = useMemo(() => {
     return streamType == "incoming" ? streamsMap : arrayToMap(entities as { id: any }[]);
@@ -466,6 +466,7 @@ const EventsBrowser0 = ({
       }
     }
   }, [
+    deadLetterApi,
     eventsLogApi,
     streamType,
     entitiesMap,
@@ -1125,6 +1126,20 @@ const BulkerAPIResponseDrawer = ({ event }: { event: any }) => {
     />
   );
 };
+const DestinationsList = (props: { mappedConnections: Record<string, any>; destinationIds: string[] }) => {
+  return (
+    <div className={"flex flex-row flex-wrap gap-4"}>
+      {props.destinationIds
+        .map(d => props.mappedConnections[d]?.destination)
+        .filter(d => typeof d !== "undefined")
+        .map((d, i) => (
+          <WLink key={i} href={`/destinations?id=${d.id}`}>
+            <DestinationTitle size={"small"} destination={d} />
+          </WLink>
+        ))}
+    </div>
+  );
+};
 
 const IncomingEventDrawer = ({
   event,
@@ -1149,21 +1164,6 @@ const IncomingEventDrawer = ({
   const drawerData = useMemo(() => {
     const drawerData: { name: ReactNode; value: ReactNode }[] = [];
     if (event) {
-      const DestinationsList = (props: { mappedConnections: Record<string, any>; destinationIds: string[] }) => {
-        return (
-          <div className={"flex flex-row flex-wrap gap-4"}>
-            {props.destinationIds
-              .map(d => props.mappedConnections[d]?.destination)
-              .filter(d => typeof d !== "undefined")
-              .map((d, i) => (
-                <WLink key={i} href={`/destinations?id=${d.id}`}>
-                  <DestinationTitle size={"small"} destination={d} />
-                </WLink>
-              ))}
-          </div>
-        );
-      };
-
       drawerData.push({ name: <UTCHeader />, value: <UTCDate date={event.date} /> });
       drawerData.push({ name: "Source", value: event.ingestType });
       drawerData.push({ name: "Message ID", value: event.messageId });

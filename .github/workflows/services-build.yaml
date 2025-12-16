@@ -95,7 +95,6 @@ jobs:
           fetch-tags: true
 
       - name: Log in to Docker Hub
-        if: ${{ !inputs.dont_publish }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -133,8 +132,6 @@ jobs:
           BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\/\_]/-/g' | sed 's/[^a-z0-9.-]//g')
 
           for TARGET in $TARGETS; do
-            echo "🚀 Building ${TARGET} for AMD64 and ARM64..."
-
             # Build tags list
             # 1. Version tag (e.g., 1.2.3-canary.1.20251113.abc1234)
             TAGS="-t ${REGISTRY}/${TARGET}:${VERSION}"
@@ -150,19 +147,16 @@ jobs:
             # 3. Branch + commit tag (e.g., feat-a.abc1234)
             TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${BRANCH_SANITIZED}.${SHORT_SHA}"
 
-            # Use AMD64 only for canary (faster), multi-arch for stable/beta
-            if [ "${CHANNEL}" = "canary" ]; then
+            # Add --push flag only if we're publishing
+            if [ "${{ inputs.dont_publish }}" != "true" ]; then
+              GOAL_FLAG="--push"
               PLATFORM="linux/amd64,linux/arm64"
             else
-              #PLATFORM="linux/amd64"
-              PLATFORM="linux/amd64,linux/arm64"
+              GOAL_FLAG=""
+              PLATFORM="linux/arm64"
             fi
-
-            # Add --push flag only if we're publishing
-            PUSH_FLAG=""
-            if [ "${{ inputs.dont_publish }}" != "true" ]; then
-              PUSH_FLAG="--push"
-            fi
+          
+            echo "🚀 Building ${TARGET} for ${PLATFORM}..."
 
             docker buildx build \
               --target ${TARGET} \
@@ -173,7 +167,7 @@ jobs:
               --build-arg CI=true \
               ${TAGS} \
               -f all.Dockerfile \
-              ${PUSH_FLAG} \
+              ${GOAL_FLAG} \
               .
           done
 
@@ -198,7 +192,6 @@ jobs:
           submodules: true
 
       - name: Log in to Docker Hub
-        if: ${{ !inputs.dont_publish }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -226,8 +219,6 @@ jobs:
           BRANCH_SANITIZED=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | sed 's/[\/\_]/-/g' | sed 's/[^a-z0-9.-]//g')
 
           for TARGET in $TARGETS; do
-            echo "🚀 Building ${TARGET} for AMD64 and ARM64..."
-
             # Build tags list
             # 1. Version tag (e.g., 1.2.3-canary.1.20251113.abc1234)
             TAGS="-t ${REGISTRY}/${TARGET}:${VERSION}"
@@ -242,19 +233,17 @@ jobs:
 
             # 3. Branch + commit tag (e.g., feat-a.abc1234)
             TAGS="${TAGS} -t ${REGISTRY}/${TARGET}:${BRANCH_SANITIZED}.${SHORT_SHA}"
-
-            # Use AMD64 only for canary (faster), multi-arch for stable/beta
-            if [ "${CHANNEL}" = "canary" ]; then
+            
+            # Add --push flag only if we're publishing
+            if [ "${{ inputs.dont_publish }}" != "true" ]; then
+              GOAL_FLAG="--push"
               PLATFORM="linux/amd64,linux/arm64"
             else
-              PLATFORM="linux/amd64,linux/arm64"
+              GOAL_FLAG=""
+              PLATFORM="linux/arm64"
             fi
-
-            # Add --push flag only if we're publishing
-            PUSH_FLAG=""
-            if [ "${{ inputs.dont_publish }}" != "true" ]; then
-              PUSH_FLAG="--push"
-            fi
+          
+            echo "🚀 Building ${TARGET} for ${PLATFORM}..."
 
             docker buildx build \
               --target ${TARGET} \
@@ -263,7 +252,7 @@ jobs:
               --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
               ${TAGS} \
               -f bulker/all.Dockerfile \
-              ${PUSH_FLAG} \
+              ${GOAL_FLAG} \
               ./bulker
           done
 

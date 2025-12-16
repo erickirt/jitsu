@@ -144,7 +144,7 @@ const WorkspacesList = () => {
   const [cachedTotalCount, setCachedTotalCount] = useState(0);
 
   // Update stable count only when we have actual data
-  useMemo(() => {
+  useEffect(() => {
     if (totalCount > 0) {
       setCachedTotalCount(totalCount);
     }

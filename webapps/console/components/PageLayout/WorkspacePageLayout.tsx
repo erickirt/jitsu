@@ -4,7 +4,6 @@ import { HiSelector } from "react-icons/hi";
 import { FaDocker, FaSignOutAlt, FaUserCircle } from "react-icons/fa";
 import { FiSettings } from "react-icons/fi";
 import { Drawer, Dropdown, Menu, MenuProps } from "antd";
-import MenuItem from "antd/lib/menu/MenuItem";
 import { ButtonLabel } from "../ButtonLabel/ButtonLabel";
 import styles from "./WorkspacePageLayout.module.css";
 import {
@@ -288,26 +287,37 @@ function UserProfileMenu({ user }: { user: { name: string; email: string } }) {
   const router = useRouter();
   const { analytics } = useJitsu();
   const sessionControl = useUserSessionControls();
-  return (
-    <div>
-      <Menu>
+  const items: MenuProps["items"] = [
+    {
+      label: (
         <div className="px-8 py-2 text-center">
           <div className="font-bold whitespace-nowrap">{user.name}</div>
           <div>{user.email}</div>
         </div>
-        <Menu.Divider />
-        <MenuItem onClick={() => router.push("/user")}>
-          <ButtonLabel icon={<FiSettings />}>Settings</ButtonLabel>
-        </MenuItem>
-        <MenuItem
-          onClick={async () => {
-            await sessionControl.logout();
-            analytics.reset();
-          }}
-        >
-          <ButtonLabel icon={<FaSignOutAlt />}>Logout</ButtonLabel>
-        </MenuItem>
-      </Menu>
+      ),
+      key: "user-info",
+    },
+    {
+      type: "divider",
+      key: "divider-1",
+    },
+    {
+      label: <ButtonLabel icon={<FiSettings />}>Settings</ButtonLabel>,
+      key: "settings",
+      onClick: () => router.push("/user"),
+    },
+    {
+      label: <ButtonLabel icon={<FaSignOutAlt />}>Logout</ButtonLabel>,
+      key: "logout",
+      onClick: async () => {
+        await sessionControl.logout();
+        analytics.reset();
+      },
+    },
+  ];
+  return (
+    <div>
+      <Menu items={items} />
     </div>
   );
 }
@@ -316,7 +326,7 @@ const UserProfileButton: React.FC<{}> = () => {
   const user = useUser();
   return (
     <Dropdown
-      dropdownRender={() => (
+      popupRender={() => (
         <UserProfileMenu
           user={{
             email: user.email,
@@ -645,7 +655,7 @@ export const WorkspacePageLayout: React.FC<PropsWithChildren<PageLayoutProps>> =
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }, [window]);
+  }, []);
 
   useEffect(() => {
     setShowDrawer(false);
