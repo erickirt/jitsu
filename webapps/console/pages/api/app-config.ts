@@ -11,6 +11,7 @@ import { mainDataDomain } from "../../lib/server/data-domains";
 import { customDomainCnames } from "../../lib/server/custom-domains";
 import { credentialsLoginEnabled, githubLoginEnabled, oidcLoginEnabled } from "../../lib/nextauth.config";
 import { getServerEnv } from "../../lib/server/serverEnv";
+import { isTruish } from "juava";
 
 function isSignupDisabled() {
   const serverEnv = getServerEnv();
@@ -82,7 +83,7 @@ export default createRoute()
             host: nangoConfig.nangoApiHost,
           }
         : undefined,
-      mitCompliant: serverEnv.MIT_COMPLIANT,
+      mitCompliant: isTruish(serverEnv.MIT_COMPLIANT),
     };
   })
   .toNextApiHandler();

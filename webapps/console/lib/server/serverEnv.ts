@@ -225,7 +225,7 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   DISABLE_SIGNUP: z.coerce.boolean().optional().default(false),
 
   // Enable MIT-compliant mode (disables proprietary features)
-  MIT_COMPLIANT: z.coerce.boolean().optional().default(false),
+  MIT_COMPLIANT: z.string().optional().default("false"),
 
   // Connection string for Enterprise Edition features
   EE_CONNECTION: z.string().optional(),
