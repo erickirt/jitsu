@@ -2,6 +2,7 @@ import {
   AnonymousEventsStore,
   AnyEvent,
   EventContext,
+  FullContext,
   FuncReturn,
   JitsuFunction,
   TTLStore,
@@ -25,6 +26,8 @@ import {
   MetricsMeta,
   UserRecognitionParameter,
   wrapperFunction,
+  WorkspaceWithProfiles,
+  EventsStore,
 } from "@jitsu/destination-functions";
 import { NoRetryErrorName, DropRetryErrorName } from "@jitsu/functions-lib";
 
@@ -33,7 +36,7 @@ import { retryObject } from "./retries";
 import NodeCache from "node-cache";
 import isEqual from "lodash/isEqual";
 import { MessageHandlerContext } from "./message-handler";
-import { promFunctionsInFlight, promFunctionsTime } from "./metrics";
+import { promFunctionsChainStatuses, promFunctionsInFlight, promFunctionsTime } from "./metrics";
 import { getServerEnv } from "../serverEnv";
 import { ProfilesFunction } from "./profiles-functions";
 import { createMongoStore, mongodb } from "./mongodb";
@@ -41,6 +44,14 @@ import { createRedisStore } from "./store";
 import { UDFWrapper } from "./udf_wrapper";
 import { warehouseQuery } from "./warehouse-store";
 import { MongodbDestination } from "./mongodb-destination";
+import {
+  createFunctionsServerWrapper,
+  FunctionsClass,
+  FunctionsClassFree,
+  FunctionsClassLegacy,
+  getFunctionsClasses,
+  shouldUseFunctionsServer,
+} from "./functions-server-client";
 
 const serverEnv = getServerEnv();
 const fastStoreWorkspaceId = (serverEnv.FAST_STORE_WORKSPACE_ID ?? "").split(",").filter(x => x.length > 0);
@@ -94,6 +105,8 @@ export function checkError(chainRes: FuncChainResult) {
 }
 
 export function buildFunctionChain(
+  useFunctionsServer: boolean,
+  functionsClasses: FunctionsClass[],
   connection: EnrichedConnectionConfig,
   connStore: EntityStore<EnrichedConnectionConfig>,
   funcStore: EntityStore<FunctionConfig>,
@@ -105,6 +118,7 @@ export function buildFunctionChain(
   const connectionData = connection.options as any;
   const conId = connection.id;
   const conWorkspaceId = connection.workspaceId;
+
   if (connection.usesBulker) {
     mainFunction = {
       functionId: "builtin.destination.bulker",
@@ -167,6 +181,15 @@ export function buildFunctionChain(
       return warehouseQuery(conWorkspaceId, connStore, conId, query, params, rotorContext.metrics);
     },
     anonymousEventsStore,
+    metrics: {
+      status(component: string, status: "error" | "ok", errorType: string = ""): { inc: (value: number) => void } {
+        return {
+          inc: (value: number) => {
+            promFunctionsChainStatuses.labels({ connectionId: conId, component, status, errorType }).inc(value);
+          },
+        };
+      },
+    },
     connectionOptions: connectionData,
   };
   const udfFuncCtx = {
@@ -177,9 +200,19 @@ export function buildFunctionChain(
     },
     props: connectionData.functionsEnv || {},
   };
-  const udfFuncs: FunctionConfig[] = (connectionData?.functions || [])
-    .filter(f => f.functionId.startsWith("udf."))
-    .map(f => {
+
+  // Check if there are any UDF functions configured
+  const udfFunctionRefs = (connectionData?.functions || []).filter((f: any) => f.functionId.startsWith("udf."));
+  const hasUdfFunctions = udfFunctionRefs.length > 0;
+
+  // Variables for local UDF execution (legacy mode)
+  let cached: any;
+  let hash: any[];
+  let udfFuncs: FunctionConfig[] = [];
+
+  // Only load UDF functions locally if NOT using functions server
+  if (hasUdfFunctions && !useFunctionsServer) {
+    udfFuncs = udfFunctionRefs.map((f: any) => {
       const functionId = f.functionId.substring(4);
       const userFunctionObj = funcStore.getObject(functionId);
       if (!userFunctionObj || userFunctionObj.workspaceId !== conWorkspaceId) {
@@ -193,9 +226,7 @@ export function buildFunctionChain(
       }
       return userFunctionObj;
     });
-  let cached: any;
-  let hash: any[];
-  if (udfFuncs.length > 0) {
+
     hash = udfFuncs.map(f => f.codeHash);
     hash.push(connection.updatedAt);
     cached = udfCache.get(conId);
@@ -218,12 +249,14 @@ export function buildFunctionChain(
     }
     udfCache.ttl(conId, udfTTL);
   }
+
   const aggregatedFunctions: any[] = [
-    ...(connectionData.functions || []).filter(f => f.functionId.startsWith("builtin.transformation.")),
-    ...(udfFuncs.length > 0 ? [{ functionId: "udf.PIPELINE" }] : []),
+    ...(connectionData.functions || []).filter((f: any) => f.functionId.startsWith("builtin.transformation.")),
+    ...(hasUdfFunctions ? [{ functionId: "udf.PIPELINE" }] : []),
     mainFunction,
   ];
 
+  // Local UDF pipeline function (legacy mode)
   const udfPipelineFunc = (chainCtx: FunctionChainContext): JitsuFunctionWrapper => {
     return async (event: AnyEvent, ctx: EventContext) => {
       try {
@@ -253,6 +286,27 @@ export function buildFunctionChain(
     };
   };
 
+  // Functions server pipeline function (dedicated/free mode)
+  const functionsServerPipelineFunc = (
+    functionsClasses: FunctionsClass[],
+    chainCtx: FunctionChainContext,
+    funcCtx: FunctionContext,
+    eventsLogger: EventsStore
+  ): JitsuFunctionWrapper => {
+    const functionsClass = functionsClasses.filter(fc => fc !== FunctionsClassLegacy)[0];
+    const wrapper = createFunctionsServerWrapper(
+      conWorkspaceId,
+      conId,
+      functionsClass,
+      chainCtx,
+      funcCtx,
+      eventsLogger
+    );
+    return async (event: AnyEvent, ctx: EventContext) => {
+      return wrapper(event, ctx);
+    };
+  };
+
   const funcs: Func[] = aggregatedFunctions.map(f => {
     const ar = f.functionId.split(".");
     const id = ar.pop();
@@ -279,7 +333,9 @@ export function buildFunctionChain(
       return {
         id: f.functionId as string,
         context: funcCtx,
-        exec: udfPipelineFunc(chainCtx),
+        exec: useFunctionsServer
+          ? functionsServerPipelineFunc(functionsClasses, chainCtx, funcCtx, rotorContext.eventsLogger)
+          : udfPipelineFunc(chainCtx),
       };
     } else {
       throw newError(`Function of unknown type: ${f.functionId}`);

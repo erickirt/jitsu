@@ -19,6 +19,7 @@ import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } 
 import { Redis } from "ioredis";
 import { fromJitsuClassic } from "@jitsu/functions-lib";
 import { mongoAnonymousEventsStore } from "./mongodb";
+import { getFunctionsClassesFromOptions, shouldUseFunctionsServer } from "./functions-server-client";
 const log = getLog("rotor");
 
 const anonymousEventsStore = mongoAnonymousEventsStore();
@@ -136,15 +137,22 @@ export async function rotorMessageHandler(
     retries,
   };
 
+  // Get functionsClasses from connection options (set during export)
+  const functionsClasses = getFunctionsClassesFromOptions(connection.options);
+  const useFunctionsServer = shouldUseFunctionsServer(functionsClasses);
+
   let lastUpdated = Math.max(
     new Date(connection.updatedAt || 0).getTime(),
-    (funcStore.lastModified || new Date(0)).getTime()
+    new Date(connection.options?.workspaceUpdatedAt || 0).getTime(),
+    useFunctionsServer ? 0 : new Date(funcStore.lastModified || 0).getTime()
   );
   const cacheKey = `${connection.id}_${lastUpdated}`;
   let funcChain: FuncChain | undefined = funcsChainCache.get(cacheKey);
   if (!funcChain) {
     log.atDebug().log(`[${connection.id}] Refreshing function chain. Dt: ${lastUpdated}`);
     funcChain = buildFunctionChain(
+      useFunctionsServer,
+      functionsClasses,
       connection,
       connStore,
       funcStore,

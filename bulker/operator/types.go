@@ -49,7 +49,22 @@ type WorkspaceData struct {
 	MaxUpdatedAt            time.Time
 	Connections             []*EnrichedConnectionConfig
 	Functions               []*FunctionConfig
+	UsesWarehouseAPI        bool
 	HasDedicatedFS          bool
+	FunctionsClass          string // premium, dedicated, free
 	ConfigHash              string // Hash of connections + functions for change detection
 	FunctionsConfigMapCount int    // Number of functions ConfigMaps (for splitting large data)
+}
+
+// DeploymentData holds aggregated data for a deployment (can contain multiple workspaces)
+type DeploymentData struct {
+	DeploymentID              string   // Deployment identifier (workspaceID for dedicated, "free" for free tier)
+	FunctionsClass            string   // dedicated, free, or legacy
+	WorkspaceIDs              []string // List of workspace IDs in this deployment
+	Connections               []*EnrichedConnectionConfig
+	Functions                 []*FunctionConfig
+	ConfigHash                string // Hash of all connections + functions for change detection
+	OperatorConfigHash        string // Hash of operator Config for detecting config changes
+	ConnectionsConfigMapCount int    // Number of connections ConfigMaps (for splitting large data)
+	FunctionsConfigMapCount   int    // Number of functions ConfigMaps (for splitting large data)
 }
