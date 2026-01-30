@@ -105,7 +105,6 @@ func (ps *AbstractTransactionalSQLStream) init(ctx context.Context) (err error) 
 			Bucket:               s3.Bucket,
 			Region:               s3.Region,
 			RoleARN:              s3.RoleARN,
-			RoleARNExpiry:        s3.RoleARNExpiry,
 			ExternalID:           s3.ExternalID,
 			UsePresignedURL:      s3.UsePresignedURL,
 			FileConfig: implementations.FileConfig{Format: ps.sqlAdapter.GetBatchFileFormat(),
