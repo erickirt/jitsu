@@ -507,7 +507,7 @@ function ConnectionEditor({
   }
   if (
     hasZodFields(connectionOptionsZodType, "deduplicateWindow") &&
-    (destinationType.id === "bigquery" || destinationType.id === "redshift")
+    (destinationType.id === "bigquery" || destinationType.id === "redshift" || destinationType.id === "snowflake")
   ) {
     configItems.push({
       group: "Advanced",
