@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -317,16 +318,26 @@ func (ps *AbstractFileStorageStream) getPKValue(object types2.Object) (string, e
 		}
 		return fmt.Sprint(pkValue), nil
 	}
-	pkArr := make([]string, 0, l)
-	for _, col := range pkColumns {
+	var buf strings.Builder
+	buf.Grow(48)
+	for i, col := range pkColumns {
+		if i > 0 {
+			buf.WriteByte('\x00')
+		}
 		pkValue := object.GetN(col)
-		if str, ok := pkValue.(string); ok {
-			pkArr = append(pkArr, str)
-		} else {
-			pkArr = append(pkArr, fmt.Sprint(pkValue))
+		switch v := pkValue.(type) {
+		case nil:
+			buf.WriteString("<nil>")
+		case string:
+			buf.WriteString(v)
+		case time.Time:
+			var tmp [8]byte
+			buf.Write(strconv.AppendInt(tmp[:0], v.UnixMilli(), 36))
+		default:
+			fmt.Fprint(&buf, v)
 		}
 	}
-	return strings.Join(pkArr, "_###_"), nil
+	return buf.String(), nil
 }
 
 func (ps *AbstractFileStorageStream) writeToBatchFile(ctx context.Context, processedObject types2.Object) error {
