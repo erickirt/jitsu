@@ -988,7 +988,7 @@ async function main() {
       const eventContext = createEventContextFromMessage(message, connection, 0);
       const functionsFetchTimeout = req.headers["x-request-timeout-ms"]
         ? parseNumber(req.headers["x-request-timeout-ms"] as string, 2000)
-        : 2000;
+        : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
       try {
         const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
 
@@ -1071,7 +1071,11 @@ async function main() {
       ...customContext,
     } as EventContext & { retries?: number };
 
-    const result = await runChain(chain, event, eventContext, parseNumber(env.FETCH_TIMEOUT_MS, 2000));
+    const functionsFetchTimeout = req.headers["x-request-timeout-ms"]
+      ? parseNumber(req.headers["x-request-timeout-ms"] as string, 2000)
+      : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
+
+    const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
 
     const totalMs = result.execLog.reduce((sum, e) => sum + (e.ms || 0), 0);
     log.atInfo().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
