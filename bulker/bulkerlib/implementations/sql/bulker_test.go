@@ -399,7 +399,7 @@ func TestBasics(t *testing.T) {
 			streamOptions:  []bulker.StreamOption{bulker.WithPrimaryKey("id", "id2"), bulker.WithDeduplicate()},
 		},
 		{
-			name:              "multi_pk",
+			name:              "multi_pk_ts",
 			modes:             []bulker.BulkMode{bulker.Batch, bulker.Stream, bulker.ReplaceTable, bulker.ReplacePartition},
 			expectPartitionId: true,
 			dataFile:          "test_data/repeated_ids_multi_ts.ndjson",
