@@ -212,10 +212,12 @@ func (ps *AbstractTransactionalSQLStream) postComplete(ctx context.Context, err 
 
 func (ps *AbstractTransactionalSQLStream) flushBatchFile(ctx context.Context) (state bulker.WarehouseState, err error) {
 	tmpTable := ps.tmpTable
+	if ps.merge {
+		ps.batchFileLinesByPKDisc = make(map[string]DeduplicationLine)
+		ps.batchFileLinesByPK = make(map[string]uint32)
+	}
 	defer func() {
 		if ps.merge {
-			ps.batchFileLinesByPKDisc = make(map[string]DeduplicationLine)
-			ps.batchFileLinesByPK = make(map[string]uint32)
 			ps.batchFileSkipLines = types2.NewSet[uint32]()
 		}
 		_ = ps.batchFile.Close()

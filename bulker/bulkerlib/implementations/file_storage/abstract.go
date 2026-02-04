@@ -178,10 +178,12 @@ func (ps *AbstractFileStorageStream) postComplete(err error) (bulker.State, erro
 }
 
 func (ps *AbstractFileStorageStream) flushBatchFile(ctx context.Context) (err error) {
+	if ps.merge {
+		ps.batchFileLinesByPK = make(map[string]uint32)
+		ps.batchFileLinesByPKDisc = make(map[string]DeduplicationLine)
+	}
 	defer func() {
 		if ps.merge {
-			ps.batchFileLinesByPK = make(map[string]uint32)
-			ps.batchFileLinesByPKDisc = make(map[string]DeduplicationLine)
 			ps.batchFileSkipLines = types.NewSet[uint32]()
 		}
 		_ = ps.batchFile.Close()

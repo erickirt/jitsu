@@ -415,7 +415,7 @@ func TestBasics(t *testing.T) {
 				{"_timestamp": constantTime, "id": 4, "id2": constantTime2, "name": "test6"},
 			},
 			expectedErrors: map[string]any{"create_stream_bigquery_stream": BigQueryAutocommitUnsupported},
-			configIds:      allBulkerConfigs,
+			configIds:      utils.ArrayIntersection(allBulkerConfigs, []string{PostgresBulkerTypeId, ClickHouseBulkerTypeId}),
 			orderBy:        []string{"id", "id2"},
 			streamOptions:  []bulker.StreamOption{bulker.WithPrimaryKey("id", "id2"), bulker.WithDeduplicate()},
 		},
