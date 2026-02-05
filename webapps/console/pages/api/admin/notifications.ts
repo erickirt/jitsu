@@ -390,7 +390,7 @@ async function processStatusChanges(
 
       // no flapping state or no saved state for this entity at all
       if (!state?.flappingSince) {
-        if (entity.changesPerHours > flappingThreshold && lastStatus.status !== "SUCCESS") {
+        if (entity.changesPerHours > flappingThreshold && (lastStatus.status !== "SUCCESS" || statuses.length > 2)) {
           log
             .atInfo()
             .log(`[${chkey}] Flapping started ${lastStatus.timestamp} Changes per hour: ${entity.changesPerHours}`);
