@@ -678,12 +678,14 @@ function Tasks() {
             showLink={false}
           />
         ),
+        search: `${servicesMap[link.fromId]?.name || ""} ${destinationsMap[link.toId]?.name || ""}`,
       }));
       syncs = [
         {
           key: "all",
           value: "all",
           label: <div key="all">All</div>,
+          search: "all",
         },
         ...syncs,
       ];
@@ -736,6 +738,10 @@ function Tasks() {
                 }}
                 value={state.syncId}
                 options={entitiesSelectOptions}
+                showSearch={{
+                  autoClearSearchValue: false,
+                  filterOption: (input, option) => option?.search.toLowerCase().includes(input.toLowerCase()) || false,
+                }}
               />
             </div>
             <div>

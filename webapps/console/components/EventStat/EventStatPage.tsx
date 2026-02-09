@@ -132,6 +132,21 @@ const ConnectionSelector = (props: { onChange: (val: string) => void; value?: st
   const streams = useConfigObjectList("stream");
   const destinations = useConfigObjectList("destination");
   const [connectionId, setConnectionId] = React.useState(props.value || undefined);
+  const options = Object.entries(allConnections).map(([id, connection]) => {
+    const stream = streams.find(s => s.id === connection.fromId);
+    const destination = destinations.find(d => d.id === connection.toId);
+    return {
+      value: id,
+      label: (
+        <div className="flex items-center gap-2">
+          <StreamTitle stream={stream} />
+          <ArrowRight className="w-3" />
+          <DestinationTitle destination={destination} />
+        </div>
+      ),
+      search: `${stream?.name || ""} ${destination?.name || ""}`,
+    };
+  });
   return (
     <>
       <Select
@@ -143,6 +158,11 @@ const ConnectionSelector = (props: { onChange: (val: string) => void; value?: st
         onSelect={val => {
           setConnectionId(val);
           props.onChange(val);
+        }}
+        options={options}
+        showSearch={{
+          autoClearSearchValue: false,
+          filterOption: (input, option) => option?.search.toLowerCase().includes(input.toLowerCase()) || false,
         }}
       >
         {Object.entries(allConnections).map(([id, connection]) => (

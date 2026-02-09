@@ -568,9 +568,11 @@ const EventsBrowser0 = ({
                 }}
                 value={actorId}
                 options={entitiesSelectOptions}
-                showSearch={true}
-                filterOption={(input, option) => option?.search.some(s => s.includes(input.toLowerCase())) || false}
-                onDropdownVisibleChange={o => !o && entitySelectRef.current?.blur()}
+                showSearch={{
+                  autoClearSearchValue: false,
+                  filterOption: (input, option) => option?.search.some(s => s.includes(input.toLowerCase())) || false,
+                }}
+                onOpenChange={o => !o && entitySelectRef.current?.blur()}
               />
             </div>
             {streamType !== "dead-letter" && (

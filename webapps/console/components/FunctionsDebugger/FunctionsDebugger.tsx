@@ -625,6 +625,11 @@ const EventsSelector = ({ selectEvent }: { selectEvent: (e: any) => void }) => {
               value: entity[0],
               label: entity[1].name,
             }))}
+            showSearch={{
+              autoClearSearchValue: false,
+              filterOption: (input, option) => option?.label.toLowerCase().includes(input.toLowerCase()) || false,
+            }}
+            // onOpenChange={o => !o && entitySelectRef.current?.blur()}
           />
         </div>
         <Button

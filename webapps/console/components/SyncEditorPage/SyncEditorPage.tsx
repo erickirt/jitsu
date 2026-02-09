@@ -87,27 +87,38 @@ const namespaceImplementation: Record<string, { name: string; field: string }> =
 };
 
 function ServiceSelector(props: SelectorProps<ServiceConfig>) {
+  const options = props.items.map(service => ({
+    value: service.id,
+    label: (
+      <ServiceTitle
+        service={service}
+        size="small"
+        title={s => {
+          return (
+            <div className="flex flex-row items-center">
+              <div className="whitespace-nowrap">{s.name}</div>
+              <div className="text-xxs text-gray-500 ml-1">({s.package.replaceAll(s.protocol + "/", "")})</div>
+            </div>
+          );
+        }}
+      />
+    ),
+    search: service.name,
+  }));
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={props.disabledReason}>
-        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
-          {props.items.map(service => (
-            <Select.Option popupMatchSelectWidth={false} key={service.id} value={service.id}>
-              <ServiceTitle
-                service={service}
-                size="small"
-                title={s => {
-                  return (
-                    <div className="flex flex-row items-center">
-                      <div className="whitespace-nowrap">{s.name}</div>
-                      <div className="text-xxs text-gray-500 ml-1">({s.package.replaceAll(s.protocol + "/", "")})</div>
-                    </div>
-                  );
-                }}
-              />
-            </Select.Option>
-          ))}
-        </Select>
+        <Select
+          popupMatchSelectWidth={false}
+          className="w-80"
+          value={props.selected}
+          onSelect={props.onSelect}
+          options={options}
+          showSearch={{
+            autoClearSearchValue: false,
+            filterOption: (input, option) => option?.search.toLowerCase().includes(input.toLowerCase()) || false,
+          }}
+        />
       </Disable>
       {!props.enabled && props.showLink && (
         <div className="text-lg px-6">

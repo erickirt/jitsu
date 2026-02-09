@@ -17,30 +17,41 @@ export type SelectorProps<T> = {
 };
 
 export function DestinationSelector(props: SelectorProps<DestinationConfig>) {
+  const options = props.items.map(destination => {
+    const destinationType = getCoreDestinationType(destination.destinationType);
+    return {
+      value: destination.id,
+      label: (
+        <DestinationTitle
+          destination={destination}
+          size={"small"}
+          title={(d, t) => {
+            return (
+              <div className={"flex flex-row items-center"}>
+                <div className="whitespace-nowrap">{destination.name}</div>
+                <div className="text-xxs text-gray-500 ml-1">({destinationType.title})</div>
+              </div>
+            );
+          }}
+        />
+      ),
+      search: destination.name,
+    };
+  });
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={!props.disabledReason}>
-        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
-          {props.items.map(destination => {
-            const destinationType = getCoreDestinationType(destination.destinationType);
-            return (
-              <Select.Option popupMatchSelectWidth={false} value={destination.id} key={destination.id}>
-                <DestinationTitle
-                  destination={destination}
-                  size={"small"}
-                  title={(d, t) => {
-                    return (
-                      <div className={"flex flex-row items-center"}>
-                        <div className="whitespace-nowrap">{destination.name}</div>
-                        <div className="text-xxs text-gray-500 ml-1">({destinationType.title})</div>
-                      </div>
-                    );
-                  }}
-                />
-              </Select.Option>
-            );
-          })}
-        </Select>
+        <Select
+          popupMatchSelectWidth={false}
+          className="w-80"
+          value={props.selected}
+          onSelect={props.onSelect}
+          options={options}
+          showSearch={{
+            autoClearSearchValue: false,
+            filterOption: (input, option) => option?.search.toLowerCase().includes(input.toLowerCase()) || false,
+          }}
+        />
       </Disable>
       {!props.enabled && props.showLink && (
         <div className="text-lg px-6">

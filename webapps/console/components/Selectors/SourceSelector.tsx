@@ -8,16 +8,25 @@ import React from "react";
 import { SelectorProps } from "./DestinationSelector";
 
 export function SourceSelector(props: SelectorProps<StreamConfig>) {
+  const items = props.items.map(stream => ({
+    value: stream.id,
+    label: <StreamTitle stream={stream} size={"small"} />,
+    search: stream.name,
+  }));
   return (
     <div className="flex items-center justify-between">
       <Disable disabled={!props.enabled} disabledReason={props.disabledReason}>
-        <Select popupMatchSelectWidth={false} className="w-80" value={props.selected} onSelect={props.onSelect}>
-          {props.items.map(stream => (
-            <Select.Option key={stream.id} value={stream.id}>
-              <StreamTitle stream={stream} size={"small"} />
-            </Select.Option>
-          ))}
-        </Select>
+        <Select
+          popupMatchSelectWidth={false}
+          className="w-80"
+          value={props.selected}
+          onSelect={props.onSelect}
+          options={items}
+          showSearch={{
+            autoClearSearchValue: false,
+            filterOption: (input, option) => option?.search.toLowerCase().includes(input.toLowerCase()) || false,
+          }}
+        />
       </Disable>
       {!props.enabled && props.showLink && (
         <div className="text-lg px-6">
