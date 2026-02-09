@@ -1,0 +1,33 @@
+# Jitsu Dev Helm Chart Values
+# This chart deploys services using local binaries mounted via hostPath
+
+# Path to the project root on the host machine
+# This will be mounted into containers
+projectRoot: /Users/ildarnurislamov/Projects/newjitsu
+
+# Environment variables
+env:
+  # Common to all services
+  common:
+    LOG_FORMAT: "text"
+    CONSOLE_URL: http://host.minikube.internal:3000
+    KAFKA_BOOTSTRAP_SERVERS: host.minikube.internal:9094
+  # Per-service overrides
+  ingest: {}
+  bulker: {}
+  rotor: {}
+  syncctl: {}
+  operator: {}
+
+# Service scaling (set replicas to 0 to disable)
+scaling:
+  ingest:
+    replicas: 1
+  bulker:
+    replicas: 1
+  rotor:
+    replicas: 1
+  syncctl:
+    replicas: 1
+  operator:
+    replicas: 1

@@ -1,0 +1,15 @@
+# Custom Configuration
+# Copy this file to values-custom.yaml for environment-specific config
+# This file is for non-secret values (hosts, URLs, database names, etc.)
+#
+# Usage:
+#   cp values-custom.example.yaml values-custom.yaml
+#   # Edit values-custom.yaml
+#   # Then deploy - it will be picked up automatically
+
+env:
+  common:
+    CONSOLE_URL: http://host.minikube.internal:3000
+    KAFKA_BOOTSTRAP_SERVERS: host.minikube.internal:9094
+  ingest:
+    DEVICE_FUNCTIONS_TIMEOUT_MS: "2000"
