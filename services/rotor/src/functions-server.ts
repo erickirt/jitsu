@@ -628,7 +628,6 @@ async function runChain(
         functionType,
       };
 
-      const fetchResponses: Response[] = [];
       try {
         // Get retries from eventContext (passed from rotor)
         const retries = (eventContext as EventContext & { retries?: number }).retries ?? 0;
@@ -657,8 +656,7 @@ async function runChain(
               },
             },
             chainCtx.connectionOptions.fetchLogLevel || "info",
-            fetchTimeoutMs,
-            fetchResponses
+            fetchTimeoutMs
           ),
           store: chainCtx.store,
           props: chainCtx.connectionOptions.functionsEnv || {},
@@ -702,11 +700,6 @@ async function runChain(
           functionId: id,
         };
         log.atError().withCause(err).log(`Function ${func.id} error.`);
-      } finally {
-        // // Close fetch responses
-        // for (const resp of fetchResponses) {
-        //   safeCloseResponse(resp);
-        // }
       }
 
       execLogEntry.ms = sw.elapsedMs();
