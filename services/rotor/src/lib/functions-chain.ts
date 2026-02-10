@@ -44,14 +44,7 @@ import { createRedisStore } from "./store";
 import { UDFWrapper } from "./udf_wrapper";
 import { warehouseQuery } from "./warehouse-store";
 import { MongodbDestination } from "./mongodb-destination";
-import {
-  createFunctionsServerWrapper,
-  FunctionsClass,
-  FunctionsClassFree,
-  FunctionsClassLegacy,
-  getFunctionsClasses,
-  shouldUseFunctionsServer,
-} from "./functions-server-client";
+import { createFunctionsServerWrapper, FunctionsClass, FunctionsClassLegacy } from "./functions-server-client";
 
 const serverEnv = getServerEnv();
 const fastStoreWorkspaceId = (serverEnv.FAST_STORE_WORKSPACE_ID ?? "").split(",").filter(x => x.length > 0);

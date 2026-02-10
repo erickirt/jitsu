@@ -78,7 +78,6 @@ const ServerEnvSchema = z.object({
   FAST_STORE_WORKSPACE_ID: z.string().optional(),
   // Functions class configuration (dedicated, free, legacy)
   DEFAULT_FUNCTIONS_CLASS: z.string().optional().default("legacy"),
-  FUNCTIONS_CLASS_FEATURE_FLAG: z.string().optional().default("functionsClasses"),
   // Functions server service URL template (use ${workspaceId} as placeholder)
   // Service name uses prefix to ensure it starts with letter (workspaceId may start with number)
   FUNCTIONS_SERVER_URL_TEMPLATE: z.string().optional().default("http://fs-${workspaceId}:3456"),
@@ -114,6 +113,7 @@ const ServerEnvSchema = z.object({
   // MongoDB Configuration
   MONGODB_URL: z.string().optional(),
   MONGODB_TIMEOUT_MS: z.string().optional().default("1000"),
+  MONGODB_MAX_POOL_SIZE: z.string().optional().default("20"),
   MONGODB_NETWORK_COMPRESSION: z.string().optional(),
 
   // UDF Configuration (used by @jitsu/core-functions)
@@ -149,6 +149,7 @@ const ServerEnvSchema = z.object({
   CONFIG_DIR: z.string().optional().default("./data"),
   // Functions class for this server instance (dedicated, free, premium)
   FUNCTIONS_CLASS: z.string().optional().default(""),
+  FAST_STORE: z.string().optional().default("false"),
 });
 
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;

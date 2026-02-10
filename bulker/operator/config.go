@@ -38,8 +38,6 @@ type Config struct {
 	// Service configuration
 	ServiceType string `mapstructure:"SERVICE_TYPE" default:"ClusterIP"`
 
-	// Feature flag to look for in workspace (values: dedicated, free, legacy)
-	FunctionsClassFeatureFlag string `mapstructure:"FUNCTIONS_CLASS_FEATURE_FLAG" default:"functionsClasses"`
 	// Default functions class for workspaces without the feature flag (dedicated, free, legacy, or empty to ignore)
 	DefaultFunctionsClass string `mapstructure:"DEFAULT_FUNCTIONS_CLASS" default:""`
 
@@ -51,13 +49,15 @@ type Config struct {
 	// Port for mongobetween to listen on (functions-server connects to this)
 	MongobetweenPort int `mapstructure:"MONGOBETWEEN_PORT" default:"27017"`
 
+	FastStoreWorkspaceIDs string `mapstructure:"FAST_STORE_WORKSPACE_IDS"` // comma-separated list of workspace IDs that should use mongobetween sidecar
+
 	// Minimum number of replicas
 	MinReplicas int32 `mapstructure:"MIN_REPLICAS" default:"2"`
 	// HPA configuration
 	// Enable HPA for functions-server deployments
 	HPAEnabled bool `mapstructure:"HPA_ENABLED" default:"false"`
 	// Maximum number of replicas
-	HPAMaxReplicas int32 `mapstructure:"HPA_MAX_REPLICAS" default:"10"`
+	HPAMaxReplicas int32 `mapstructure:"HPA_MAX_REPLICAS" default:"16"`
 	// Target CPU utilization percentage
 	HPATargetCPUUtilization int32 `mapstructure:"HPA_TARGET_CPU_UTILIZATION" default:"100"`
 	// Scale down stabilization window in seconds
@@ -94,6 +94,7 @@ func (c *Config) CalculateOperatorConfigHash() string {
 	h.Write([]byte(c.MongoDBURL))
 	h.Write([]byte(c.MongobetweenImage))
 	h.Write([]byte(fmt.Sprintf("%d", c.MongobetweenPort)))
+	h.Write([]byte(c.FastStoreWorkspaceIDs))
 
 	// HPA config
 	h.Write([]byte(fmt.Sprintf("%t", c.HPAEnabled)))

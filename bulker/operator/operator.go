@@ -29,7 +29,6 @@ const (
 	labelApp                = "app"
 	labelWorkspaceID        = "jitsu.com/workspace-id"
 	labelWorkspaceIDs       = "jitsu.com/workspace-ids" // For multi-workspace deployments (annotation, comma-separated)
-	annotationPromScrape    = "prometheus.io/scrape"
 	labelConfigHash         = "jitsu.com/config-hash"
 	labelOperatorConfigHash = "jitsu.com/operator-config-hash"
 	labelConfigType         = "jitsu.com/config-type"
@@ -65,6 +64,8 @@ type Operator struct {
 	connectionsRepo appbase.Repository[ConnectionsData]
 	functionsRepo   appbase.Repository[FunctionsData]
 	workspacesRepo  appbase.Repository[WorkspacesData]
+
+	fastStoreWorkspaceIDs map[string]struct{}
 
 	closed chan struct{}
 }
@@ -103,6 +104,11 @@ func NewOperator(ctx *Context) (*Operator, error) {
 		ctx.config.RepositoryRefreshPeriodSec,
 		ctx.config.RepositoryCacheDir,
 	)
+
+	op.fastStoreWorkspaceIDs = make(map[string]struct{})
+	for _, id := range strings.Split(ctx.config.FastStoreWorkspaceIDs, ",") {
+		op.fastStoreWorkspaceIDs[strings.TrimSpace(id)] = struct{}{}
+	}
 
 	return op, nil
 }
@@ -396,7 +402,7 @@ func (o *Operator) buildFreeDeploymentData(workspaces []*WorkspaceData) *Deploym
 // Format: ${FunctionsClassFeatureFlag}=<value> where value is dedicated, free, or legacy.
 // Returns empty string if no matching feature flag is found (uses default).
 func (o *Operator) getFunctionsClasses(ws *WorkspaceConfig) []string {
-	prefix := o.config.FunctionsClassFeatureFlag + "="
+	prefix := "functionsClasses="
 	for _, feature := range ws.FeaturesEnabled {
 		if strings.HasPrefix(feature, prefix) {
 			return utils.ArrayMap(strings.Split(strings.TrimPrefix(feature, prefix), ","), strings.TrimSpace)
@@ -1204,6 +1210,8 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		})
 	}
 
+	_, fastStoreEnabled := o.fastStoreWorkspaceIDs[data.DeploymentID]
+
 	// Build environment variables for functions-server
 	envVars := []corev1.EnvVar{
 		{
@@ -1229,6 +1237,10 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		{
 			Name:  "FETCH_FORBID_LOCAL",
 			Value: "true",
+		},
+		{
+			Name:  "FAST_STORE",
+			Value: utils.Ternary(fastStoreEnabled, "true", "false"),
 		},
 	}
 
@@ -1314,6 +1326,10 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 				ContainerPort: int32(o.config.FunctionsServerPort),
 				Protocol:      corev1.ProtocolTCP,
 			},
+			{
+				ContainerPort: int32(9091),
+				Protocol:      corev1.ProtocolTCP,
+			},
 		},
 		Resources:    resources,
 		Env:          envVars,
@@ -1371,7 +1387,6 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			Annotations: map[string]string{
 				labelWorkspaceIDs:       strings.Join(data.WorkspaceIDs, ","),
 				labelOperatorConfigHash: data.OperatorConfigHash,
-				annotationPromScrape:    "false",
 			},
 		},
 		Spec: appsv1.DeploymentSpec{

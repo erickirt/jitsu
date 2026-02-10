@@ -29,7 +29,9 @@ async function createClient() {
   const client = new MongoClient(mongodbURL, {
     compressors: serverEnv.MONGODB_NETWORK_COMPRESSION ? serverEnv.MONGODB_NETWORK_COMPRESSION : ["zstd"],
     serverSelectionTimeoutMS: 60000,
-    maxPoolSize: 32,
+    maxPoolSize: parseNumber(serverEnv.MONGODB_MAX_POOL_SIZE, 20),
+    maxIdleTimeMS: 120000,
+    minPoolSize: 1,
     connectTimeoutMS: 60000,
     socketTimeoutMS: mongoTimeout,
   });
