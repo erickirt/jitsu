@@ -29,6 +29,7 @@ import {
   makeFetch,
   EntityStore,
   createMemoryStore,
+  StoreMetrics,
 } from "@jitsu/core-functions-lib";
 import { getServerEnv } from "./serverEnv";
 import { DropRetryErrorName, NoRetryErrorName, NoRetryError, RetryError } from "@jitsu/functions-lib";
@@ -536,14 +537,15 @@ async function buildFunctionChain(
     }
   }
   // Create shared store - use MongoDB if MONGODB_URL is provided, otherwise fall back to in-memory
+  const storeMetrics: StoreMetrics = {
+    storeStatus: (namespace, operation, status) =>
+      promStoreStatuses.labels(deploymentId, namespace, operation, status).inc(),
+    warehouseStatus: (id, table, status, timeMs) =>
+      promWarehouseStatuses.labels(deploymentId, id, table, status).observe(timeMs / 1000),
+  };
   let store: TTLStore;
   if (env.MONGODB_URL) {
-    store = createMongoStore(connection.workspaceId, mongodb, false, isTruish(env.FAST_STORE), {
-      storeStatus: (namespace, operation, status) =>
-        promStoreStatuses.labels(deploymentId, namespace, operation, status).inc(),
-      warehouseStatus: (id, table, status, timeMs) =>
-        promWarehouseStatuses.labels(deploymentId, id, table, status).observe(timeMs / 1000),
-    });
+    store = createMongoStore(connection.workspaceId, mongodb, false, isTruish(env.FAST_STORE), storeMetrics);
   } else {
     log.atInfo().log(`Using in-memory store (MONGODB_URL not set)`);
     store = createMemoryStore({});
@@ -552,7 +554,7 @@ async function buildFunctionChain(
   const chainCtx: FunctionChainContext = {
     store,
     query: async (conId: string, query: string, params: any) => {
-      return warehouseQuery(connection.workspaceId, conEntityStore, conId, query, params);
+      return warehouseQuery(connection.workspaceId, conEntityStore, conId, query, params, storeMetrics);
     },
     connectionOptions: connectionData,
   };
