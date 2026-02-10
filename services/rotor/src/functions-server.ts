@@ -701,10 +701,10 @@ async function runChain(
         };
         log.atError().withCause(err).log(`Function ${func.id} error.`);
       } finally {
-        // Close fetch responses
-        for (const resp of fetchResponses) {
-          safeCloseResponse(resp);
-        }
+        // // Close fetch responses
+        // for (const resp of fetchResponses) {
+        //   safeCloseResponse(resp);
+        // }
       }
 
       execLogEntry.ms = sw.elapsedMs();
