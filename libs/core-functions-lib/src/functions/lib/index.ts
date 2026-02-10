@@ -382,12 +382,47 @@ export const makeLog = (connectionId: string, eventsStore: EventsStore, repeatTo
   };
 };
 
+/**
+ * Create a Response-like wrapper backed by a fully consumed byte buffer.
+ * Body methods (text/json/arrayBuffer/blob) can be called multiple times.
+ */
+function createBufferedResponse(original: Response, body: Uint8Array): Response {
+  let textCache: string | undefined;
+  const getText = () => {
+    if (textCache === undefined) {
+      textCache = new TextDecoder().decode(body);
+    }
+    return textCache;
+  };
+  return {
+    status: original.status,
+    statusText: original.statusText,
+    headers: original.headers,
+    ok: original.ok,
+    url: original.url,
+    type: original.type,
+    redirected: original.redirected,
+    bodyUsed: true,
+    get body() {
+      return getText() as any;
+    },
+    text: () => Promise.resolve(getText()),
+    json: () => Promise.resolve(JSON.parse(getText())),
+    arrayBuffer: () => Promise.resolve(body.buffer),
+    blob: () => Promise.resolve(new Blob([body])),
+    bytes: () => Promise.resolve(body),
+    clone: () => createBufferedResponse(original, body),
+    formData: () => {
+      throw new Error("formData() not supported on buffered response");
+    },
+  } as Response;
+}
+
 export const makeFetch = (
   connectionId: string,
   eventsStore: EventsStore,
   logLevel: "info" | "debug",
-  fetchTimeoutMs: number = 2000,
-  responses?: Response[]
+  fetchTimeoutMs: number = 2000
 ) => {
   const throttle = connectionId === "clke5lrfm0000ii0gahryc37d-wbyo-5jyq-KIMXwt" ? getThrottle(5000) : noThrottle();
 
@@ -456,9 +491,6 @@ export const makeFetch = (
       };
       fetchResult = await fetch(url, internalInit);
       throttle.success();
-      if (responses) {
-        responses.push(fetchResult);
-      }
     } catch (err: any) {
       if (err.name === "TimeoutError") {
         throttle.fail();
@@ -483,11 +515,13 @@ export const makeFetch = (
       throw err;
     }
 
+    // Fully consume the response body to prevent resource leaks
+    const bodyBytes = await fetchResult.bytes();
+    const buffered = createBufferedResponse(fetchResult, bodyBytes);
+
     if (logEnabled) {
       const elapsedMs = sw.elapsedMs();
-      //clone response to be able to read it twice
-      const cloned = fetchResult.clone();
-      const respText = await trimResponse(cloned);
+      const respText = await trimResponse(buffered);
       if (logToRedis) {
         eventsStore.log(connectionId, logLevel, {
           ...baseInfo,
@@ -506,7 +540,7 @@ export const makeFetch = (
       }
     }
 
-    return fetchResult;
+    return buffered;
   };
 };
 
