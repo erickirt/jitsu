@@ -1231,6 +1231,10 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			Value: fmt.Sprintf("%d", o.config.FunctionsServerPort),
 		},
 		{
+			Name:  "DEPLOYMENT_ID",
+			Value: data.DeploymentID,
+		},
+		{
 			Name:  "FUNCTIONS_CLASS",
 			Value: data.FunctionsClass,
 		},
@@ -1379,6 +1383,9 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		podSpec.ServiceAccountName = o.config.PodsServiceAccount
 	}
 
+	maxUnavailable := intstr.FromInt(0)
+	maxSurge := intstr.FromString("100%")
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName,
@@ -1391,6 +1398,13 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDeployment{
+					MaxUnavailable: &maxUnavailable,
+					MaxSurge:       &maxSurge,
+				},
+			},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},

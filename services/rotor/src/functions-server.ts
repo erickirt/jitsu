@@ -42,6 +42,7 @@ import { parseUserAgent } from "@jitsu/core-functions-lib";
 import type { MongoClient } from "mongodb";
 
 const env = getServerEnv();
+const deploymentId = env.DEPLOYMENT_ID || os.hostname();
 const jsondiffpatchInstance = jsondiffpatch.create();
 
 disableService("prisma");
@@ -55,55 +56,58 @@ const log = getLog("functions-server");
 Prometheus.collectDefaultMetrics();
 
 const promRequestCount = new Prometheus.Counter({
-  name: "fs_request_count",
+  name: "fs_request_count2",
   help: "Total number of requests",
-  labelNames: ["endpoint", "status"] as const,
+  labelNames: ["deploymentId", "endpoint", "actorId", "status"] as const,
 });
 
 const promRequestDuration = new Prometheus.Histogram({
-  name: "fs_request_duration_ms",
+  name: "fs_request_duration_ms2",
   help: "Request duration in milliseconds",
-  labelNames: ["endpoint"] as const,
+  labelNames: ["deploymentId", "endpoint", "actorId"] as const,
   buckets: [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
 });
 
 const promConcurrentRequests = new Prometheus.Gauge({
-  name: "fs_concurrent_requests",
+  name: "fs_concurrent_requests2",
   help: "Number of concurrent requests being processed",
-  labelNames: ["endpoint"] as const,
+  labelNames: ["deploymentId", "endpoint"] as const,
 });
 
 const promStoreStatuses = new Prometheus.Counter({
-  name: "fs_store_statuses",
+  name: "fs_store_statuses2",
   help: "Store operation statuses",
-  labelNames: ["namespace", "operation", "status"] as const,
+  labelNames: ["deploymentId", "namespace", "operation", "status"] as const,
 });
 
 const promWarehouseStatuses = new Prometheus.Histogram({
-  name: "fs_warehouse_statuses",
+  name: "fs_warehouse_statuses2",
   help: "Warehouse query statuses",
-  labelNames: ["id", "table", "status"] as const,
+  labelNames: ["deploymentId", "id", "table", "status"] as const,
   buckets: [0.02, 0.05, 0.2, 0.5, 1, 2],
 });
 
 const promMongoPoolCheckedOut = new Prometheus.Gauge({
-  name: "fs_mongo_pool_checked_out",
+  name: "fs_mongo_pool_checked_out2",
   help: "Number of MongoDB connections currently checked out",
+  labelNames: ["deploymentId"] as const,
 });
 
 const promMongoPoolTotal = new Prometheus.Gauge({
-  name: "fs_mongo_pool_total",
+  name: "fs_mongo_pool_total2",
   help: "Total number of MongoDB connections in the pool",
+  labelNames: ["deploymentId"] as const,
 });
 
 const promMongoPoolWaitQueue = new Prometheus.Gauge({
-  name: "fs_mongo_pool_wait_queue",
+  name: "fs_mongo_pool_wait_queue2",
   help: "Number of operations waiting for a MongoDB connection",
+  labelNames: ["deploymentId"] as const,
 });
 
 function setupMongoPoolMetrics(client: MongoClient) {
-  client.on("connectionCheckedOut", () => promMongoPoolCheckedOut.inc());
-  client.on("connectionCheckedIn", () => promMongoPoolCheckedOut.dec());
+  client.on("connectionCheckedOut", () => promMongoPoolCheckedOut.labels(deploymentId).inc());
+  client.on("connectionCheckedIn", () => promMongoPoolCheckedOut.labels(deploymentId).dec());
   client.on("connectionClosed", () => {
     // connectionClosed fires without checkedIn if connection was in use
     // but the gauge self-corrects on next scrape via the periodic sync below
@@ -117,9 +121,9 @@ function setupMongoPoolMetrics(client: MongoClient) {
       for (const [, server] of topology.s.servers) {
         const pool = (server as any).pool;
         if (pool) {
-          promMongoPoolTotal.set(pool.totalConnectionCount ?? 0);
-          promMongoPoolCheckedOut.set(pool.currentCheckedOutCount ?? 0);
-          promMongoPoolWaitQueue.set(pool.waitQueueSize ?? 0);
+          promMongoPoolTotal.labels(deploymentId).set(pool.totalConnectionCount ?? 0);
+          promMongoPoolCheckedOut.labels(deploymentId).set(pool.currentCheckedOutCount ?? 0);
+          promMongoPoolWaitQueue.labels(deploymentId).set(pool.waitQueueSize ?? 0);
           break; // single server is enough for non-sharded setup
         }
       }
@@ -535,9 +539,10 @@ async function buildFunctionChain(
   let store: TTLStore;
   if (env.MONGODB_URL) {
     store = createMongoStore(connection.workspaceId, mongodb, false, isTruish(env.FAST_STORE), {
-      storeStatus: (namespace, operation, status) => promStoreStatuses.labels(namespace, operation, status).inc(),
+      storeStatus: (namespace, operation, status) =>
+        promStoreStatuses.labels(deploymentId, namespace, operation, status).inc(),
       warehouseStatus: (id, table, status, timeMs) =>
-        promWarehouseStatuses.labels(id, table, status).observe(timeMs / 1000),
+        promWarehouseStatuses.labels(deploymentId, id, table, status).observe(timeMs / 1000),
     });
   } else {
     log.atInfo().log(`Using in-memory store (MONGODB_URL not set)`);
@@ -970,10 +975,10 @@ async function main() {
   // Query params:
   //   - ids: comma-separated connection IDs (required)
   //   - fullEvents: if "true", return full events instead of diffs
-  async function handleMulti(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+  async function handleMulti(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<string> {
     if (req.method !== "POST") {
       sendError(res, 405, "Method not allowed. Use POST.");
-      return;
+      return "";
     }
 
     const connectionIds = (url.searchParams.get("ids") ?? "").split(",").filter(id => !!id);
@@ -981,8 +986,12 @@ async function main() {
 
     if (connectionIds.length === 0) {
       sendError(res, 400, "No connection IDs provided. Use ?ids=conn1,conn2,...");
-      return;
+      return "";
     }
+
+    // actorId = streamId of first connection (for metrics)
+    const firstConnection = connections.get(connectionIds[0]);
+    const actorId = firstConnection?.streamId || connectionIds[0] || "";
 
     const message = (await parseBody(req)) as IngestMessage;
 
@@ -1054,6 +1063,7 @@ async function main() {
     );
 
     sendJson(res, 200, response);
+    return actorId;
   }
 
   // Single connection handler: POST /connection/<connection-id>
@@ -1061,22 +1071,22 @@ async function main() {
     req: http.IncomingMessage,
     res: http.ServerResponse,
     connectionId: string
-  ): Promise<void> {
+  ): Promise<string> {
     const connection = connections.get(connectionId);
     if (!connection) {
       sendError(res, 404, `Connection '${connectionId}' not found`);
-      return;
+      return connectionId;
     }
 
     const chain = await getOrBuildChain(connectionId);
     if (!chain) {
       sendError(res, 500, `Failed to build chain for connection '${connectionId}'`);
-      return;
+      return connectionId;
     }
 
     if (req.method !== "POST") {
       sendError(res, 405, "Method not allowed. Use POST.");
-      return;
+      return connectionId;
     }
 
     const body = await parseBody(req);
@@ -1113,13 +1123,20 @@ async function main() {
     log.atInfo().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
 
     sendJson(res, 200, result);
+    return connectionId;
   }
 
   // Create HTTP server
+  let isShuttingDown = false;
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    // During shutdown, tell clients to close connections so they reconnect to healthy pods
+    if (isShuttingDown) {
+      res.setHeader("Connection", "close");
+    }
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -1140,28 +1157,29 @@ async function main() {
       // Determine endpoint label for metrics
       const endpoint = pathname === "/multi" ? "multi" : pathname.startsWith("/connection/") ? "connection" : "other";
       const sw = stopwatch();
-      promConcurrentRequests.labels(endpoint).inc();
+      promConcurrentRequests.labels(deploymentId, endpoint).inc();
+      let actorId = "";
 
       try {
         // Multi connection handler
         if (pathname === "/multi") {
-          await handleMulti(req, res, url);
+          actorId = await handleMulti(req, res, url);
           return;
         }
 
         // Single connection handler
         const match = pathname.match(/^\/connection\/([^\/]+)$/);
         if (match) {
-          await handleConnection(req, res, match[1]);
+          actorId = await handleConnection(req, res, match[1]);
           return;
         }
 
         // Not found
         sendError(res, 404, "Not found. Use /connection/<connection-id> or /multi?ids=conn1,conn2,...");
       } finally {
-        promConcurrentRequests.labels(endpoint).dec();
-        promRequestDuration.labels(endpoint).observe(sw.elapsedMs());
-        promRequestCount.labels(endpoint, String(res.statusCode || 200)).inc();
+        promConcurrentRequests.labels(deploymentId, endpoint).dec();
+        promRequestDuration.labels(deploymentId, endpoint, actorId).observe(sw.elapsedMs());
+        promRequestCount.labels(deploymentId, endpoint, actorId, String(res.statusCode || 200)).inc();
       }
     } catch (e: any) {
       log.atError().log(`Error processing request:`, e);
@@ -1190,8 +1208,6 @@ async function main() {
   });
 
   // Graceful shutdown handler
-  let isShuttingDown = false;
-
   const shutdown = (signal: string) => {
     if (isShuttingDown) {
       log.atInfo().log(`Already shutting down, ignoring ${signal}`);

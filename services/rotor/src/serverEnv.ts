@@ -150,6 +150,8 @@ const ServerEnvSchema = z.object({
   // Functions class for this server instance (dedicated, free, premium)
   FUNCTIONS_CLASS: z.string().optional().default(""),
   FAST_STORE: z.string().optional().default("false"),
+  // Deployment ID for prometheus metrics labeling (set by operator)
+  DEPLOYMENT_ID: z.string().optional().default(""),
 });
 
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;
