@@ -377,19 +377,21 @@ func (tm *TopicManager) processMetadata(metadata *kafka.Metadata, nonEmptyTopics
 		metrics.TopicManagerError("destination-topic_error").Inc()
 		tm.SystemErrorf("Failed to create destination retry topic [%s]: %v", destinationsRetryTopicName, err)
 	}
-	if _, dstRetryCnsmrStarted := tm.retryConsumers[destinationsRetryTopicName]; !dstRetryCnsmrStarted {
-		retryPeriodSec := tm.config.BatchRunnerRetryPeriodSec
-		retryConsumer, err := NewRetryConsumer(nil, "", retryPeriodSec, destinationsRetryTopicName, tm.config, tm.kafkaConfig, tm.batchProducer, tm)
-		if err != nil {
-			tm.SystemErrorf("Failed to create retry consumer for destination topic: %s: %v", destinationsRetryTopicName, err)
-		} else {
-			tm.retryConsumers[destinationsRetryTopicName] = append(tm.retryConsumers[destinationsRetryTopicName], retryConsumer)
-			_, err = tm.cron.AddBatchConsumer(fmt.Sprintf("%s_%d", destinationsRetryTopicName, tm.shardNumber), retryConsumer)
+	if tm.enableConsumers {
+		if _, dstRetryCnsmrStarted := tm.retryConsumers[destinationsRetryTopicName]; !dstRetryCnsmrStarted {
+			retryPeriodSec := tm.config.BatchRunnerRetryPeriodSec
+			retryConsumer, err := NewRetryConsumer(nil, "", retryPeriodSec, destinationsRetryTopicName, tm.config, tm.kafkaConfig, tm.batchProducer, tm)
 			if err != nil {
-				retryConsumer.Retire()
-				tm.SystemErrorf("Failed to schedule retry consumer for destination topic: %s: %v", destinationsRetryTopicName, err)
+				tm.SystemErrorf("Failed to create retry consumer for destination topic: %s: %v", destinationsRetryTopicName, err)
 			} else {
-				tm.Infof("Retry consumer for destination topic %s was scheduled with batch period %ds", destinationsRetryTopicName, retryConsumer.BatchPeriodSec())
+				tm.retryConsumers[destinationsRetryTopicName] = append(tm.retryConsumers[destinationsRetryTopicName], retryConsumer)
+				_, err = tm.cron.AddBatchConsumer(fmt.Sprintf("%s_%d", destinationsRetryTopicName, tm.shardNumber), retryConsumer)
+				if err != nil {
+					retryConsumer.Retire()
+					tm.SystemErrorf("Failed to schedule retry consumer for destination topic: %s: %v", destinationsRetryTopicName, err)
+				} else {
+					tm.Infof("Retry consumer for destination topic %s was scheduled with batch period %ds", destinationsRetryTopicName, retryConsumer.BatchPeriodSec())
+				}
 			}
 		}
 	}
