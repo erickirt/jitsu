@@ -297,7 +297,7 @@ export function buildFunctionChain(
       fetchTimeoutMs
     );
     return async (event: AnyEvent, ctx: EventContext) => {
-      return wrapper(event, ctx);
+      return await wrapper(event, ctx);
     };
   };
 

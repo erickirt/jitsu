@@ -48,7 +48,7 @@
     "semver": "^7.6.3",
     "tar": "^7.4.3",
     "tslib": "catalog:",
-    "undici": "^7.11.0",
+    "undici": "^7.21.0",
     "zod": "^3.23.8",
     "esbuild": "catalog:"
   },

@@ -41,6 +41,13 @@ import isEqual from "lodash/isEqual";
 import { IngestMessage } from "@jitsu/protocols/async-request";
 import { parseUserAgent } from "@jitsu/core-functions-lib";
 import type { MongoClient } from "mongodb";
+import { Agent, setGlobalDispatcher } from "undici";
+
+setGlobalDispatcher(
+  new Agent({
+    connections: 500, // per origin
+  })
+);
 
 const env = getServerEnv();
 const deploymentId = env.DEPLOYMENT_ID || os.hostname();
