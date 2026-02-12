@@ -116,6 +116,22 @@ deploy() {
         start_mount
     fi
 
+    # Verify mount is actually accessible inside the VM
+    if ! minikube ssh "test -f $MOUNT_PATH/package.json" 2>/dev/null; then
+        log_error "Project is not accessible at $MOUNT_PATH inside minikube VM."
+        log_error "The mount process may be stale. Restarting mount..."
+        stop_mount
+        sleep 1
+        start_mount
+        # Re-check after restart
+        sleep 3
+        if ! minikube ssh "test -f $MOUNT_PATH/package.json" 2>/dev/null; then
+            log_error "Mount still not working. Check 'minikube ssh ls $MOUNT_PATH' manually."
+            exit 1
+        fi
+    fi
+    log_success "Project mount verified (package.json accessible in VM)"
+
     log_info "Deploying to Kubernetes..."
     ensure_namespace
 

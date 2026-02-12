@@ -55,6 +55,9 @@ const UserRecognitionFunction: JitsuFunction<AnalyticsServerEvent, any> = async 
         const res = await anonEvStore.evictEvents(collectionName, anonId).then(evs => {
           return evs.map(anonEvent => {
             //merge anonymous event with identified fields
+            if ((anonEvent.timestamp as any) instanceof Date) {
+              anonEvent.timestamp = (anonEvent.timestamp as Date).toISOString();
+            }
             anonEvent.userId = userId;
             anonEvent.context = anonEvent.context || {};
             if (!anonEvent.context.traits) {

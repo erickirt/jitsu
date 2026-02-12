@@ -407,6 +407,9 @@ async function processProfile(
       metrics.db_events += Date.now() - start;
       if (next) {
         count++;
+        if ((next.timestamp as any) instanceof Date) {
+          next.timestamp = (next.timestamp as Date).toISOString();
+        }
         return next as unknown as AnalyticsServerEvent;
       } else {
         return undefined;
