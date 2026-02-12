@@ -15,6 +15,7 @@ type KafkaConfig struct {
 	KafkaSSLSkipVerify    bool   `mapstructure:"KAFKA_SSL_SKIP_VERIFY" default:"false"`
 	KafkaSSLCA            string `mapstructure:"KAFKA_SSL_CA"`
 	KafkaSSLCAFile        string `mapstructure:"KAFKA_SSL_CA_FILE"`
+	KafkaSecurityProtocol string `mapstructure:"KAFKA_SECURITY_PROTOCOL"`
 
 	// Kafka authorization as JSON object {"mechanism": "SCRAM-SHA-256|PLAIN", "username": "user", "password": "password"}
 	KafkaSASL string `mapstructure:"KAFKA_SASL"`
@@ -89,6 +90,10 @@ func (ac *KafkaConfig) GetKafkaConfig() *kafka.ConfigMap {
 		for k, v := range sasl {
 			_ = kafkaConfig.SetKey("sasl."+k, v)
 		}
+	}
+
+	if ac.KafkaSecurityProtocol != "" {
+		_ = kafkaConfig.SetKey("security.protocol", ac.KafkaSecurityProtocol)
 	}
 
 	return kafkaConfig
