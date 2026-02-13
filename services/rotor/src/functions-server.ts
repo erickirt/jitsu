@@ -32,7 +32,7 @@ import {
   StoreMetrics,
 } from "@jitsu/core-functions-lib";
 import { getServerEnv } from "./serverEnv";
-import { DropRetryErrorName, NoRetryErrorName, NoRetryError, RetryError } from "@jitsu/functions-lib";
+import { DropRetryErrorName, RetryErrorName, NoRetryErrorName, NoRetryError, RetryError } from "@jitsu/functions-lib";
 import { mongodb, createMongoStore } from "./lib/mongodb";
 import { warehouseQuery } from "./lib/warehouse-store";
 import { parse as semverParse } from "semver";
@@ -112,6 +112,28 @@ const promMongoPoolWaitQueue = new Prometheus.Gauge({
   help: "Number of operations waiting for a MongoDB connection",
   labelNames: ["deploymentId"] as const,
 });
+
+// Overall chain result: success, drop, multiply, error_retry, error_drop, error_drop_retry, error
+const promChainResult = new Prometheus.Counter({
+  name: "fs_chain_result2",
+  help: "Function chain execution results",
+  labelNames: ["deploymentId", "actorId", "result", "functionId"] as const,
+});
+
+function classifyChainResult(result: FuncChainResultWithLogs): [string, string] {
+  for (const entry of result.execLog) {
+    if (entry.error) {
+      const name = entry.error.name || "Error";
+      if (name === DropRetryErrorName) return ["error_drop_retry", entry.functionId];
+      if (name === NoRetryErrorName) return ["error_drop", entry.functionId];
+      if (name === RetryErrorName) return ["error_retry", entry.functionId];
+      return ["error", entry.functionId];
+    }
+  }
+  if (result.events.length === 0) return ["drop", ""];
+  if (result.events.length > 1) return ["multiply", ""];
+  return ["success", ""];
+}
 
 function setupMongoPoolMetrics(client: MongoClient) {
   client.on("connectionCheckedOut", () => promMongoPoolCheckedOut.labels(deploymentId).inc());
@@ -256,7 +278,12 @@ type LogEntry = {
 };
 
 // Collecting function logger - stores logs and also outputs to console
-function createCollectingLogger(functionId: string, functionType: string, logEntries: LogEntry[]) {
+function createCollectingLogger(
+  functionId: string,
+  functionType: string,
+  logEntries: LogEntry[],
+  logToConsole: boolean = false
+) {
   const addEntry = (level: LogEntry["level"], message: string, args: any[]) => {
     logEntries.push({
       level,
@@ -266,16 +293,17 @@ function createCollectingLogger(functionId: string, functionType: string, logEnt
       args: args.length > 0 ? args : undefined,
       timestamp: new Date(),
     });
-    // Also log to console
-    const logFn =
-      level === "error"
-        ? log.atError()
-        : level === "warn"
-        ? log.atWarn()
-        : level === "debug"
-        ? log.atDebug()
-        : log.atInfo();
-    logFn.log(`[${functionId}] ${message}`, ...args);
+    if (logToConsole) {
+      const logFn =
+        level === "error"
+          ? log.atError()
+          : level === "warn"
+          ? log.atWarn()
+          : level === "debug"
+          ? log.atDebug()
+          : log.atInfo();
+      logFn.log(`[${functionId}] ${message}`, ...args);
+    }
   };
 
   return {
@@ -516,7 +544,7 @@ async function buildFunctionChain(
           exec: udfFunc.default,
           config: udfFunc.config,
         });
-        log.atInfo().log(`  ✓ Compiled UDF: ${functionId}`);
+        log.atDebug().log(`  ✓ Compiled UDF: ${functionId}`);
       } catch (e: any) {
         log.atError().log(`  ✗ Failed to compile UDF ${functionId}: ${e.message}`);
         // Create a replacement function that throws the compilation error as NoRetryError
@@ -528,7 +556,7 @@ async function buildFunctionChain(
           },
           config: undefined,
         });
-        log.atInfo().log(`  ⚠ Added error-throwing placeholder for UDF: ${functionId}`);
+        log.atDebug().log(`  ⚠ Added error-throwing placeholder for UDF: ${functionId}`);
       }
     } else {
       log.atWarn().log(`UDF not found or has no code: ${functionId}`);
@@ -540,7 +568,7 @@ async function buildFunctionChain(
         },
         config: undefined,
       });
-      log.atInfo().log(`  ⚠ Added error-throwing placeholder for missing UDF: ${functionId}`);
+      log.atDebug().log(`  ⚠ Added error-throwing placeholder for missing UDF: ${functionId}`);
     }
   }
   // Create shared store - use MongoDB if MONGODB_URL is provided, otherwise fall back to in-memory
@@ -601,6 +629,11 @@ function deepCopy<T>(o: T): T {
     newO[k] = !v || typeof v !== "object" ? v : deepCopy(v);
   }
   return newO as T;
+}
+
+function recordChainResultMetrics(actorId: string, result: FuncChainResultWithLogs) {
+  // Overall chain result
+  promChainResult.labels(deploymentId, actorId, ...classifyChainResult(result)).inc();
 }
 
 // Run function chain
@@ -1034,9 +1067,10 @@ async function main() {
         : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
       try {
         const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
+        recordChainResultMetrics(actorId, result);
 
         const totalMs = result.execLog.reduce((sum, e) => sum + (e.ms || 0), 0);
-        log.atInfo().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
+        log.atDebug().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
 
         return { connectionId, events: result.events, execLog: result.execLog, logs: result.logs };
       } catch (e: any) {
@@ -1120,9 +1154,10 @@ async function main() {
       : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
 
     const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
+    recordChainResultMetrics(connectionId, result);
 
     const totalMs = result.execLog.reduce((sum, e) => sum + (e.ms || 0), 0);
-    log.atInfo().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
+    log.atDebug().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
 
     sendJson(res, 200, result);
     return connectionId;

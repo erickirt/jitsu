@@ -255,6 +255,10 @@ func (o *Operator) reconcile() {
 				needDeploy = true
 				logging.Infof("Updating deployment %s (operator config changed: %s -> %s)",
 					deploymentID, existing.OperatorConfigHash, deploymentData.OperatorConfigHash)
+			} else if existing.FunctionsClass != deploymentData.FunctionsClass {
+				needDeploy = true
+				logging.Infof("Updating deployment %s (functions class changed: %s -> %s)",
+					deploymentID, existing.FunctionsClass, deploymentData.FunctionsClass)
 			}
 			if needDeploy {
 				if err := o.updateDeploymentFromData(deploymentData, existing); err != nil {
@@ -538,26 +542,6 @@ func (o *Operator) updateDeploymentFromData(data *DeploymentData, existing *Depl
 		}
 	}
 
-	// Delete ExternalName services for workspaces that are no longer in this deployment (free tier only)
-	if existing != nil && existing.FunctionsClass == FunctionsClassFree {
-		for _, oldWsID := range existing.WorkspaceIDs {
-			found := false
-			for _, newWsID := range data.WorkspaceIDs {
-				if oldWsID == newWsID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// Delete ExternalName service for workspaces leaving free tier
-				serviceName := servicePrefix + oldWsID
-				err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Delete(ctx, serviceName, metav1.DeleteOptions{})
-				if err != nil && !errors.IsNotFound(err) {
-					logging.Warnf("Failed to delete ExternalName service %s: %v", serviceName, err)
-				}
-			}
-		}
-	}
 	data.ConnectionsConfigMapCount = numConnectionsCMs
 
 	// Update functions ConfigMaps
@@ -614,18 +598,9 @@ func (o *Operator) deleteDeploymentByID(deploymentID string, existing *Deploymen
 		deploymentName = freeDeploymentName
 
 		// Delete the shared free-fs Service
-		err := o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Delete(ctx, freeDeploymentName, metav1.DeleteOptions{})
+		err := o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Delete(ctx, freeServiceName, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete free service: %v", err)
-		}
-
-		// Delete per-workspace ExternalName Services
-		for _, wsID := range existing.WorkspaceIDs {
-			serviceName := servicePrefix + wsID
-			err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Delete(ctx, serviceName, metav1.DeleteOptions{})
-			if err != nil && !errors.IsNotFound(err) {
-				logging.Warnf("Failed to delete ExternalName service %s: %v", serviceName, err)
-			}
 		}
 	} else {
 		deploymentName = deploymentID + deploymentSuffix
@@ -936,16 +911,7 @@ func (o *Operator) createOrUpdateFunctionsConfigMapsFromData(ctx context.Context
 func (o *Operator) createOrUpdateServiceFromData(ctx context.Context, data *DeploymentData) error {
 	if data.FunctionsClass == FunctionsClassFree {
 		// For free tier: create the shared free-fs Service
-		if err := o.createOrUpdateFreeService(ctx, data); err != nil {
-			return err
-		}
-		//// Also create per-workspace ExternalName Services pointing to free-fs
-		//for _, wsID := range data.WorkspaceIDs {
-		//	if err := o.createOrUpdateWorkspaceExternalNameService(ctx, wsID); err != nil {
-		//		return fmt.Errorf("failed to create ExternalName service for workspace %s: %v", wsID, err)
-		//	}
-		//}
-		return nil
+		return o.createOrUpdateFreeService(ctx, data)
 	}
 
 	// Dedicated: create ClusterIP service for the workspace
@@ -1002,44 +968,6 @@ func (o *Operator) createOrUpdateFreeService(ctx context.Context, data *Deployme
 	return err
 }
 
-// createOrUpdateWorkspaceExternalNameService creates/updates an ExternalName Service for a workspace
-// that points to the shared free-fs Service
-func (o *Operator) createOrUpdateWorkspaceExternalNameService(ctx context.Context, workspaceID string) error {
-	serviceName := servicePrefix + workspaceID
-	// ExternalName target: free-fs.<namespace>.svc.cluster.local
-	externalName := fmt.Sprintf("%s.%s.svc.cluster.local", freeServiceName, o.config.KubernetesNamespace)
-
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
-			Namespace: o.config.KubernetesNamespace,
-			Labels: map[string]string{
-				labelApp:            appName,
-				labelWorkspaceID:    workspaceID,
-				labelFunctionsClass: FunctionsClassFree,
-			},
-		},
-		Spec: corev1.ServiceSpec{
-			Type:         corev1.ServiceTypeExternalName,
-			ExternalName: externalName,
-		},
-	}
-
-	existing, err := o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Get(ctx, serviceName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			_, err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Create(ctx, service, metav1.CreateOptions{})
-			return err
-		}
-		return err
-	}
-
-	// Update existing service - for ExternalName we need to handle type change
-	service.ResourceVersion = existing.ResourceVersion
-	_, err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Update(ctx, service, metav1.UpdateOptions{})
-	return err
-}
-
 // createOrUpdateDedicatedService creates/updates a ClusterIP Service for a dedicated workspace
 func (o *Operator) createOrUpdateDedicatedService(ctx context.Context, data *DeploymentData) error {
 	serviceName := servicePrefix + data.DeploymentID
@@ -1082,20 +1010,7 @@ func (o *Operator) createOrUpdateDedicatedService(ctx context.Context, data *Dep
 		return err
 	}
 
-	// If changing from ExternalName to ClusterIP, we need to delete and recreate
-	// because Kubernetes doesn't allow changing service type in-place for some transitions
-	if existing.Spec.Type == corev1.ServiceTypeExternalName {
-		// Delete the old ExternalName service
-		err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Delete(ctx, serviceName, metav1.DeleteOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to delete ExternalName service for upgrade: %v", err)
-		}
-		// Create new ClusterIP service
-		_, err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Create(ctx, service, metav1.CreateOptions{})
-		return err
-	}
-
-	// Update existing ClusterIP service
+	// Update existing service
 	service.Spec.ClusterIP = existing.Spec.ClusterIP
 	service.ResourceVersion = existing.ResourceVersion
 	_, err = o.clientset.CoreV1().Services(o.config.KubernetesNamespace).Update(ctx, service, metav1.UpdateOptions{})
