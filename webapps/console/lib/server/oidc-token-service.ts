@@ -211,14 +211,12 @@ export async function refreshAccessToken(
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${Buffer.from(`${oidcProvider.clientId}:${oidcProvider.clientSecret}`).toString(
-          "base64"
-        )}`,
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: refreshToken,
         client_id: oidcProvider.clientId,
+        client_secret: oidcProvider.clientSecret,
       }).toString(),
     });
 
