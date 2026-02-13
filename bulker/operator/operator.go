@@ -500,6 +500,9 @@ func (o *Operator) createDeploymentFromData(data *DeploymentData) error {
 	_, err = o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
+			if o.config.HPAEnabled {
+				deployment.Spec.Replicas = nil
+			}
 			_, err = o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Update(ctx, deployment, metav1.UpdateOptions{})
 		}
 		if err != nil {
@@ -569,6 +572,10 @@ func (o *Operator) updateDeploymentFromData(data *DeploymentData, existing *Depl
 
 	// Update Deployment
 	deployment := o.buildDeploymentFromData(data)
+	if o.config.HPAEnabled {
+		// Don't override replicas managed by the autoscaler
+		deployment.Spec.Replicas = nil
+	}
 	_, err = o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Update(ctx, deployment, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update deployment: %v", err)
