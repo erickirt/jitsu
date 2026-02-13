@@ -75,6 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       code: code as string,
       redirect_uri: redirectUri,
       client_id: oidcProvider.clientId,
+      client_secret: oidcProvider.clientSecret,
     };
 
     // Add audience if configured
@@ -91,9 +92,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${Buffer.from(`${oidcProvider.clientId}:${oidcProvider.clientSecret}`).toString(
-          "base64"
-        )}`,
       },
       body: new URLSearchParams(tokenParams).toString(),
     });

@@ -456,7 +456,7 @@ async function loadConnectionsFromDir(dir: string, connections: Map<string, Enri
       const allConnections = await loadJsonFile<EnrichedConnectionConfig[]>(path.join(dir, file));
       for (const config of allConnections) {
         connections.set(config.id, config);
-        log.atInfo().log(`✓ Loaded connection: ${config.id}`);
+        log.atDebug().log(`✓ Loaded connection: ${config.id}`);
       }
       const compressed = file.endsWith(".gz") ? " (compressed)" : "";
       log.atInfo().log(`Loaded ${allConnections.length} connections from ${file}${compressed}`);
@@ -727,7 +727,6 @@ async function runChain(
         if (err?.name === DropRetryErrorName || err?.name === NoRetryErrorName) {
           result = "drop";
         }
-        console.log(`Function ${func.id} execution error: ${JSON.stringify(func.config)}`);
         // Set retryPolicy from function config (same pattern as legacy udf-wrapper)
         if (func?.config?.retryPolicy) {
           err.retryPolicy = func.config.retryPolicy;
