@@ -67,4 +67,5 @@ type DeploymentData struct {
 	OperatorConfigHash        string // Hash of operator Config for detecting config changes
 	ConnectionsConfigMapCount int    // Number of connections ConfigMaps (for splitting large data)
 	FunctionsConfigMapCount   int    // Number of functions ConfigMaps (for splitting large data)
+	Replicas                  *int32 // Current replicas from live deployment (used to preserve HPA-managed value)
 }

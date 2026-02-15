@@ -368,6 +368,7 @@ func (o *Operator) getExistingDeployments(ctx context.Context) (map[string]*Depl
 			OperatorConfigHash:        operatorConfigHash,
 			ConnectionsConfigMapCount: connsCMCount,
 			FunctionsConfigMapCount:   funcsCMCount,
+			Replicas:                  deployment.Spec.Replicas,
 		}
 	}
 
@@ -501,7 +502,11 @@ func (o *Operator) createDeploymentFromData(data *DeploymentData) error {
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			if o.config.HPAEnabled {
-				deployment.Spec.Replicas = nil
+				// Get current replicas from live deployment to preserve HPA-managed value
+				currentDeployment, getErr := o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Get(ctx, deployment.Name, metav1.GetOptions{})
+				if getErr == nil && currentDeployment.Spec.Replicas != nil {
+					deployment.Spec.Replicas = currentDeployment.Spec.Replicas
+				}
 			}
 			_, err = o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Update(ctx, deployment, metav1.UpdateOptions{})
 		}
@@ -572,9 +577,9 @@ func (o *Operator) updateDeploymentFromData(data *DeploymentData, existing *Depl
 
 	// Update Deployment
 	deployment := o.buildDeploymentFromData(data)
-	if o.config.HPAEnabled {
-		// Don't override replicas managed by the autoscaler
-		deployment.Spec.Replicas = nil
+	if o.config.HPAEnabled && existing != nil && existing.Replicas != nil {
+		// Preserve replicas managed by the autoscaler
+		deployment.Spec.Replicas = existing.Replicas
 	}
 	_, err = o.clientset.AppsV1().Deployments(o.config.KubernetesNamespace).Update(ctx, deployment, metav1.UpdateOptions{})
 	if err != nil {
