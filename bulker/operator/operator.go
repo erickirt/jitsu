@@ -1168,6 +1168,10 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			Name:  "FAST_STORE",
 			Value: utils.Ternary(fastStoreEnabled, "true", "false"),
 		},
+		{
+			Name:  "MONGODB_MAX_POOL_SIZE",
+			Value: fmt.Sprint(utils.Ternary(data.FunctionsClass == FunctionsClassPremium, o.config.MongoDBMaxPoolSizePremium, o.config.MongoDBMaxPoolSize)),
+		},
 	}
 
 	// Build containers list
