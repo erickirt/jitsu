@@ -1233,6 +1233,13 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			Image:        o.config.MongobetweenImage,
 			Env:          mongobetweenEnvVars,
 			VolumeMounts: mongobetweenVolumeMounts,
+			Lifecycle: &corev1.Lifecycle{
+				PreStop: &corev1.LifecycleHandler{
+					Exec: &corev1.ExecAction{
+						Command: []string{"/bin/sleep", "25"},
+					},
+				},
+			},
 			Ports: []corev1.ContainerPort{
 				{
 					ContainerPort: int32(o.config.MongobetweenPort),
@@ -1300,9 +1307,9 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			TimeoutSeconds:      3,
 		},
 	})
-	sec30 := int64(30)
+	sec60 := int64(60)
 	podSpec := corev1.PodSpec{
-		TerminationGracePeriodSeconds: &sec30,
+		TerminationGracePeriodSeconds: &sec60,
 		Containers:                    containers,
 		Volumes:                       volumes,
 		NodeSelector:                  nodeSelector,

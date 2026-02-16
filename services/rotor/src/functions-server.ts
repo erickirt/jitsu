@@ -1285,22 +1285,26 @@ async function main() {
     isShuttingDown = true;
     log.atInfo().log(`Received ${signal}, starting graceful shutdown...`);
 
-    // Stop accepting new connections
-    server.close(err => {
-      if (err) {
-        log.atError().log(`Error during server close:`, err);
-        process.exit(1);
-      }
-      log.atInfo().log(`Server closed, all connections drained`);
-      process.exit(0);
-    });
-
     // Force exit after timeout if connections don't drain
     const forceExitTimeout = 30000; // 30 seconds
     setTimeout(() => {
       log.atWarn().log(`Forcing exit after ${forceExitTimeout}ms timeout`);
       process.exit(1);
     }, forceExitTimeout).unref();
+
+    // wait some seconds for connections to drain before shutting down metrics server
+    const extraDelay = env.SHUTDOWN_EXTRA_DELAY_SEC ? 1000 * parseInt(env.SHUTDOWN_EXTRA_DELAY_SEC) : 5000;
+    setTimeout(() => {
+      // Stop accepting new connections
+      server.close(err => {
+        if (err) {
+          log.atError().log(`Error during server close:`, err);
+          process.exit(1);
+        }
+        log.atInfo().log(`Server closed, all connections drained`);
+        process.exit(0);
+      });
+    }, extraDelay);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
