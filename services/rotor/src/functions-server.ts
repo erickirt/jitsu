@@ -637,9 +637,9 @@ function deepCopy<T>(o: T): T {
   return newO as T;
 }
 
-function recordChainResultMetrics(actorId: string, result: FuncChainResultWithLogs) {
+function recordChainResultMetrics(result: FuncChainResultWithLogs) {
   // Overall chain result
-  promChainResult.labels(deploymentId, actorId, ...classifyChainResult(result)).inc();
+  promChainResult.labels(deploymentId, result.connectionId, ...classifyChainResult(result)).inc();
 }
 
 // Run function chain
@@ -778,7 +778,7 @@ async function runChain(
     }
   }
 
-  return { events, execLog, logs };
+  return { connectionId: chain.connectionId, events, execLog, logs };
 }
 
 function safeCloseResponse(res: Response) {
@@ -1055,12 +1055,20 @@ async function main() {
     const promises = connectionIds.map(async connectionId => {
       const connection = connections.get(connectionId);
       if (!connection) {
-        log.atWarn().log(`[multi] Connection '${connectionId}' not found`);
+        log.atError().log(`[multi] Connection '${connectionId}' not found`);
         return {
           connectionId,
-          execLog: [{ error: { message: `Connection '${connectionId}' not found`, name: "Connection Not Found" } }],
+          execLog: [
+            {
+              error: { message: `Connection '${connectionId}' not found`, name: NoRetryErrorName },
+              ms: 0,
+              eventIndex: 0,
+              functionId: "",
+            },
+          ],
+          logs: [],
           events: [],
-        };
+        } as FuncChainResultWithLogs;
       }
 
       const chain = await getOrBuildChain(connectionId);
@@ -1068,9 +1076,17 @@ async function main() {
         log.atError().log(`[multi] Failed to build chain for connection '${connectionId}'`);
         return {
           connectionId,
-          execLog: [{ error: { message: "Internal Functions Error: please contact support", name: "Internal Error" } }],
+          execLog: [
+            {
+              error: { message: "Internal Functions Error: please contact support", name: NoRetryErrorName },
+              ms: 0,
+              eventIndex: 0,
+              functionId: "",
+            },
+          ],
           events: [],
-        };
+          logs: [],
+        } as FuncChainResultWithLogs;
       }
 
       // Create EventContext from IngestMessage (same as message-handler.ts)
@@ -1080,19 +1096,18 @@ async function main() {
         : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
       try {
         const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
-        recordChainResultMetrics(actorId, result);
-
         const totalMs = result.execLog.reduce((sum, e) => sum + (e.ms || 0), 0);
         log.atDebug().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);
-
-        return { connectionId, events: result.events, execLog: result.execLog, logs: result.logs };
+        return result;
       } catch (e: any) {
-        log.atError().log(`[multi] Error processing connection ${connectionId}: ${e.message}`);
+        const errorMessage = `${e.name}: ${e.message}`;
+        log.atError().log(`[multi] Error processing connection ${connectionId}: ${errorMessage}`);
         return {
           connectionId,
-          execLog: [{ error: { message: e.message, name: e.name } }],
+          execLog: [{ error: { message: errorMessage, name: NoRetryErrorName }, ms: 0, eventIndex: 0, functionId: "" }],
           events: [],
-        };
+          logs: [],
+        } as FuncChainResultWithLogs;
       }
     });
 
@@ -1101,14 +1116,17 @@ async function main() {
     // Build response with events and execLog
     // Map connectionId -> { events, execLog }
     const response = Object.fromEntries(
-      results.map(result => [
-        result.connectionId,
-        {
-          events: fullEvents ? result.events || [] : mapDiff(message.httpPayload, result.events),
-          execLog: result.execLog,
-          logs: result.logs || [],
-        },
-      ])
+      results.map(result => {
+        recordChainResultMetrics(result);
+        return [
+          result.connectionId,
+          {
+            events: fullEvents ? result.events || [] : mapDiff(message.httpPayload, result.events),
+            execLog: result.execLog,
+            logs: result.logs || [],
+          },
+        ];
+      })
     );
 
     sendJson(res, 200, response);
@@ -1167,7 +1185,7 @@ async function main() {
       : parseNumber(env.FETCH_TIMEOUT_MS, 2000);
 
     const result = await runChain(chain, event, eventContext, functionsFetchTimeout);
-    recordChainResultMetrics(connectionId, result);
+    recordChainResultMetrics(result);
 
     const totalMs = result.execLog.reduce((sum, e) => sum + (e.ms || 0), 0);
     log.atDebug().log(`← ${connectionId} (${chain.functions.length} functions) completed in ${totalMs}ms`);

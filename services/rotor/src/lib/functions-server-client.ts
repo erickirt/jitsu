@@ -62,6 +62,8 @@ export function getFunctionsServerUrl(
   connectionId: string,
   functionsClass: Omit<FunctionsClass, "legacy">
 ): string {
+  // reload it here for tests. In tests we reset serverEnv cache to dynamically set FS server port
+  const serverEnv = getServerEnv();
   const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
   const baseUrl = template.replace("${workspaceId}", functionsClass === "free" ? "free" : workspaceId);
   return `${baseUrl}/connection/${connectionId}`;

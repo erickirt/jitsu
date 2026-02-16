@@ -89,7 +89,7 @@ export type MetricsMeta = {
 };
 
 export type FuncChainResult = {
-  connectionId?: string;
+  connectionId: string;
   events: AnyEvent[];
   execLog: FunctionExecLog;
 };
