@@ -637,7 +637,7 @@ function deepCopy<T>(o: T): T {
   return newO as T;
 }
 
-function recordChainResultMetrics(result: FuncChainResultWithLogs) {
+function recordChainResultMetrics(result: Required<FuncChainResultWithLogs>) {
   // Overall chain result
   promChainResult.labels(deploymentId, result.connectionId, ...classifyChainResult(result)).inc();
 }
@@ -648,7 +648,7 @@ async function runChain(
   event: AnyEvent,
   eventContext: EventContext,
   fetchTimeoutMs: number = 2000
-): Promise<FuncChainResultWithLogs> {
+): Promise<Required<FuncChainResultWithLogs>> {
   const execLog: FunctionExecLog = [];
   const logs: LogEntry[] = [];
   let events: AnyEvent[] = [event];
@@ -1050,6 +1050,7 @@ async function main() {
     if (!event.context) {
       event.context = {};
     }
+    type StrictFuncChainResult = Required<FuncChainResultWithLogs>;
 
     // Process all connections in parallel
     const promises = connectionIds.map(async connectionId => {
@@ -1068,7 +1069,7 @@ async function main() {
           ],
           logs: [],
           events: [],
-        } as FuncChainResultWithLogs;
+        } as StrictFuncChainResult;
       }
 
       const chain = await getOrBuildChain(connectionId);
@@ -1086,7 +1087,7 @@ async function main() {
           ],
           events: [],
           logs: [],
-        } as FuncChainResultWithLogs;
+        } as StrictFuncChainResult;
       }
 
       // Create EventContext from IngestMessage (same as message-handler.ts)
@@ -1107,7 +1108,7 @@ async function main() {
           execLog: [{ error: { message: errorMessage, name: NoRetryErrorName }, ms: 0, eventIndex: 0, functionId: "" }],
           events: [],
           logs: [],
-        } as FuncChainResultWithLogs;
+        } as StrictFuncChainResult;
       }
     });
 
