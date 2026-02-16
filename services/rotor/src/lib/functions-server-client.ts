@@ -1,15 +1,9 @@
-import { AnyEvent, EventContext, FullContext } from "@jitsu/protocols/functions";
-import {
-  EntityStore,
-  EventsStore,
-  FuncChainResult,
-  FunctionChainContext,
-  FunctionContext,
-  WorkspaceWithProfiles,
-} from "@jitsu/destination-functions";
+import { AnyEvent, EventContext } from "@jitsu/protocols/functions";
+import { EventsStore, FunctionChainContext, FunctionContext } from "@jitsu/destination-functions";
 import { DropRetryErrorName, RetryErrorName, NoRetryErrorName, RetryError } from "@jitsu/functions-lib";
-import { getLog, LogLevel } from "juava";
+import { getLog, LogLevel, parseNumber } from "juava";
 import { getServerEnv } from "../serverEnv";
+import { Agent, request } from "undici";
 
 const log = getLog("functions-server-client");
 
@@ -20,13 +14,23 @@ export const FunctionsClassPremium = "premium";
 export const FunctionsClassFree = "free";
 export const FunctionsClassLegacy = "legacy";
 
+const serverEnv = getServerEnv();
+
+const concurrency = parseNumber(serverEnv.CONCURRENCY, 10);
+const fsTimeoutMs = parseNumber(serverEnv.FUNCTIONS_SERVER_TIMEOUT_MS, 30000);
+
+export const undiciAgent = new Agent({
+  connections: concurrency, // Limit concurrent kept-alive connections to not run out of resources
+  maxRequestsPerClient: 3000,
+  headersTimeout: fsTimeoutMs,
+  connectTimeout: fsTimeoutMs,
+  bodyTimeout: fsTimeoutMs,
+});
 /**
  * Get the functions classes from connection options.
  * functionsClasses is set during connection export from workspace.featuresEnabled.
  */
 export function getFunctionsClassesFromOptions(options: any): FunctionsClass[] {
-  const serverEnv = getServerEnv();
-
   if (options?.functionsClasses && Array.isArray(options.functionsClasses) && options.functionsClasses.length > 0) {
     const classes = options.functionsClasses.filter(
       (f: string) =>
@@ -58,7 +62,6 @@ export function getFunctionsServerUrl(
   connectionId: string,
   functionsClass: Omit<FunctionsClass, "legacy">
 ): string {
-  const serverEnv = getServerEnv();
   const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
   const baseUrl = template.replace("${workspaceId}", functionsClass === "free" ? "free" : workspaceId);
   return `${baseUrl}/connection/${connectionId}`;
@@ -102,12 +105,10 @@ export async function callFunctionsServer(
   eventsLogger: EventsStore,
   fetchTimeoutMs?: number
 ): Promise<FunctionsServerResult> {
-  const serverEnv = getServerEnv();
   const url = getFunctionsServerUrl(workspaceId, connectionId, functionsClass);
-  const timeoutMs = parseInt(serverEnv.FUNCTIONS_SERVER_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
+    const response = await request(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -125,15 +126,18 @@ export async function callFunctionsServer(
           retries: eventContext.retries ?? 0,
         },
       }),
-      signal: AbortSignal.timeout(timeoutMs),
+      bodyTimeout: fsTimeoutMs,
+      headersTimeout: fsTimeoutMs,
+      dispatcher: undiciAgent,
+      signal: AbortSignal.timeout(fsTimeoutMs),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new RetryError(`Functions server returned ${response.status}: ${errorText}`);
+    if (response.statusCode !== 200) {
+      const errorText = await response.body.text();
+      throw new RetryError(`Functions server returned ${response.statusCode}: ${errorText}`);
     }
 
-    const result = (await response.json()) as FunctionsServerResult;
+    const result = (await response.body.json()) as FunctionsServerResult;
 
     // Replay function logs from the server using FunctionChainContext
     if (result.logs && result.logs.length > 0 && chainCtx) {
@@ -167,7 +171,7 @@ export async function callFunctionsServer(
   } catch (e: any) {
     if (e.name === "AbortError") {
       chainCtx.metrics?.status("functions_server", "error", "timeout").inc(1);
-      throw new RetryError(`Functions processing timed out after ${timeoutMs}ms.`, { drop: true });
+      throw new RetryError(`Functions processing timed out after ${fsTimeoutMs}ms.`, { drop: true });
     }
     chainCtx.metrics?.status("functions_server", "error", "other").inc(1);
     throw new RetryError(`Functions processing failed: ${e.message}`, { drop: true });

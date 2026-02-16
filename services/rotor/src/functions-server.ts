@@ -278,13 +278,19 @@ type LogEntry = {
 };
 
 // Collecting function logger - stores logs and also outputs to console
+// debugTill: when set and in the future, debug-level logs are collected; otherwise they are suppressed
 function createCollectingLogger(
   functionId: string,
   functionType: string,
   logEntries: LogEntry[],
+  debugTill?: Date,
   logToConsole: boolean = false
 ) {
   const addEntry = (level: LogEntry["level"], message: string, args: any[]) => {
+    // Same as makeLog: debug logs only when debugTill is active
+    if (level === "debug" && !(debugTill && debugTill.getTime() > Date.now())) {
+      return;
+    }
     logEntries.push({
       level,
       functionId,
@@ -671,13 +677,21 @@ async function runChain(
       try {
         // Get retries from eventContext (passed from rotor)
         const retries = (eventContext as EventContext & { retries?: number }).retries ?? 0;
+        const debugTill = chainCtx.connectionOptions?.debugTill
+          ? new Date(chainCtx.connectionOptions?.debugTill)
+          : undefined;
+        const fetchLogEnabled =
+          chainCtx.connectionOptions?.fetchLogLevel !== "debug" || (debugTill && debugTill.getTime() > Date.now());
         const fullContext: FullContext = {
           ...eventContext,
-          log: createCollectingLogger(id, functionType, logs),
+          log: createCollectingLogger(id, functionType, logs, debugTill),
           fetch: makeFetch(
             chain.connectionId,
             {
               log(connectionId: string, level: LogLevel, msg: Record<string, any>) {
+                if (!fetchLogEnabled) {
+                  return;
+                }
                 logs.push({
                   level,
                   functionId: id,
@@ -695,11 +709,11 @@ async function runChain(
                 throw new Error("deadLetter method must never be called inside functions server.");
               },
             },
-            chainCtx.connectionOptions.fetchLogLevel || "info",
+            chainCtx.connectionOptions?.fetchLogLevel || "info",
             fetchTimeoutMs
           ),
           store: chainCtx.store,
-          props: chainCtx.connectionOptions.functionsEnv || {},
+          props: chainCtx.connectionOptions?.functionsEnv || {},
           retries,
           getWarehouse: (destinationId: string) => {
             return {

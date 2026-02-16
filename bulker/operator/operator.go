@@ -1315,7 +1315,7 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 	}
 
 	maxUnavailable := intstr.FromInt(0)
-	maxSurge := intstr.FromString("100%")
+	maxSurge := intstr.FromInt32(o.config.MinReplicas)
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{

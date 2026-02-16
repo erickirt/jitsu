@@ -116,8 +116,16 @@ func NewRouter(appContext *Context, partitionSelector kafkabase.PartitionSelecto
 		"/api.:ignored",
 	})
 
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		for range ticker.C {
+			transport.CloseIdleConnections()
+		}
+	}()
 	httpClient := &http.Client{
-		Timeout: time.Duration(int64(float64(appContext.config.DeviceFunctionsTimeoutMs)*1.1)) * time.Millisecond,
+		Timeout:   time.Duration(int64(float64(appContext.config.DeviceFunctionsTimeoutMs)*1.1)) * time.Millisecond,
+		Transport: transport,
 	}
 
 	var dataHosts []string
@@ -544,7 +552,7 @@ func (r *Router) callRotorEndpoint(destinations []*ShortDestinationConfig, baseU
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Request-Timeout-Ms", strconv.Itoa(r.config.DeviceFunctionsTimeoutMs))
+	req.Header.Set("X-Request-Timeout-Ms", strconv.Itoa(int(0.9*float64(r.config.DeviceFunctionsTimeoutMs))))
 	if r.config.RotorAuthKey != "" {
 		req.Header.Set("Authorization", "Bearer "+r.config.RotorAuthKey)
 	}
@@ -615,9 +623,14 @@ func (r *Router) callFunctionsEndpoint(stream *StreamWithDestinations, destinati
 	var err error
 	defer func() {
 		if err != nil {
-			obj := map[string]any{"body": string(messageBytes), "error": "Functions server ", "status": "FS_ERROR"}
-			r.eventsLogService.PostAsync(&eventslog.ActorEvent{EventType: eventslog.EventTypeIncoming, Level: eventslog.LevelError, ActorId: stream.Stream.Id, Event: obj})
+			obj := map[string]any{"error": err.Error()}
 			for _, id := range ids {
+				r.eventsLogService.PostAsync(&eventslog.ActorEvent{
+					EventType: eventslog.EventTypeFunction,
+					Level:     eventslog.LevelError,
+					ActorId:   id,
+					Event:     obj,
+				})
 				DeviceFunctions(id, "error").Inc()
 				DeviceFunctions("total", "error").Inc()
 			}
@@ -637,7 +650,7 @@ func (r *Router) callFunctionsEndpoint(stream *StreamWithDestinations, destinati
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Request-Timeout-Ms", strconv.Itoa(r.config.DeviceFunctionsTimeoutMs))
+	req.Header.Set("X-Request-Timeout-Ms", strconv.Itoa(int(0.9*float64(r.config.DeviceFunctionsTimeoutMs))))
 	if r.config.RotorAuthKey != "" {
 		req.Header.Set("Authorization", "Bearer "+r.config.RotorAuthKey)
 	}
