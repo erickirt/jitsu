@@ -110,8 +110,9 @@ export async function callFunctionsServer(
 ): Promise<FunctionsServerResult> {
   const url = getFunctionsServerUrl(workspaceId, connectionId, functionsClass);
 
+  let response: Awaited<ReturnType<typeof request>> | undefined;
   try {
-    const response = await request(url, {
+    response = await request(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -132,7 +133,6 @@ export async function callFunctionsServer(
       bodyTimeout: fsTimeoutMs,
       headersTimeout: fsTimeoutMs,
       dispatcher: undiciAgent,
-      signal: AbortSignal.timeout(fsTimeoutMs),
     });
 
     if (response.statusCode !== 200) {
@@ -172,12 +172,17 @@ export async function callFunctionsServer(
 
     return result;
   } catch (e: any) {
-    if (e.name === "AbortError") {
+    if (e.name === "BodyTimeoutError" || e.name === "HeadersTimeoutError" || e.name === "ConnectTimeoutError") {
       chainCtx.metrics?.status("functions_server", "error", "timeout").inc(1);
       throw new RetryError(`Functions processing timed out after ${fsTimeoutMs}ms.`, { drop: true });
     }
     chainCtx.metrics?.status("functions_server", "error", "other").inc(1);
     throw new RetryError(`Functions processing failed: ${e.message}`, { drop: true });
+  } finally {
+    // Ensure response body is always consumed to prevent connection leaks
+    if (response?.body && !response.body.destroyed) {
+      response.body.destroy();
+    }
   }
 }
 

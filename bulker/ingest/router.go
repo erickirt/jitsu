@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"crypto/sha512"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -646,6 +648,7 @@ func (r *Router) callFunctionsEndpoint(stream *StreamWithDestinations, destinati
 	req, err := http.NewRequest("POST", url, bytes.NewReader(messageBytes))
 	if err != nil {
 		r.Errorf("failed to create functions request for connections: %s: %v", ids, err)
+		err = fmt.Errorf("functions server internal error. Please contact support")
 		return
 	}
 
@@ -658,7 +661,12 @@ func (r *Router) callFunctionsEndpoint(stream *StreamWithDestinations, destinati
 	res, err := r.httpClient.Do(req)
 	if err != nil {
 		r.Errorf("failed to send functions request for connections: %s: %v", ids, err)
-		err = fmt.Errorf("functions request error: %v", err)
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			err = fmt.Errorf("functions server timeout after %dms", r.config.DeviceFunctionsTimeoutMs)
+		} else {
+			err = fmt.Errorf("functions server internal error. Please contact support")
+		}
 		return
 	}
 	defer res.Body.Close()
@@ -666,14 +674,14 @@ func (r *Router) callFunctionsEndpoint(stream *StreamWithDestinations, destinati
 	body, err := io.ReadAll(res.Body)
 	if res.StatusCode != 200 || err != nil {
 		r.Errorf("Failed to send functions request for connections: %s: status: %v body: %s", ids, res.StatusCode, string(body))
-		err = fmt.Errorf("functions response error: status %d err: %v", res.StatusCode, err)
+		err = fmt.Errorf("functions server error code: %d", res.StatusCode)
 		return
 	}
 	var result map[string]ConnectionChainResult
 	err = jsoniter.Unmarshal(body, &result)
 	if err != nil {
 		r.Errorf("Failed to unmarshal functions response for connections: %s: %v", ids, err)
-		err = fmt.Errorf("functions response error: %v", err)
+		err = fmt.Errorf("functions server internal error. Please contact support")
 		return
 	}
 

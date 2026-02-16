@@ -256,21 +256,28 @@ const BulkerDestination: JitsuFunction<AnalyticsServerEvent, BulkerDestinationCo
       if (streamOptions && Object.keys(streamOptions).length > 0) {
         headers["streamOptions"] = JSON.stringify(streamOptions);
       }
-      const res = await request(
-        `${bulkerEndpoint}/post/${destinationId}?tableName=${table}${bulkerPartitionParam(ctx, event)}`,
-        {
-          method: "POST",
-          headers,
-          body: payload,
-          bodyTimeout: fetchTimeoutMs,
-          headersTimeout: fetchTimeoutMs,
-          dispatcher: undiciAgent,
+      let res: Awaited<ReturnType<typeof request>> | undefined;
+      try {
+        res = await request(
+          `${bulkerEndpoint}/post/${destinationId}?tableName=${table}${bulkerPartitionParam(ctx, event)}`,
+          {
+            method: "POST",
+            headers,
+            body: payload,
+            bodyTimeout: fetchTimeoutMs,
+            headersTimeout: fetchTimeoutMs,
+            dispatcher: undiciAgent,
+          }
+        );
+        if (res.statusCode != 200) {
+          throw new HTTPError(`HTTP Error: ${res.statusCode}`, res.statusCode, await res.body.text());
+        } else {
+          ctx.log.debug(`HTTP Status: ${res.statusCode} Response: ${await res.body.text()}`);
         }
-      );
-      if (res.statusCode != 200) {
-        throw new HTTPError(`HTTP Error: ${res.statusCode}`, res.statusCode, await res.body.text());
-      } else {
-        ctx.log.debug(`HTTP Status: ${res.statusCode} Response: ${await res.body.text()}`);
+      } finally {
+        if (res?.body && !res.body.destroyed) {
+          res.body.destroy();
+        }
       }
     }
     return event;
