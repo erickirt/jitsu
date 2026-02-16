@@ -221,11 +221,11 @@ func CalculateWorkspaceData(
 	var usesWarehouseAPI bool
 
 	for _, fn := range functions {
+		if !usesWarehouseAPI && strings.Contains(fn.Code, "getWarehouse") {
+			usesWarehouseAPI = true
+		}
 		if fn.UpdatedAt.After(maxUpdatedAt) {
 			maxUpdatedAt = fn.UpdatedAt
-			if !usesWarehouseAPI && strings.Contains(fn.Code, "getWarehouse") {
-				usesWarehouseAPI = true
-			}
 		}
 	}
 	filteredConnections := make([]*EnrichedConnectionConfig, 0, len(connections))
