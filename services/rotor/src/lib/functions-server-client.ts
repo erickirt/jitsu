@@ -4,6 +4,8 @@ import { DropRetryErrorName, RetryErrorName, NoRetryErrorName, RetryError } from
 import { getLog, LogLevel, parseNumber } from "juava";
 import { getServerEnv } from "../serverEnv";
 import { Agent, request } from "undici";
+import Interceptors from "undici/types/interceptors";
+import dns = Interceptors.dns;
 
 const log = getLog("functions-server-client");
 
@@ -26,7 +28,13 @@ export const undiciAgent = new Agent({
   headersTimeout: fsTimeoutMs,
   connectTimeout: fsTimeoutMs,
   bodyTimeout: fsTimeoutMs,
-});
+}).compose(
+  dns({
+    maxTTL: 300000, // cache DNS for 5m
+    dualStack: false, // k8s is IPv4, skip AAAA lookups
+    affinity: 4, // prefer IPv4
+  })
+);
 /**
  * Get the functions classes from connection options.
  * functionsClasses is set during connection export from workspace.featuresEnabled.

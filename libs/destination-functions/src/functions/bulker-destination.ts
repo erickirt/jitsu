@@ -16,11 +16,13 @@ import omit from "lodash/omit";
 import { UserRecognitionParameter } from "./user-recognition";
 import { int32Hash, parseNumber } from "juava";
 import { MetricsMeta } from "@jitsu/core-functions-lib";
+import Interceptors from "undici/types/interceptors";
+import dns = Interceptors.dns;
 
 const JitsuInternalProperties = [TableNameParameter, UserRecognitionParameter];
 
 const concurrency = parseNumber(process.env.CONCURRENCY, 10);
-const fetchTimeoutMs = parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
+const bulkerTimeoutMs = 2 * parseNumber(process.env.FETCH_TIMEOUT_MS, 2000);
 
 export function bulkerPartitionParam(ctx: FullContext, event: AnalyticsServerEvent): string {
   let partitionParam = "";
@@ -40,10 +42,16 @@ export const undiciAgent = new Agent({
   connections: concurrency, // Limit concurrent kept-alive connections to not run out of resources
   maxRequestsPerClient: 3000,
   clientTtl: 5000, // Close idle connections after 5 seconds
-  headersTimeout: fetchTimeoutMs,
-  connectTimeout: fetchTimeoutMs,
-  bodyTimeout: fetchTimeoutMs,
-});
+  headersTimeout: bulkerTimeoutMs,
+  connectTimeout: bulkerTimeoutMs,
+  bodyTimeout: bulkerTimeoutMs,
+}).compose(
+  dns({
+    maxTTL: 300000, // cache DNS for 5m
+    dualStack: false, // k8s is IPv4, skip AAAA lookups
+    affinity: 4, // prefer IPv4
+  })
+);
 
 export type MappedEvent = {
   event: any;
@@ -264,8 +272,8 @@ const BulkerDestination: JitsuFunction<AnalyticsServerEvent, BulkerDestinationCo
             method: "POST",
             headers,
             body: payload,
-            bodyTimeout: fetchTimeoutMs,
-            headersTimeout: fetchTimeoutMs,
+            bodyTimeout: bulkerTimeoutMs,
+            headersTimeout: bulkerTimeoutMs,
             dispatcher: undiciAgent,
           }
         );
