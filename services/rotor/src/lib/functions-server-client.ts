@@ -3,9 +3,9 @@ import { EventsStore, FunctionChainContext, FunctionContext } from "@jitsu/desti
 import { DropRetryErrorName, RetryErrorName, NoRetryErrorName, RetryError } from "@jitsu/functions-lib";
 import { getLog, LogLevel, parseNumber } from "juava";
 import { getServerEnv } from "../serverEnv";
-import { Agent, request } from "undici";
-import Interceptors from "undici/types/interceptors";
-import dns = Interceptors.dns;
+import { Agent, request, interceptors } from "undici";
+
+const { dns } = interceptors;
 
 const log = getLog("functions-server-client");
 

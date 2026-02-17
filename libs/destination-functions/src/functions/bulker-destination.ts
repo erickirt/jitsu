@@ -11,13 +11,13 @@ import {
 } from "@jitsu/functions-lib";
 import { AnalyticsServerEvent, DataLayoutType } from "@jitsu/protocols/analytics";
 
-import { request, Agent } from "undici";
+import { request, Agent, interceptors } from "undici";
 import omit from "lodash/omit";
 import { UserRecognitionParameter } from "./user-recognition";
 import { int32Hash, parseNumber } from "juava";
 import { MetricsMeta } from "@jitsu/core-functions-lib";
-import Interceptors from "undici/types/interceptors";
-import dns = Interceptors.dns;
+
+const { dns } = interceptors;
 
 const JitsuInternalProperties = [TableNameParameter, UserRecognitionParameter];
 

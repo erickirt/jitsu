@@ -36,7 +36,7 @@ import { retryObject } from "./retries";
 import NodeCache from "node-cache";
 import isEqual from "lodash/isEqual";
 import { MessageHandlerContext } from "./message-handler";
-import { promFunctionsChainStatuses, promFunctionsInFlight, promFunctionsTime } from "./metrics";
+import { promFunctionsChainStatuses, promChainsInFlight, promChainsTime } from "./metrics";
 import { getServerEnv } from "../serverEnv";
 import { ProfilesFunction } from "./profiles-functions";
 import { createMongoStore, mongodb } from "./mongodb";
@@ -352,93 +352,95 @@ export async function runChain(
 ): Promise<FuncChainResult> {
   const execLog: FunctionExecLog = [];
   let events = [event];
-  for (const f of chain.functions) {
-    switch (runFuncs) {
-      case "udf-n-dst":
-        if (f.id !== "udf.PIPELINE" && !f.id.startsWith("builtin.destination.")) {
-          continue;
-        }
-        break;
-      case "dst-only":
-        if (!f.id.startsWith("builtin.destination.")) {
-          continue;
-        }
-        break;
-    }
-    const metricsLabels = { connectionId: eventContext.connection?.id ?? "", functionId: f.id };
-    const newEvents: AnyEvent[] = [];
-    for (let i = 0; i < events.length; i++) {
-      promFunctionsInFlight.inc(metricsLabels);
-      const event = events[i];
-      let result: FuncReturn = undefined;
-      const sw = stopwatch();
-      const execLogEvent: Partial<FunctionExecRes> = {
-        // we don't multiply active incoming metrics for events produced by user recognition
-        eventIndex: event[UserRecognitionParameter] ? 0 : i,
-        receivedAt: !isNaN(eventContext.receivedAt.getTime()) ? eventContext.receivedAt : new Date(),
-        functionId: f.id,
-        metricsMeta: metricsMeta,
-      };
-      try {
-        result = await f.exec(event, eventContext);
-      } catch (err: any) {
-        if (err.name === DropRetryErrorName || err.name === NoRetryErrorName) {
-          result = "drop";
-        }
-        execLogEvent.event = event;
-        execLogEvent.error = err;
-        const args = [err?.name, err?.message];
-        const r = retriesEnabled ? retryObject(err, eventContext.retries ?? 0) : undefined;
-        if (r) {
-          args.push(r);
-        }
-        const fctx = { ...f.context };
-        if (err.functionId) {
-          fctx.function.id = err.functionId;
-          fctx.function.type = "udf";
-        }
-        if (r?.retry?.left ?? 0 > 0) {
-          chain.context.log.warn(f.context, `Function execution failed`, ...args);
-        } else {
-          chain.context.log.error(f.context, `Function execution failed`, ...args);
-        }
-        if (f.id === "udf.PIPELINE") {
-          if (err.name !== DropRetryErrorName && err.name !== NoRetryErrorName) {
-            const errEvent = err.event || event;
-            // if udf pipeline failed  w/o drop error pass partial result of pipeline to the destination function
-            if (Array.isArray(errEvent)) {
-              newEvents.push(...errEvent);
-            } else {
-              newEvents.push(errEvent);
-            }
+  promChainsInFlight.inc();
+  const chainSw = stopwatch();
+  try {
+    for (const f of chain.functions) {
+      switch (runFuncs) {
+        case "udf-n-dst":
+          if (f.id !== "udf.PIPELINE" && !f.id.startsWith("builtin.destination.")) {
             continue;
           }
-        }
-      } finally {
-        const ms = sw.elapsedMs();
-        promFunctionsTime.observe(metricsLabels, ms);
-        execLogEvent.ms = ms;
-        execLogEvent.dropped = isDropResult(result);
-        execLog.push(execLogEvent as FunctionExecRes);
-        promFunctionsInFlight.dec(metricsLabels);
-      }
-      if (!execLogEvent.dropped) {
-        if (result) {
-          if (Array.isArray(result)) {
-            newEvents.push(...result);
-          } else {
-            // @ts-ignore
-            newEvents.push(result);
+          break;
+        case "dst-only":
+          if (!f.id.startsWith("builtin.destination.")) {
+            continue;
           }
-        } else {
-          newEvents.push(event);
+          break;
+      }
+      const newEvents: AnyEvent[] = [];
+      for (let i = 0; i < events.length; i++) {
+        const event = events[i];
+        let result: FuncReturn = undefined;
+        const sw = stopwatch();
+        const execLogEvent: Partial<FunctionExecRes> = {
+          // we don't multiply active incoming metrics for events produced by user recognition
+          eventIndex: event[UserRecognitionParameter] ? 0 : i,
+          receivedAt: !isNaN(eventContext.receivedAt.getTime()) ? eventContext.receivedAt : new Date(),
+          functionId: f.id,
+          metricsMeta: metricsMeta,
+        };
+        try {
+          result = await f.exec(event, eventContext);
+        } catch (err: any) {
+          if (err.name === DropRetryErrorName || err.name === NoRetryErrorName) {
+            result = "drop";
+          }
+          execLogEvent.event = event;
+          execLogEvent.error = err;
+          const args = [err?.name, err?.message];
+          const r = retriesEnabled ? retryObject(err, eventContext.retries ?? 0) : undefined;
+          if (r) {
+            args.push(r);
+          }
+          const fctx = { ...f.context };
+          if (err.functionId) {
+            fctx.function.id = err.functionId;
+            fctx.function.type = "udf";
+          }
+          if (r?.retry?.left ?? 0 > 0) {
+            chain.context.log.warn(f.context, `Function execution failed`, ...args);
+          } else {
+            chain.context.log.error(f.context, `Function execution failed`, ...args);
+          }
+          if (f.id === "udf.PIPELINE") {
+            if (err.name !== DropRetryErrorName && err.name !== NoRetryErrorName) {
+              const errEvent = err.event || event;
+              // if udf pipeline failed  w/o drop error pass partial result of pipeline to the destination function
+              if (Array.isArray(errEvent)) {
+                newEvents.push(...errEvent);
+              } else {
+                newEvents.push(errEvent);
+              }
+              continue;
+            }
+          }
+        } finally {
+          execLogEvent.ms = sw.elapsedMs();
+          execLogEvent.dropped = isDropResult(result);
+          execLog.push(execLogEvent as FunctionExecRes);
+        }
+        if (!execLogEvent.dropped) {
+          if (result) {
+            if (Array.isArray(result)) {
+              newEvents.push(...result);
+            } else {
+              // @ts-ignore
+              newEvents.push(result);
+            }
+          } else {
+            newEvents.push(event);
+          }
         }
       }
+      events = newEvents;
+      if (events.length === 0) {
+        break;
+      }
     }
-    events = newEvents;
-    if (events.length === 0) {
-      break;
-    }
+  } finally {
+    promChainsTime.observe(chainSw.elapsedMs());
+    promChainsInFlight.dec();
   }
   return { events, execLog };
 }

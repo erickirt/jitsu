@@ -59,19 +59,17 @@ export const promConnectionMessageStatuses = new Counter({
   help: "connection message statuses",
   labelNames: ["destinationId", "tableName", "status"] as const,
 });
-export const promFunctionsInFlight = new Gauge({
-  name: "rotor_functions_in_flight",
-  help: "Functions in flight",
-  // add `as const` here to enforce label names
-  labelNames: ["connectionId", "functionId"] as const,
+export const promChainsInFlight = new Gauge({
+  name: "rotor_chains_in_flight",
+  help: "Chains in flight",
 });
-export const promFunctionsTime = new Histogram({
-  name: "rotor_functions_time",
-  help: "Functions execution time in ms",
-  buckets: [1, 10, 100, 200, 1000, 2000, 3000, 4000, 5000],
-  // add `as const` here to enforce label names
-  labelNames: ["connectionId", "functionId"] as const,
+
+export const promChainsTime = new Histogram({
+  name: "rotor_chains_time",
+  help: "Chain execution time in ms",
+  buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
 });
+
 export const promHandlerMetric = new Counter({
   name: "rotor_function_handler",
   help: "function handler status",
