@@ -178,7 +178,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       userInfo = await userInfoResponse.json();
-      log.atInfo().log("Fetched user info", JSON.stringify(userInfo));
     } else {
       log.atError().log("No ID token or userinfo endpoint available");
       return redirectWithOidcError(res, {
@@ -186,6 +185,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         returnUrl: stateData.returnUrl,
       });
     }
+    log.atInfo().log("User info", JSON.stringify(userInfo));
 
     // Extract user details based on claim mappings
     const email = userInfo[oidcProvider.emailClaim] || userInfo.email;
