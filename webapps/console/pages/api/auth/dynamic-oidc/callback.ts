@@ -178,6 +178,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       userInfo = await userInfoResponse.json();
+      log.atInfo().log("Fetched user info", JSON.stringify(userInfo));
     } else {
       log.atError().log("No ID token or userinfo endpoint available");
       return redirectWithOidcError(res, {
