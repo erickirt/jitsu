@@ -1396,7 +1396,7 @@ func (o *Operator) createOrUpdateHPA(ctx context.Context, data *DeploymentData) 
 
 	// Scale up policy: 8 pods per 30 seconds
 	scaleUpPodValue := int32(2)
-	scaleUpPeriod := int32(30)
+	scaleUpPeriod := int32(15)
 
 	selectPolicyMax := autoscalingv2.MaxChangePolicySelect
 

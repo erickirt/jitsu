@@ -65,7 +65,7 @@ type Config struct {
 	// Scale down stabilization window in seconds
 	HPAScaleDownStabilizationSeconds int32 `mapstructure:"HPA_SCALE_DOWN_STABILIZATION_SECONDS" default:"300"`
 	// Scale up stabilization window in seconds
-	HPAScaleUpStabilizationSeconds int32 `mapstructure:"HPA_SCALE_UP_STABILIZATION_SECONDS" default:"120"`
+	HPAScaleUpStabilizationSeconds int32 `mapstructure:"HPA_SCALE_UP_STABILIZATION_SECONDS" default:"0"`
 }
 
 func init() {
