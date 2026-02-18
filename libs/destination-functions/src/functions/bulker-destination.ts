@@ -41,7 +41,7 @@ export function bulkerPartitionParam(ctx: FullContext, event: AnalyticsServerEve
 export const undiciAgent = new Agent({
   connections: concurrency, // Limit concurrent kept-alive connections to not run out of resources
   maxRequestsPerClient: 3000,
-  clientTtl: 5000, // Close idle connections after 5 seconds
+  clientTtl: 10000, // Close idle connections after 5 seconds
   headersTimeout: bulkerTimeoutMs,
   connectTimeout: bulkerTimeoutMs,
   bodyTimeout: bulkerTimeoutMs,
