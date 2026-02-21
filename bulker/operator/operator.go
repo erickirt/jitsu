@@ -1057,7 +1057,6 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		deploymentName = data.DeploymentID + deploymentSuffix
 		labels[labelWorkspaceID] = data.DeploymentID
 	}
-	labels["jitsu.com/deployment-id"] = data.DeploymentID
 
 	var nodeSelector map[string]string
 	if o.config.KubernetesNodeSelector != "" {
@@ -1338,11 +1337,18 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 	maxUnavailable := intstr.FromInt(0)
 	maxSurge := intstr.FromInt32(o.config.MinReplicas)
 
+	// Extra labels for deployment and pod template metadata (not selector, which is immutable)
+	allLabels := make(map[string]string, len(labels)+1)
+	for k, v := range labels {
+		allLabels[k] = v
+	}
+	allLabels["jitsu.com/deployment-id"] = data.DeploymentID
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName,
 			Namespace: o.config.KubernetesNamespace,
-			Labels:    labels,
+			Labels:    allLabels,
 			Annotations: map[string]string{
 				labelWorkspaceIDs:       strings.Join(data.WorkspaceIDs, ","),
 				labelOperatorConfigHash: data.OperatorConfigHash,
@@ -1362,7 +1368,7 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels: allLabels,
 					Annotations: map[string]string{
 						labelConfigHash:         data.ConfigHash,
 						labelOperatorConfigHash: data.OperatorConfigHash,
