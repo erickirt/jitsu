@@ -25,11 +25,12 @@ type Config struct {
 	KubernetesClientConfig string `mapstructure:"KUBERNETES_CLIENT_CONFIG" default:"local"`
 	KubernetesContext      string `mapstructure:"KUBERNETES_CONTEXT"`
 	// nodeSelector for sync pods in json format, e.g: {"disktype": "ssd"}
-	KubernetesNodeSelector string `mapstructure:"KUBERNETES_NODE_SELECTOR"`
-	PodsServiceAccount     string `mapstructure:"PODS_SERVICE_ACCOUNT"`
-	PodsTolerations        string `mapstructure:"PODS_TOLERATIONS"`       // tolerations for sync pods in json format
-	PodsResources          string `mapstructure:"PODS_RESOURCES"`         // resource requests/limits for sync pods in json format
-	PodsResourcesPremium   string `mapstructure:"PODS_RESOURCES_PREMIUM"` // resource requests/limits for premium tier pods in json format
+	KubernetesNodeSelector        string `mapstructure:"KUBERNETES_NODE_SELECTOR"`
+	PodsServiceAccount            string `mapstructure:"PODS_SERVICE_ACCOUNT"`
+	PodsTolerations               string `mapstructure:"PODS_TOLERATIONS"`                 // tolerations for sync pods in json format
+	PodsResources                 string `mapstructure:"PODS_RESOURCES"`                   // resource requests/limits for sync pods in json format
+	PodsResourcesPremium          string `mapstructure:"PODS_RESOURCES_PREMIUM"`           // resource requests/limits for premium tier pods in json format
+	PodsTopologySpreadConstraints string `mapstructure:"PODS_TOPOLOGY_SPREAD_CONSTRAINTS"` // topology spread constraints for sync pods in json format
 
 	// Functions server configuration
 	FunctionsServerImage string `mapstructure:"FUNCTIONS_SERVER_IMAGE" default:"jitsucom/rotor:latest"`
@@ -92,6 +93,7 @@ func (c *Config) CalculateOperatorConfigHash() string {
 	h.Write([]byte(c.PodsTolerations))
 	h.Write([]byte(c.PodsResources))
 	h.Write([]byte(c.PodsResourcesPremium))
+	h.Write([]byte(c.PodsTopologySpreadConstraints))
 	h.Write([]byte(c.PodsServiceAccount))
 	h.Write([]byte(c.MongoDBURL))
 	h.Write([]byte(c.MongobetweenImage))

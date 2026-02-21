@@ -1057,6 +1057,7 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		deploymentName = data.DeploymentID + deploymentSuffix
 		labels[labelWorkspaceID] = data.DeploymentID
 	}
+	labels["jitsu.com/deployment-id"] = data.DeploymentID
 
 	var nodeSelector map[string]string
 	if o.config.KubernetesNodeSelector != "" {
@@ -1071,6 +1072,14 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		err := hjson.Unmarshal([]byte(o.config.PodsTolerations), &tolerations)
 		if err != nil {
 			o.Errorf("failed to parse tolerations from string: %s\nIngoring it. Error: %v", o.config.PodsTolerations, err)
+		}
+	}
+	var topologySpreadConstraints []corev1.TopologySpreadConstraint
+	if o.config.PodsTopologySpreadConstraints != "" {
+		tscConfig := strings.ReplaceAll(o.config.PodsTopologySpreadConstraints, "$deploymentId", data.DeploymentID)
+		err := hjson.Unmarshal([]byte(tscConfig), &topologySpreadConstraints)
+		if err != nil {
+			o.Errorf("failed to parse topology spread constraints from string: %s\nIgnoring it. Error: %v", tscConfig, err)
 		}
 	}
 
@@ -1318,6 +1327,7 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 		Volumes:                       volumes,
 		NodeSelector:                  nodeSelector,
 		Tolerations:                   tolerations,
+		TopologySpreadConstraints:     topologySpreadConstraints,
 	}
 
 	// Add service account if configured
