@@ -941,6 +941,7 @@ func (o *Operator) createOrUpdateFreeService(ctx context.Context, data *Deployme
 		labelApp:            appName,
 		labelFunctionsClass: FunctionsClassFree,
 	}
+	preferClose := "PreferClose"
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -952,8 +953,9 @@ func (o *Operator) createOrUpdateFreeService(ctx context.Context, data *Deployme
 			},
 		},
 		Spec: corev1.ServiceSpec{
-			Type:     corev1.ServiceType(o.config.ServiceType),
-			Selector: selector,
+			Type:                corev1.ServiceType(o.config.ServiceType),
+			Selector:            selector,
+			TrafficDistribution: &preferClose,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "http",
@@ -992,6 +994,7 @@ func (o *Operator) createOrUpdateDedicatedService(ctx context.Context, data *Dep
 		labelApp:         appName,
 		labelWorkspaceID: data.DeploymentID,
 	}
+	preferClose := "PreferClose"
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1000,8 +1003,9 @@ func (o *Operator) createOrUpdateDedicatedService(ctx context.Context, data *Dep
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:     corev1.ServiceType(o.config.ServiceType),
-			Selector: selector,
+			Type:                corev1.ServiceType(o.config.ServiceType),
+			Selector:            selector,
+			TrafficDistribution: &preferClose,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "http",
