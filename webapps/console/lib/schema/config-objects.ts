@@ -148,14 +148,8 @@ const configObjectTypes: Record<string, ConfigObjectType> = {
     schema: DestinationConfig,
     outputFilter: async (obj: DestinationConfig) => {
       const newObject = { ...obj };
-      if (newObject.provisioned) {
-        delete (newObject as any).credentials;
-      } else {
-        // Mask secrets for non-provisioned destinations
-        const secretPaths = getDestinationSecretPaths(obj.destinationType);
-        return maskSecrets(newObject, secretPaths);
-      }
-      return newObject;
+      const secretPaths = getDestinationSecretPaths(obj.destinationType);
+      return maskSecrets(newObject, secretPaths);
     },
     merge: async (original: DestinationConfig, patch: Partial<DestinationConfig>): Promise<any> => {
       if (patch.provisioned) {
