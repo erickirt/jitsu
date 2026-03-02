@@ -1427,7 +1427,7 @@ func (o *Operator) createOrUpdateHPA(ctx context.Context, data *DeploymentData) 
 		labels[labelWorkspaceID] = data.DeploymentID
 	}
 
-	minReplicas := o.config.MinReplicas
+	minReplicas := utils.Ternary(data.FunctionsClass == FunctionsClassPremium, o.config.MinReplicasPremium, o.config.MinReplicas)
 	scaleDownStabilization := o.config.HPAScaleDownStabilizationSeconds
 	scaleUpStabilization := o.config.HPAScaleUpStabilizationSeconds
 
