@@ -92,16 +92,18 @@ func (r *Router) Health(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "pass"})
 		return
 	}
-	if !r.topicManager.IsReady() {
-		logging.Errorf("Health check: FAILED: topic manager is not ready")
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "output": "topic manager is not ready"})
-		return
-	}
 	updatedAt := r.topicManager.UpdatedAt()
-	if updatedAt.IsZero() || time.Since(updatedAt) > time.Duration(10*r.config.TopicManagerRefreshPeriodSec)*time.Second {
-		logging.Errorf("Health check: FAILED: topic manager is outdated: %s", updatedAt)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "output": "topic manager is outdated: " + updatedAt.String()})
-		return
+	if r.config.EnableConsumers {
+		if !r.topicManager.IsReady() {
+			logging.Errorf("Health check: FAILED: topic manager is not ready")
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "output": "topic manager is not ready"})
+			return
+		}
+		if updatedAt.IsZero() || time.Since(updatedAt) > time.Duration(10*r.config.TopicManagerRefreshPeriodSec)*time.Second {
+			logging.Errorf("Health check: FAILED: topic manager is outdated: %s", updatedAt)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "output": "topic manager is outdated: " + updatedAt.String()})
+			return
+		}
 	}
 	size, err := r.producer.QueueSize()
 	if err != nil {

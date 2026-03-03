@@ -30,8 +30,8 @@ func (dps *DummyPartitionSelector) SelectPartition() int32 {
 
 type Producer struct {
 	appbase.Service
-	producer *kafka.Producer
-
+	producer             *kafka.Producer
+	config               *KafkaConfig
 	reportQueueLength    bool
 	asyncDeliveryChannel chan kafka.Event
 	waitForDelivery      time.Duration
@@ -70,6 +70,7 @@ func NewProducer(config *KafkaConfig, kafkaConfig *kafka.ConfigMap, reportQueueL
 	return &Producer{
 		Service:              base,
 		producer:             producer,
+		config:               config,
 		reportQueueLength:    reportQueueLength,
 		asyncDeliveryChannel: make(chan kafka.Event, 1000),
 		waitForDelivery:      time.Millisecond * time.Duration(config.ProducerWaitForDeliveryMs),
@@ -223,7 +224,7 @@ func (p *Producer) Close() error {
 		return nil
 	}
 	p.closed.Store(true)
-	notProduced := p.producer.Flush(10000)
+	notProduced := p.producer.Flush(p.config.ProducerDeliveryTimeoutMs)
 	if notProduced > 0 {
 		p.Errorf("%d message left unsent in producer queue.", notProduced)
 		//TODO: suck p.producer.ProduceChannel() and store to fallback file or some retry queue
