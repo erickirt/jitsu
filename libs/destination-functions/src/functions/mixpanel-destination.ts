@@ -601,7 +601,7 @@ const MixpanelDestination: JitsuFunction<AnalyticsServerEvent, MixpanelCredentia
       const compressed = message.headers?.["Content-Encoding"] === "gzip" ? zlib.gzipSync(payload) : payload;
       let result: Response;
       if (message.bulker) {
-        result = await bulkerFetch(message.url, message.headers, payload);
+        result = await bulkerFetch(message.url, payload, message.headers);
       } else {
         result = await ctx.fetch(
           message.url,

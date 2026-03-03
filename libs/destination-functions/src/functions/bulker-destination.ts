@@ -294,7 +294,7 @@ const BulkerDestination: JitsuFunction<AnalyticsServerEvent, BulkerDestinationCo
   }
 };
 
-export async function bulkerFetch(url: string, headers: Record<string, string>, body: string): Promise<FetchResponse> {
+export async function bulkerFetch(url: string, body: string, headers?: Record<string, string>): Promise<FetchResponse> {
   let res: Awaited<ReturnType<typeof request>> | undefined;
   try {
     res = await request(url, {
