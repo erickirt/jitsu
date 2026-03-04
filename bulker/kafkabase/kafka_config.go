@@ -51,6 +51,12 @@ type KafkaConfig struct {
 	ProducerDeliveryTimeoutMs  int     `mapstructure:"PRODUCER_DELIVERY_TIMEOUT_MS" default:"300000"`
 	ProducerWaitForDeliveryMs  int     `mapstructure:"PRODUCER_WAIT_FOR_DELIVERY_MS" default:"1000"`
 
+	ProducerBackPressureMaxDelayMs int     `mapstructure:"PRODUCER_BACK_PRESSURE_MAX_DELAY_MS" default:"0"`
+	ProducerBackPressureThreshold  float64 `mapstructure:"PRODUCER_BACK_PRESSURE_THRESHOLD" default:"0.25"`
+
+	// ProducerStatisticsIntervalMs is the interval in ms for librdkafka internal statistics reporting. 0 disables.
+	ProducerStatisticsIntervalMs int `mapstructure:"PRODUCER_STATISTICS_INTERVAL_MS" default:"15000"`
+
 	// Failover logger configuration
 	FailoverLoggerEnvConfig `mapstructure:",squash"`
 }

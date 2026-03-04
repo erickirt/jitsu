@@ -1,6 +1,7 @@
 package kafkabase
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -40,9 +41,36 @@ type Producer struct {
 	failoverLogger       *FailoverLogger
 }
 
+// producerStats represents a subset of librdkafka statistics JSON
+type producerStats struct {
+	MsgCnt     float64                `json:"msg_cnt"`
+	MsgSize    float64                `json:"msg_size"`
+	TxMsgs     float64                `json:"txmsgs"`
+	TxMsgBytes float64                `json:"txmsg_bytes"`
+	Tx         float64                `json:"tx"`
+	TxBytes    float64                `json:"tx_bytes"`
+	Brokers    map[string]brokerStats `json:"brokers"`
+}
+
+type brokerStats struct {
+	Name        string   `json:"name"`
+	Nodeid      int      `json:"nodeid"`
+	State       string   `json:"state"`
+	OutbufCnt   float64  `json:"outbuf_cnt"`
+	WaitrespCnt float64  `json:"waitresp_cnt"`
+	Rtt         rttStats `json:"rtt"`
+}
+
+type rttStats struct {
+	Avg float64 `json:"avg"`
+}
+
 // NewProducer creates new Producer
 func NewProducer(config *KafkaConfig, kafkaConfig *kafka.ConfigMap, reportQueueLength bool, metricsLabelFunc MetricsLabelsFunc) (*Producer, error) {
 	base := appbase.NewServiceBase("producer")
+	if config.ProducerStatisticsIntervalMs > 0 {
+		_ = kafkaConfig.SetKey("statistics.interval.ms", config.ProducerStatisticsIntervalMs)
+	}
 	producer, err := kafka.NewProducer(kafkaConfig)
 	if err != nil {
 		return nil, base.NewError("error creating kafka producer: %v", err)
@@ -110,6 +138,8 @@ func (p *Producer) Start() {
 						p.Errorf("Failed to log message to failover logger: %v", err)
 					}
 				}
+			case *kafka.Stats:
+				p.handleStats(ev)
 			case *kafka.Error, kafka.Error:
 				p.Errorf("Producer error: %v", ev)
 			}
@@ -253,6 +283,28 @@ func (p *Producer) QueueSize() (int, error) {
 	}
 
 	return p.producer.Len(), nil
+}
+
+func (p *Producer) handleStats(ev *kafka.Stats) {
+	var stats producerStats
+	if err := json.Unmarshal([]byte(ev.String()), &stats); err != nil {
+		p.Errorf("Failed to parse producer stats: %v", err)
+		return
+	}
+	ProducerStatsMsgCnt.Set(stats.MsgCnt)
+	ProducerStatsMsgSize.Set(stats.MsgSize)
+	ProducerStatsTxMsgs.Set(stats.TxMsgs)
+	ProducerStatsTxMsgBytes.Set(stats.TxMsgBytes)
+	ProducerStatsTx.Set(stats.Tx)
+	ProducerStatsTxBytes.Set(stats.TxBytes)
+	for _, broker := range stats.Brokers {
+		if broker.Nodeid < 0 {
+			continue // skip internal brokers
+		}
+		ProducerStatsBrokerRtt(broker.Name).Set(broker.Rtt.Avg)
+		ProducerStatsBrokerOutbufCnt(broker.Name).Set(broker.OutbufCnt)
+		ProducerStatsBrokerWaitrespCnt(broker.Name).Set(broker.WaitrespCnt)
+	}
 }
 
 func defaultMetricsLabelFunc(topicId string, status, errText string) (topic, destinationId, mode, tableName, st string, err string) {
