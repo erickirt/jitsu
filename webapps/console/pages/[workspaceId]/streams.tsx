@@ -258,6 +258,9 @@ const StreamsList: React.FC<{}> = () => {
           </>
         ),
       },
+      shard: {
+        hidden: true,
+      },
       authorizedJavaScriptDomains: {
         hidden: true,
         displayName: "Authorized JavaScript Domains",
