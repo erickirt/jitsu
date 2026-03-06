@@ -1055,7 +1055,7 @@ const ObjectListEditor: React.FC<ConfigEditorProps> = props => {
   };
   const list = (data.filter(props.filter || (() => true)) || []).filter(obj => {
     if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     return obj.id?.toLowerCase().includes(q) || (obj as any).name?.toLowerCase().includes(q);
   });
   return (

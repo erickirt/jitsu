@@ -553,7 +553,7 @@ function Syncs(props: RemoteEntitiesProps) {
               .filter(l => !srcFilter || l.fromId === srcFilter)
               .filter(l => {
                 if (!searchQuery) return true;
-                const q = searchQuery.toLowerCase();
+                const q = searchQuery.trim().toLowerCase();
                 const service = services.find(s => s.id === l.fromId);
                 const destination = destinations.find(d => d.id === l.toId);
                 return (
