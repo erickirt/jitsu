@@ -87,7 +87,7 @@ function createUnderlyingAnalyticsInstance(
       }
       const value = storageCache[key] || persistentStorage.getItem(key);
       if (opts.debug) {
-        console.log(`[JITSU DEBUG] [Caching storage] getItem: ${key}=${value}. From cache: ${!storageCache[key]}`);
+        console.log(`[JITSU DEBUG] [Caching storage] getItem: ${key}=${value}. From cache: ${!!storageCache[key]}`);
       }
       return value;
     },
