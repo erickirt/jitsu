@@ -39,6 +39,12 @@ type Producer struct {
 	closed               atomic.Bool
 	metricsLabelFunc     MetricsLabelsFunc
 	failoverLogger       *FailoverLogger
+
+	// previous cumulative values from librdkafka stats for delta computation
+	prevTxMsgs     float64
+	prevTxMsgBytes float64
+	prevTx         float64
+	prevTxBytes    float64
 }
 
 // producerStats represents a subset of librdkafka statistics JSON
@@ -291,12 +297,31 @@ func (p *Producer) handleStats(ev *kafka.Stats) {
 		p.Errorf("Failed to parse producer stats: %v", err)
 		return
 	}
+	// Gauges for current state metrics
 	ProducerStatsMsgCnt.Set(stats.MsgCnt)
 	ProducerStatsMsgSize.Set(stats.MsgSize)
-	ProducerStatsTxMsgs.Set(stats.TxMsgs)
-	ProducerStatsTxMsgBytes.Set(stats.TxMsgBytes)
-	ProducerStatsTx.Set(stats.Tx)
-	ProducerStatsTxBytes.Set(stats.TxBytes)
+
+	// Counters for cumulative metrics — add only the delta since last stats callback
+	if delta := stats.TxMsgs - p.prevTxMsgs; delta > 0 {
+		ProducerStatsTxMsgs.Add(delta)
+	}
+	p.prevTxMsgs = stats.TxMsgs
+
+	if delta := stats.TxMsgBytes - p.prevTxMsgBytes; delta > 0 {
+		ProducerStatsTxMsgBytes.Add(delta)
+	}
+	p.prevTxMsgBytes = stats.TxMsgBytes
+
+	if delta := stats.Tx - p.prevTx; delta > 0 {
+		ProducerStatsTx.Add(delta)
+	}
+	p.prevTx = stats.Tx
+
+	if delta := stats.TxBytes - p.prevTxBytes; delta > 0 {
+		ProducerStatsTxBytes.Add(delta)
+	}
+	p.prevTxBytes = stats.TxBytes
+
 	for _, broker := range stats.Brokers {
 		if broker.Nodeid < 0 {
 			continue // skip internal brokers

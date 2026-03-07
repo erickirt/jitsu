@@ -38,25 +38,25 @@ var (
 		Name:      "stats_msg_size_bytes",
 		Help:      "Current total size of messages in producer queues",
 	})
-	ProducerStatsTxMsgs = promauto.NewGauge(prometheus.GaugeOpts{
+	ProducerStatsTxMsgs = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "bulkerapp",
 		Subsystem: "producer",
 		Name:      "stats_txmsgs_total",
 		Help:      "Total number of messages transmitted (produced) to Kafka brokers",
 	})
-	ProducerStatsTxMsgBytes = promauto.NewGauge(prometheus.GaugeOpts{
+	ProducerStatsTxMsgBytes = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "bulkerapp",
 		Subsystem: "producer",
 		Name:      "stats_txmsg_bytes_total",
 		Help:      "Total number of message bytes transmitted to Kafka brokers",
 	})
-	ProducerStatsTx = promauto.NewGauge(prometheus.GaugeOpts{
+	ProducerStatsTx = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "bulkerapp",
 		Subsystem: "producer",
 		Name:      "stats_tx_total",
 		Help:      "Total number of requests sent to Kafka brokers",
 	})
-	ProducerStatsTxBytes = promauto.NewGauge(prometheus.GaugeOpts{
+	ProducerStatsTxBytes = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "bulkerapp",
 		Subsystem: "producer",
 		Name:      "stats_tx_bytes_total",

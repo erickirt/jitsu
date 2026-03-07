@@ -96,15 +96,17 @@ func (a *Context) InitContext(settings *appbase.AppSettings) error {
 		}
 		a.batchProducer.Start()
 
-		streamProducerConfig := kafka.ConfigMap(utils.MapPutAll(kafka.ConfigMap{
-			"compression.type":    a.config.KafkaTopicCompression,
-			"delivery.timeout.ms": a.config.ProducerDeliveryTimeoutMs,
-		}, *a.kafkaConfig))
-		a.streamProducer, err = NewProducer(&a.config.KafkaConfig, &streamProducerConfig, false)
-		if err != nil {
-			return err
+		if a.config.EnableConsumers {
+			streamProducerConfig := kafka.ConfigMap(utils.MapPutAll(kafka.ConfigMap{
+				"compression.type":    a.config.KafkaTopicCompression,
+				"delivery.timeout.ms": a.config.ProducerDeliveryTimeoutMs,
+			}, *a.kafkaConfig))
+			a.streamProducer, err = NewProducer(&a.config.KafkaConfig, &streamProducerConfig, false)
+			if err != nil {
+				return err
+			}
+			a.streamProducer.Start()
 		}
-		a.streamProducer.Start()
 
 		a.topicManager, err = NewTopicManager(a)
 		if err != nil {

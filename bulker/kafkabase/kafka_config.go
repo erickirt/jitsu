@@ -55,7 +55,7 @@ type KafkaConfig struct {
 	ProducerBackPressureThreshold  float64 `mapstructure:"PRODUCER_BACK_PRESSURE_THRESHOLD" default:"0.25"`
 
 	// ProducerStatisticsIntervalMs is the interval in ms for librdkafka internal statistics reporting. 0 disables.
-	ProducerStatisticsIntervalMs int `mapstructure:"PRODUCER_STATISTICS_INTERVAL_MS" default:"15000"`
+	ProducerStatisticsIntervalMs int `mapstructure:"PRODUCER_STATISTICS_INTERVAL_MS" default:"0"`
 
 	// Failover logger configuration
 	FailoverLoggerEnvConfig `mapstructure:",squash"`
