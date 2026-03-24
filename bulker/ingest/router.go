@@ -121,12 +121,10 @@ func NewRouter(appContext *Context, partitionSelector kafkabase.PartitionSelecto
 	})
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		for range ticker.C {
-			transport.CloseIdleConnections()
-		}
-	}()
+	transport.MaxIdleConnsPerHost = 100
+	transport.MaxIdleConns = 200
+	transport.IdleConnTimeout = 20 * time.Second
+
 	httpClient := &http.Client{
 		Timeout:   time.Duration(int64(float64(appContext.config.DeviceFunctionsTimeoutMs)*1.1)) * time.Millisecond,
 		Transport: transport,
