@@ -234,12 +234,17 @@ func (o *Operator) reconcile() {
 			// Free → Dedicated transition: keep workspace in free deployment until
 			// the dedicated deployment has been fully rolled out for 5+ minutes,
 			// giving all Rotor instances time to pick up the new deployment.
+			// Only applies to freshly created deployments (< 6 min old) — an existing
+			// deployment being updated should not fall back to free.
 			if !slices.Contains(functionsClasses, FunctionsClassFree) {
 				existing := existingDeployments[ws.ID]
-				handoffReady := existing != nil && existing.RolledOut &&
-					!existing.RolloutCompletedAt.IsZero() && time.Since(existing.RolloutCompletedAt) > 5*time.Minute
-				if !handoffReady && !freeAdded {
-					freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
+				isNewDeployment := existing == nil || time.Since(existing.CreatedAt) < 6*time.Minute
+				if isNewDeployment {
+					handoffReady := existing != nil && existing.RolledOut &&
+						!existing.RolloutCompletedAt.IsZero() && time.Since(existing.RolloutCompletedAt) > 5*time.Minute
+					if !handoffReady && !freeAdded {
+						freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
+					}
 				}
 			}
 		}
