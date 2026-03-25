@@ -531,20 +531,18 @@ func (o *Operator) getExistingDeployments(ctx context.Context) (map[string]*Depl
 		// Parse connections map annotation
 		connectionsMap := ParseConnectionsMapAnnotation(deployment.Annotations[labelConnectionsMap])
 
-		// Compute rollout status
-		replicas := int32(1)
-		if deployment.Spec.Replicas != nil {
-			replicas = *deployment.Spec.Replicas
-		}
-		isRolledOut := deployment.Status.ObservedGeneration >= deployment.Generation &&
-			deployment.Status.UpdatedReplicas == replicas &&
-			deployment.Status.AvailableReplicas == replicas
-
+		// Compute rollout status by checking the Progressing condition.
+		// "NewReplicaSetAvailable" means the latest revision's ReplicaSet has minimum
+		// availability — this is stable during HPA scaling (which only adds replicas
+		// to the same ReplicaSet, not a new one).
+		var isRolledOut bool
 		var rolloutCompletedAt time.Time
-		if isRolledOut {
+		if deployment.Status.ObservedGeneration >= deployment.Generation {
 			for _, cond := range deployment.Status.Conditions {
 				if cond.Type == appsv1.DeploymentProgressing &&
+					cond.Status == corev1.ConditionTrue &&
 					cond.Reason == "NewReplicaSetAvailable" {
+					isRolledOut = true
 					rolloutCompletedAt = cond.LastUpdateTime.Time
 					break
 				}
