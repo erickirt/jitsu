@@ -182,6 +182,8 @@ func (o *Operator) Close() error {
 func (o *Operator) reconcile() {
 	ctx := context.Background()
 
+	sw := utils.NewStopwatch()
+
 	connData := o.connectionsRepo.GetData()
 	funcData := o.functionsRepo.GetData()
 	wsData := o.workspacesRepo.GetData()
@@ -197,6 +199,7 @@ func (o *Operator) reconcile() {
 		logging.Errorf("Failed to get existing deployments: %v", err)
 		return
 	}
+	logging.Infof("[reconcile] getExistingDeployments: %dms", sw.LapMs())
 
 	// Group workspaces by functions class
 	dedicatedWorkspaces := make(map[string]*WorkspaceData) // workspaceID -> WorkspaceData
@@ -250,6 +253,9 @@ func (o *Operator) reconcile() {
 		}
 
 	}
+
+	logging.Infof("[reconcile] groupWorkspaces: %dms (dedicated: %d, free: %d, emptyDedicated: %d)",
+		sw.LapMs(), len(dedicatedWorkspaces), len(freeWorkspaces), len(emptyDedicatedWorkspaces))
 
 	// Build desired deployments map
 	desiredDeployments := make(map[string]*DeploymentData)
@@ -314,7 +320,8 @@ func (o *Operator) reconcile() {
 		}
 	}
 
-	// Pass 1: Mark unwanted deployments for shutdown.
+	logging.Infof("[reconcile] update deployments: %dms", sw.LapMs())
+
 	// Pass 1: Mark unwanted deployments for shutdown via K8s annotation.
 	// Set jitsu.com/shutdown-at on deployments no longer needed whose workspaces
 	// have a rolled-out deployment of another class, or no longer exist in the repository.
@@ -336,6 +343,8 @@ func (o *Operator) reconcile() {
 		}
 	}
 
+	logging.Infof("[reconcile] markShutdown: %dms", sw.LapMs())
+
 	// Pass 2: Delete deployments whose shutdownAt has passed.
 	for deploymentID, existing := range existingDeployments {
 		if _, desired := desiredDeployments[deploymentID]; desired {
@@ -356,10 +365,15 @@ func (o *Operator) reconcile() {
 		}
 	}
 
+	logging.Infof("[reconcile] deleteShutdown: %dms", sw.LapMs())
+
 	// Upsert FunctionsServer records only for fully rolled out deployments
 	if o.functionsServerDB != nil {
 		o.syncFunctionsServerTable(desiredDeployments, existingDeployments, emptyDedicatedWorkspaces)
+		logging.Infof("[reconcile] syncFunctionsServerTable: %dms", sw.LapMs())
 	}
+
+	logging.Infof("[reconcile] total: %dms", sw.ElapsedMs())
 }
 
 // setDeploymentShutdownAt annotates the K8s deployment with jitsu.com/shutdown-at.
