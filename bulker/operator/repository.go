@@ -212,11 +212,11 @@ func NewWorkspacesRepository(baseURL, token string, refreshPeriodSec int, cacheD
 
 // Helper functions for aggregating workspace data
 func CalculateWorkspaceData(
-	workspaceID string,
+	ws *WorkspaceConfig,
 	connections []*EnrichedConnectionConfig,
 	functions []*FunctionConfig,
 ) *WorkspaceData {
-	var maxUpdatedAt time.Time
+	maxUpdatedAt := ws.UpdatedAt
 	var usesWarehouseAPI bool
 
 	filteredFunctions := make([]*FunctionConfig, 0, len(functions))
@@ -249,7 +249,7 @@ func CalculateWorkspaceData(
 	configHash := CalculateConfigHash(filteredConnections, filteredFunctions)
 
 	return &WorkspaceData{
-		WorkspaceID:      workspaceID,
+		WorkspaceID:      ws.ID,
 		MaxUpdatedAt:     maxUpdatedAt,
 		Connections:      filteredConnections,
 		Functions:        filteredFunctions,

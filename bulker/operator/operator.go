@@ -215,7 +215,7 @@ func (o *Operator) reconcile() {
 
 		isDedicated := slices.Contains(functionsClasses, FunctionsClassPremium) || slices.Contains(functionsClasses, FunctionsClassDedicated)
 
-		wsWorkspaceData := CalculateWorkspaceData(ws.ID, connData.byWorkspace[ws.ID], funcData.byWorkspace[ws.ID])
+		wsWorkspaceData := CalculateWorkspaceData(ws, connData.byWorkspace[ws.ID], funcData.byWorkspace[ws.ID])
 
 		freeAdded := false
 		if slices.Contains(functionsClasses, FunctionsClassFree) {
@@ -437,10 +437,9 @@ func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*Deplo
 		}
 	}
 	// Sync records for dedicated/premium workspaces with no functions or connections
-	now := time.Now()
 	for wsID, data := range emptyDedicatedWorkspaces {
 		records := BuildRecordsFromWorkspaceData(data)
-		if err := o.functionsServerDB.ReplaceRecordsForDeployment(wsID, records, now, now); err != nil {
+		if err := o.functionsServerDB.ReplaceRecordsForDeployment(wsID, records, data.MaxUpdatedAt, data.MaxUpdatedAt); err != nil {
 			logging.Errorf("Failed to replace FunctionsServer record for empty dedicated workspace %s: %v", wsID, err)
 		}
 	}
