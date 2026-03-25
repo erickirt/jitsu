@@ -362,7 +362,7 @@ func (o *Operator) reconcile() {
 		o.syncFunctionsServerTable(desiredDeployments, existingDeployments, emptyDedicatedWorkspaces)
 	}
 
-	logging.Infof("[reconcile] total: %dms", sw.ElapsedMs())
+	logging.Debugf("[reconcile] total: %dms", sw.ElapsedMs())
 }
 
 // setDeploymentShutdownAt annotates the K8s deployment with jitsu.com/shutdown-at.
