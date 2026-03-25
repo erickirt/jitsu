@@ -13,6 +13,7 @@ type FunctionConfig struct {
 	Name        string    `json:"name"`
 	Code        string    `json:"code"`
 	CodeHash    string    `json:"codeHash"`
+	Kind        string    `json:"kind"`
 }
 
 // EnrichedConnectionConfig represents a rotor connection configuration
@@ -62,12 +63,14 @@ type DeploymentData struct {
 	WorkspaceIDs              []string // List of workspace IDs in this deployment
 	Connections               []*EnrichedConnectionConfig
 	Functions                 []*FunctionConfig
-	ConfigHash                string     // Hash of all connections + functions for change detection
-	OperatorConfigHash        string     // Hash of operator Config for detecting config changes
-	ConnectionsConfigMapCount int        // Number of connections ConfigMaps (for splitting large data)
-	FunctionsConfigMapCount   int        // Number of functions ConfigMaps (for splitting large data)
-	Replicas                  *int32     // Current replicas from live deployment (used to preserve HPA-managed value)
-	ShutdownAt                *time.Time // Scheduled shutdown time (from jitsu.com/shutdown-at annotation)
-	RolledOut                 bool       // Whether the deployment is fully rolled out
-	RolloutCompletedAt        time.Time  // When the rollout finished (zero if not completed)
+	ConfigHash                string                         // Hash of all connections + functions for change detection
+	OperatorConfigHash        string                         // Hash of operator Config for detecting config changes
+	ConnectionsConfigMapCount int                            // Number of connections ConfigMaps (for splitting large data)
+	FunctionsConfigMapCount   int                            // Number of functions ConfigMaps (for splitting large data)
+	Replicas                  *int32                         // Current replicas from live deployment (used to preserve HPA-managed value)
+	ShutdownAt                *time.Time                     // Scheduled shutdown time (from jitsu.com/shutdown-at annotation)
+	RolledOut                 bool                           // Whether the deployment is fully rolled out
+	RolloutCompletedAt        time.Time                      // When the rollout finished (zero if not completed)
+	CreatedAt                 time.Time                      // Deployment creation timestamp
+	ConnectionsMap            map[string]ConnectionsMapEntry // Per-workspace connection info from annotation
 }

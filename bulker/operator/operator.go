@@ -38,6 +38,7 @@ const (
 	labelFunctionsClass     = "jitsu.com/functions-class"
 	labelConfigPartIdx      = "jitsu.com/config-part"
 	labelShutdownAt         = "jitsu.com/shutdown-at"
+	labelConnectionsMap     = "jitsu.com/connections-map" // JSON: per-workspace connections and emptyConnections
 	appName                 = "functions-server"
 	connectionsCMSuffix     = "-fs-connections"
 	functionsCMSuffix       = "-fs-functions"
@@ -144,7 +145,7 @@ func (o *Operator) Start() {
 		funcChanges := o.functionsRepo.ChangesChannel()
 		wsChanges := o.workspacesRepo.ChangesChannel()
 
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -199,6 +200,9 @@ func (o *Operator) reconcile() {
 
 	// Group workspaces by functions class
 	dedicatedWorkspaces := make(map[string]*WorkspaceData) // workspaceID -> WorkspaceData
+	// Dedicated/premium workspaces with 0 connections or 0 functions don't get a K8s deployment
+	// but still need a FunctionsServer record so Rotor knows the workspace class
+	emptyDedicatedWorkspaces := make(map[string]*WorkspaceData)
 	freeWorkspaces := make([]*WorkspaceData, 0)
 
 	for _, ws := range wsData.workspaces {
@@ -209,16 +213,22 @@ func (o *Operator) reconcile() {
 			continue
 		}
 
-		connections := connData.byWorkspace[ws.ID]
-		functions := funcData.byWorkspace[ws.ID]
-
 		isDedicated := slices.Contains(functionsClasses, FunctionsClassPremium) || slices.Contains(functionsClasses, FunctionsClassDedicated)
 
-		wsWorkspaceData := CalculateWorkspaceData(ws.ID, connections, functions)
+		wsWorkspaceData := CalculateWorkspaceData(ws.ID, connData.byWorkspace[ws.ID], funcData.byWorkspace[ws.ID])
 
+		freeAdded := false
+		if slices.Contains(functionsClasses, FunctionsClassFree) {
+			freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
+			freeAdded = true
+		}
 		if isDedicated {
 			wData := *wsWorkspaceData // Copy
 			wData.FunctionsClass = utils.Ternary(slices.Contains(functionsClasses, FunctionsClassPremium), FunctionsClassPremium, FunctionsClassDedicated)
+			if len(wData.Connections) == 0 || len(wData.Functions) == 0 {
+				emptyDedicatedWorkspaces[ws.ID] = &wData
+				continue
+			}
 			dedicatedWorkspaces[ws.ID] = &wData
 
 			// Free → Dedicated transition: keep workspace in free deployment until
@@ -228,14 +238,12 @@ func (o *Operator) reconcile() {
 				existing := existingDeployments[ws.ID]
 				handoffReady := existing != nil && existing.RolledOut &&
 					!existing.RolloutCompletedAt.IsZero() && time.Since(existing.RolloutCompletedAt) > 5*time.Minute
-				if !handoffReady {
+				if !handoffReady && !freeAdded {
 					freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
 				}
 			}
 		}
-		if slices.Contains(functionsClasses, FunctionsClassFree) {
-			freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
-		}
+
 	}
 
 	// Build desired deployments map
@@ -266,12 +274,6 @@ func (o *Operator) reconcile() {
 
 	// Reconcile: create/update deployments
 	for deploymentID, deploymentData := range desiredDeployments {
-		// Deployments with 0 functions or 0 connections don't need a K8s deployment,
-		// only a FunctionsServer record (handled in syncFunctionsServerTable)
-		if len(deploymentData.Functions) == 0 || len(deploymentData.Connections) == 0 {
-			continue
-		}
-
 		existing, exists := existingDeployments[deploymentID]
 
 		if !exists {
@@ -312,13 +314,14 @@ func (o *Operator) reconcile() {
 	// Set jitsu.com/shutdown-at on deployments no longer needed whose workspaces
 	// have a rolled-out deployment of another class, or no longer exist in the repository.
 	for deploymentID, existing := range existingDeployments {
-		if _, desired := desiredDeployments[deploymentID]; desired {
+		_, desired := desiredDeployments[deploymentID]
+		if desired {
 			continue
 		}
 		if existing.ShutdownAt != nil {
 			continue // already marked
 		}
-		if o.allWorkspacesHandled(existing, existingDeployments, wsData) {
+		if o.allWorkspacesHandled(existing, existingDeployments, emptyDedicatedWorkspaces, wsData) {
 			shutdownAt := time.Now().Add(10 * time.Minute)
 			if err := o.setDeploymentShutdownAt(ctx, existing, shutdownAt); err != nil {
 				logging.Errorf("Failed to mark deployment %s for shutdown: %v", deploymentID, err)
@@ -350,7 +353,7 @@ func (o *Operator) reconcile() {
 
 	// Upsert FunctionsServer records only for fully rolled out deployments
 	if o.functionsServerDB != nil {
-		o.syncFunctionsServerTable(desiredDeployments, existingDeployments)
+		o.syncFunctionsServerTable(desiredDeployments, existingDeployments, emptyDedicatedWorkspaces)
 	}
 }
 
@@ -376,13 +379,19 @@ func (o *Operator) setDeploymentShutdownAt(ctx context.Context, data *Deployment
 }
 
 // allWorkspacesHandled returns true if every workspace in the deployment either:
-// - has a rolled-out deployment of another class in desiredDeployments, or
+// - has a rolled-out deployment of another class in existingDeployments, or
+// - is in emptyDedicatedWorkspaces (no functions or connections — no deployment needed), or
 // - no longer exists in the repository at all.
-func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeployments map[string]*DeploymentData, wsData *WorkspacesData) bool {
+func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeployments map[string]*DeploymentData, emptyDedicatedWorkspaces map[string]*WorkspaceData, wsData *WorkspacesData) bool {
 	for _, wsID := range existing.WorkspaceIDs {
 		// Check if workspace still exists in the repository
 		if _, wsExists := wsData.byID[wsID]; !wsExists {
 			// Workspace gone from repository — handled
+			continue
+		}
+
+		// Check if workspace is in emptyDedicatedWorkspaces (no functions or connections)
+		if _, isEmpty := emptyDedicatedWorkspaces[wsID]; isEmpty {
 			continue
 		}
 
@@ -404,21 +413,30 @@ func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeploy
 	return true
 }
 
-// syncFunctionsServerTable upserts FunctionsServer records for all desired deployments.
-// Deployments with functions and connections require a fully rolled out K8s deployment before upserting.
-// Deployments with 0 functions or 0 connections (no K8s deployment) are upserted immediately.
-func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*DeploymentData, existingDeployments map[string]*DeploymentData) {
-	for deploymentID, data := range desiredDeployments {
-		if len(data.Functions) > 0 && len(data.Connections) > 0 {
-			// Has functions and connections → only upsert after K8s deployment is rolled out
-			existing := existingDeployments[deploymentID]
-			if existing == nil || !existing.RolledOut {
-				continue
-			}
+// syncFunctionsServerTable upserts FunctionsServer records for rolled-out K8s deployments
+// and for empty dedicated workspaces (0 functions or 0 connections) that have no K8s deployment.
+// Uses connection data from deployment annotations (rolled-out state) and existingDeployments for timestamps.
+// Only syncs deployments that are still desired (skips old deployments pending shutdown).
+func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*DeploymentData, existingDeployments map[string]*DeploymentData, emptyDedicatedWorkspaces map[string]*WorkspaceData) {
+	// Sync records from rolled-out K8s deployments using connections map from annotation
+	for deploymentID, existing := range existingDeployments {
+		if _, desired := desiredDeployments[deploymentID]; !desired {
+			continue
 		}
-		records := BuildRecordsFromDeploymentData(data)
-		if err := o.functionsServerDB.ReplaceRecordsForDeployment(deploymentID, records); err != nil {
+		if !existing.RolledOut || existing.ConnectionsMap == nil {
+			continue
+		}
+		records := BuildRecordsFromConnectionsMap(existing.ConnectionsMap, deploymentID, existing.FunctionsClass)
+		if err := o.functionsServerDB.ReplaceRecordsForDeployment(deploymentID, records, existing.CreatedAt, existing.RolloutCompletedAt); err != nil {
 			logging.Errorf("Failed to replace FunctionsServer records for deployment %s: %v", deploymentID, err)
+		}
+	}
+	// Sync records for dedicated/premium workspaces with no functions or connections
+	now := time.Now()
+	for wsID, data := range emptyDedicatedWorkspaces {
+		records := BuildRecordsFromWorkspaceData(data)
+		if err := o.functionsServerDB.ReplaceRecordsForDeployment(wsID, records, now, now); err != nil {
+			logging.Errorf("Failed to replace FunctionsServer record for empty dedicated workspace %s: %v", wsID, err)
 		}
 	}
 }
@@ -505,6 +523,9 @@ func (o *Operator) getExistingDeployments(ctx context.Context) (map[string]*Depl
 			}
 		}
 
+		// Parse connections map annotation
+		connectionsMap := ParseConnectionsMapAnnotation(deployment.Annotations[labelConnectionsMap])
+
 		// Compute rollout status
 		replicas := int32(1)
 		if deployment.Spec.Replicas != nil {
@@ -537,6 +558,8 @@ func (o *Operator) getExistingDeployments(ctx context.Context) (map[string]*Depl
 			ShutdownAt:                shutdownAt,
 			RolledOut:                 isRolledOut,
 			RolloutCompletedAt:        rolloutCompletedAt,
+			CreatedAt:                 deployment.CreationTimestamp.Time,
+			ConnectionsMap:            connectionsMap,
 		}
 	}
 
@@ -573,7 +596,7 @@ func (o *Operator) buildFreeShardedDeployments(workspaces []*WorkspaceData) map[
 		sort.Strings(workspaceIDs)
 		configHash := CalculateConfigHash(allConnections, allFunctions)
 
-		shardID := freeShardDeploymentID(shardIdx)
+		shardID := freeShardDeploymentID(shardIdx, numShards)
 		result[shardID] = &DeploymentData{
 			DeploymentID:   shardID,
 			FunctionsClass: FunctionsClassFree,
@@ -588,8 +611,8 @@ func (o *Operator) buildFreeShardedDeployments(workspaces []*WorkspaceData) map[
 }
 
 // freeShardDeploymentID returns the deployment ID for a free shard (e.g., "free-0", "free-1")
-func freeShardDeploymentID(shardIndex int) string {
-	return fmt.Sprintf("free-%d", shardIndex)
+func freeShardDeploymentID(shardIndex, numShards int) string {
+	return fmt.Sprintf("free-%d-%d", shardIndex, numShards)
 }
 
 // workspaceShardIndex returns the shard index for a workspace ID
@@ -1562,6 +1585,7 @@ func (o *Operator) buildDeploymentFromData(data *DeploymentData) *appsv1.Deploym
 				labelWorkspaceIDs:       strings.Join(data.WorkspaceIDs, ","),
 				labelOperatorConfigHash: data.OperatorConfigHash,
 				labelShutdownAt:         "",
+				labelConnectionsMap:     BuildConnectionsMapAnnotation(data),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{

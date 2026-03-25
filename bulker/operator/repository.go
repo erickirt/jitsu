@@ -219,10 +219,16 @@ func CalculateWorkspaceData(
 	var maxUpdatedAt time.Time
 	var usesWarehouseAPI bool
 
+	filteredFunctions := make([]*FunctionConfig, 0, len(functions))
 	for _, fn := range functions {
+		if fn.Kind == "profile" {
+			// Skip profile functions for now
+			continue
+		}
 		if !usesWarehouseAPI && strings.Contains(fn.Code, "getWarehouse") {
 			usesWarehouseAPI = true
 		}
+		filteredFunctions = append(filteredFunctions, fn)
 		if fn.UpdatedAt.After(maxUpdatedAt) {
 			maxUpdatedAt = fn.UpdatedAt
 		}
@@ -240,13 +246,13 @@ func CalculateWorkspaceData(
 	}
 
 	// Calculate config hash for change detection
-	configHash := CalculateConfigHash(connections, functions)
+	configHash := CalculateConfigHash(filteredConnections, filteredFunctions)
 
 	return &WorkspaceData{
 		WorkspaceID:      workspaceID,
 		MaxUpdatedAt:     maxUpdatedAt,
 		Connections:      filteredConnections,
-		Functions:        functions,
+		Functions:        filteredFunctions,
 		UsesWarehouseAPI: usesWarehouseAPI,
 		ConfigHash:       configHash,
 	}
