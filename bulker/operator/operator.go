@@ -199,7 +199,6 @@ func (o *Operator) reconcile() {
 		logging.Errorf("Failed to get existing deployments: %v", err)
 		return
 	}
-	logging.Infof("[reconcile] getExistingDeployments: %dms", sw.LapMs())
 
 	// Group workspaces by functions class
 	dedicatedWorkspaces := make(map[string]*WorkspaceData) // workspaceID -> WorkspaceData
@@ -253,9 +252,6 @@ func (o *Operator) reconcile() {
 		}
 
 	}
-
-	logging.Infof("[reconcile] groupWorkspaces: %dms (dedicated: %d, free: %d, emptyDedicated: %d)",
-		sw.LapMs(), len(dedicatedWorkspaces), len(freeWorkspaces), len(emptyDedicatedWorkspaces))
 
 	// Build desired deployments map
 	desiredDeployments := make(map[string]*DeploymentData)
@@ -320,8 +316,6 @@ func (o *Operator) reconcile() {
 		}
 	}
 
-	logging.Infof("[reconcile] update deployments: %dms", sw.LapMs())
-
 	// Pass 1: Mark unwanted deployments for shutdown via K8s annotation.
 	// Set jitsu.com/shutdown-at on deployments no longer needed whose workspaces
 	// have a rolled-out deployment of another class, or no longer exist in the repository.
@@ -343,8 +337,6 @@ func (o *Operator) reconcile() {
 		}
 	}
 
-	logging.Infof("[reconcile] markShutdown: %dms", sw.LapMs())
-
 	// Pass 2: Delete deployments whose shutdownAt has passed.
 	for deploymentID, existing := range existingDeployments {
 		if _, desired := desiredDeployments[deploymentID]; desired {
@@ -365,12 +357,9 @@ func (o *Operator) reconcile() {
 		}
 	}
 
-	logging.Infof("[reconcile] deleteShutdown: %dms", sw.LapMs())
-
 	// Upsert FunctionsServer records only for fully rolled out deployments
 	if o.functionsServerDB != nil {
 		o.syncFunctionsServerTable(desiredDeployments, existingDeployments, emptyDedicatedWorkspaces)
-		logging.Infof("[reconcile] syncFunctionsServerTable: %dms", sw.LapMs())
 	}
 
 	logging.Infof("[reconcile] total: %dms", sw.ElapsedMs())
@@ -445,16 +434,27 @@ func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*Deplo
 		if !existing.RolledOut || existing.ConnectionsMap == nil {
 			continue
 		}
+		// Skip if config hasn't changed since last sync
+		if !o.functionsServerDB.IsDeploymentChanged(deploymentID, existing.ConfigHash) {
+			continue
+		}
 		records := BuildRecordsFromConnectionsMap(existing.ConnectionsMap, deploymentID, existing.FunctionsClass)
 		if err := o.functionsServerDB.ReplaceRecordsForDeployment(deploymentID, records, existing.CreatedAt, existing.RolloutCompletedAt); err != nil {
-			logging.Errorf("Failed to replace FunctionsServer records for deployment %s: %v", deploymentID, err)
+			logging.Errorf("Failed to replace FunctionsServer records for deployment %s (%d records): %v", deploymentID, len(records), err)
+		} else {
+			o.functionsServerDB.MarkDeploymentSynced(deploymentID, existing.ConfigHash)
 		}
 	}
 	// Sync records for dedicated/premium workspaces with no functions or connections
 	for wsID, data := range emptyDedicatedWorkspaces {
+		if !o.functionsServerDB.IsDeploymentChanged(wsID, data.ConfigHash) {
+			continue
+		}
 		records := BuildRecordsFromWorkspaceData(data)
 		if err := o.functionsServerDB.ReplaceRecordsForDeployment(wsID, records, data.MaxUpdatedAt, data.MaxUpdatedAt); err != nil {
 			logging.Errorf("Failed to replace FunctionsServer record for empty dedicated workspace %s: %v", wsID, err)
+		} else {
+			o.functionsServerDB.MarkDeploymentSynced(wsID, data.ConfigHash)
 		}
 	}
 }

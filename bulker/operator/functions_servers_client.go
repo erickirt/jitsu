@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,16 +24,35 @@ type FunctionsServerRecord struct {
 
 // FunctionsServerDB handles direct PostgreSQL operations for the FunctionsServer table
 type FunctionsServerDB struct {
-	dbpool *pgxpool.Pool
+	dbpool     *pgxpool.Pool
+	mu         sync.Mutex
+	lastSynced map[string]string // deploymentID -> configHash at last sync
 }
 
 // NewFunctionsServerDB creates a new FunctionsServer database client
 func NewFunctionsServerDB(dbpool *pgxpool.Pool) *FunctionsServerDB {
-	return &FunctionsServerDB{dbpool: dbpool}
+	return &FunctionsServerDB{
+		dbpool:     dbpool,
+		lastSynced: make(map[string]string),
+	}
+}
+
+// IsDeploymentChanged returns true if the deployment needs to be synced
+func (db *FunctionsServerDB) IsDeploymentChanged(deploymentID string, configHash string) bool {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.lastSynced[deploymentID] != configHash
+}
+
+// MarkDeploymentSynced records the config hash for a deployment after successful sync
+func (db *FunctionsServerDB) MarkDeploymentSynced(deploymentID string, configHash string) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.lastSynced[deploymentID] = configHash
 }
 
 // ReplaceRecordsForDeployment atomically replaces all FunctionsServer records for a deployment.
-// In a transaction: deletes all existing records for the deploymentId, then inserts new ones.
+// In a transaction: deletes all existing records for the deploymentId, then batch-inserts new ones.
 // createdAt is the deployment's creation timestamp, updatedAt is the rollout completion time.
 func (db *FunctionsServerDB) ReplaceRecordsForDeployment(deploymentID string, records []FunctionsServerRecord, createdAt time.Time, updatedAt time.Time) error {
 	ctx := context.Background()
@@ -50,29 +71,39 @@ func (db *FunctionsServerDB) ReplaceRecordsForDeployment(deploymentID string, re
 		return fmt.Errorf("failed to delete records for deployment %s: %v", deploymentID, err)
 	}
 
-	// Insert new records
-	for _, r := range records {
-		_, err = tx.Exec(ctx,
-			`INSERT INTO newjitsu."FunctionsServer" ("workspaceId", "class", "deploymentId", "connections", "emptyConnections", "createdAt", "updatedAt", "shutdownAt")
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			 ON CONFLICT ("workspaceId", "class") DO UPDATE SET
-			     "deploymentId" = EXCLUDED."deploymentId",
-			     "connections" = EXCLUDED."connections",
-			     "emptyConnections" = EXCLUDED."emptyConnections",
-			     "updatedAt" = EXCLUDED."updatedAt",
-			     "shutdownAt" = EXCLUDED."shutdownAt"`,
-			r.WorkspaceID,
-			r.Class,
-			r.DeploymentID,
-			r.Connections,
-			r.EmptyConnections,
-			createdAt,
-			updatedAt,
-			r.ShutdownAt,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert FunctionsServer record for workspace %s class %s: %v",
-				r.WorkspaceID, r.Class, err)
+	// Batch-insert new records
+	if len(records) > 0 {
+		batch := &pgx.Batch{}
+		for _, r := range records {
+			batch.Queue(
+				`INSERT INTO newjitsu."FunctionsServer" ("workspaceId", "class", "deploymentId", "connections", "emptyConnections", "createdAt", "updatedAt", "shutdownAt")
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				 ON CONFLICT ("workspaceId", "class") DO UPDATE SET
+				     "deploymentId" = EXCLUDED."deploymentId",
+				     "connections" = EXCLUDED."connections",
+				     "emptyConnections" = EXCLUDED."emptyConnections",
+				     "updatedAt" = EXCLUDED."updatedAt",
+				     "shutdownAt" = EXCLUDED."shutdownAt"`,
+				r.WorkspaceID,
+				r.Class,
+				r.DeploymentID,
+				r.Connections,
+				r.EmptyConnections,
+				createdAt,
+				updatedAt,
+				r.ShutdownAt,
+			)
+		}
+		br := tx.SendBatch(ctx, batch)
+		for i := 0; i < len(records); i++ {
+			_, err = br.Exec()
+			if err != nil {
+				br.Close()
+				return fmt.Errorf("failed to insert FunctionsServer record %d for deployment %s: %v", i, deploymentID, err)
+			}
+		}
+		if err := br.Close(); err != nil {
+			return fmt.Errorf("failed to close batch for deployment %s: %v", deploymentID, err)
 		}
 	}
 
@@ -92,6 +123,9 @@ func (db *FunctionsServerDB) DeleteRecordsForDeployment(deploymentID string) err
 	if err != nil {
 		return fmt.Errorf("failed to delete FunctionsServer records for deployment %s: %v", deploymentID, err)
 	}
+	db.mu.Lock()
+	delete(db.lastSynced, deploymentID)
+	db.mu.Unlock()
 	return nil
 }
 
