@@ -11,6 +11,9 @@ import { default as stableHash } from "stable-hash";
 import { WorkspaceDbModel } from "../../../../../prisma/schema";
 import pick from "lodash/pick";
 import { ProfileBuilder } from "@jitsu/destination-functions";
+import { getServerEnv } from "../../../../../lib/server/serverEnv";
+
+const serverEnv = getServerEnv();
 
 export const config = {
   api: {
@@ -54,6 +57,15 @@ function extractFunctionsClasses(featuresEnabled: string[]): string[] {
     }
   }
   return [];
+}
+
+function addFunctionsClass(featuresEnabled: string[], functionsClass: string): string[] {
+  const existing = extractFunctionsClasses(featuresEnabled);
+  if (existing.length > 0) {
+    return featuresEnabled;
+  }
+  featuresEnabled.push(`functionsClasses=${functionsClass}`);
+  return featuresEnabled;
 }
 
 async function getLastUpdated(): Promise<Date | undefined> {
@@ -439,9 +451,10 @@ const exports: Export[] = [
     lastModified: getLastUpdated,
     data: async writer => {
       const activeWorkspaces = new Set<string>();
-      try {
-        const rows = await db.pgPool()
-          .query(`with customers as (select obj -> 'customer' ->> 'id'         as customer_id,
+      if (isEEAvailable()) {
+        try {
+          const rows = await db.pgPool()
+            .query(`with customers as (select obj -> 'customer' ->> 'id'         as customer_id,
                                             obj -> 'subscription' ->> 'status' as status
                                      from newjitsuee.kvstore
                                      where namespace = 'stripe-customer-info'
@@ -454,11 +467,12 @@ const exports: Export[] = [
                   from workspaces w
                          right join customers cus on cus.customer_id = w.customer_id
                   where status = 'active'`);
-        for (const row of rows.rows) {
-          activeWorkspaces.add(row.workspace_id);
-        }
-        getLog().atInfo().log(`Active workspaces: ${activeWorkspaces.size}`);
-      } catch (error) {}
+          for (const row of rows.rows) {
+            activeWorkspaces.add(row.workspace_id);
+          }
+          getLog().atInfo().log(`Active workspaces: ${activeWorkspaces.size}`);
+        } catch (error) {}
+      }
       const domains = await db.prisma().configurationObject.findMany({
         where: { deleted: false, type: "domain", workspace: { deleted: false } },
       });
@@ -608,11 +622,63 @@ const exports: Export[] = [
   {
     name: "workspaces",
     lastModified: async () => {
-      return (
+      const lastUpdated = (
         (await db.prisma().$queryRaw`select max("updatedAt") as "last_updated" from newjitsu."Workspace"`) as any
-      )[0]["last_updated"];
+      )[0]["last_updated"] as Date;
+      // force refresh every 5 minute to actualize possible subscription status changes or expirations
+      const forceRefreshEveryMs = 5 * 60 * 1000;
+      if (lastUpdated.getTime() < Date.now() - forceRefreshEveryMs) {
+        return new Date(Math.floor(Date.now() / forceRefreshEveryMs) * forceRefreshEveryMs);
+      }
+      return lastUpdated;
     },
     data: async writer => {
+      const defaultFunctionsClass = serverEnv.DEFAULT_FUNCTIONS_CLASS;
+      let functionsClassFunc = (workspaceId: string) => defaultFunctionsClass;
+      if (isEEAvailable()) {
+        const workspacesWithSubscriptions = new Map<string, { status: string; periodEnd: Date }>();
+        const rows = await db.pgPool()
+          .query(`with customers as (select obj -> 'customer' ->> 'id'         as customer_id,
+                                            obj -> 'subscription' ->> 'status' as status,
+                                            (obj -> 'subscription' -> 'current_period_end')::int  as period_end
+                                     from newjitsuee.kvstore
+                                     where namespace = 'stripe-customer-info'
+                                     order by status),
+                       settings
+                         as (select id as workspace_id, obj ->> 'stripeCustomerId' as customer_id
+                             from newjitsuee.kvstore
+                             where namespace = 'stripe-settings')
+                  select id::text, COALESCE(status, '')::text as status, TO_TIMESTAMP(period_end) period_end
+                  from newjitsu."Workspace"
+                         left join settings s on s.workspace_id = "Workspace".id
+                         left join customers c on c.customer_id = s.customer_id
+                  where status<>''`);
+        for (const row of rows.rows) {
+          workspacesWithSubscriptions.set(row.id, { status: row.status, periodEnd: row.period_end });
+        }
+        functionsClassFunc = (workspaceId: string) => {
+          const subscription = workspacesWithSubscriptions.get(workspaceId);
+          if (subscription) {
+            const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+            const status = subscription.status;
+            if (status === "active" || status === "trialing") {
+              return "dedicated";
+            } else if (status === "canceled") {
+              if (subscription.periodEnd.getTime() > Date.now()) {
+                return "dedicated";
+              }
+            } else if (
+              (status === "past_due" || status === "unpaid") &&
+              subscription.periodEnd.getTime() + oneMonthMs > Date.now()
+            ) {
+              // keep dedicated instance for 30 days of past due subscription
+              return "dedicated";
+            }
+          }
+          return defaultFunctionsClass;
+        };
+      }
+
       writer.write("[");
       let lastId: string | undefined = undefined;
       let needComma = false;
@@ -634,6 +700,7 @@ const exports: Export[] = [
           if (needComma) {
             writer.write(",");
           }
+          row.featuresEnabled = addFunctionsClass(row.featuresEnabled ?? [], functionsClassFunc(row.id));
           writer.write(JSON.stringify(row));
           needComma = true;
         }
@@ -702,6 +769,52 @@ const exports: Export[] = [
       writer.write("]");
     },
   },
+  // {
+  //   name: "functions-servers",
+  //   lastModified: async () => {
+  //     try {
+  //       return (
+  //         (await db.prisma()
+  //           .$queryRaw`select greatest(max("createdAt"), max("updatedAt")) as "last_updated" from newjitsu."FunctionsServer"`) as any
+  //       )[0]["last_updated"];
+  //     } catch (e) {
+  //       // Table may not exist yet during migration
+  //       return undefined;
+  //     }
+  //   },
+  //   data: async writer => {
+  //     writer.write("[");
+  //     let needComma = false;
+  //     try {
+  //       const records = await db.prisma().functionsServer.findMany();
+  //       for (const record of records) {
+  //         if (needComma) {
+  //           writer.write(",");
+  //         }
+  //         writer.write(
+  //           JSON.stringify({
+  //             id: `${record.workspaceId}:${record.class}`,
+  //             workspaceId: record.workspaceId,
+  //             class: record.class,
+  //             deploymentId: record.deploymentId,
+  //             connections: record.connections,
+  //             emptyConnections: record.emptyConnections,
+  //             createdAt: record.createdAt,
+  //             updatedAt: record.updatedAt,
+  //             shutdownAt: record.shutdownAt,
+  //           })
+  //         );
+  //         needComma = true;
+  //       }
+  //     } catch (e) {
+  //       // Table may not exist yet during migration
+  //       getLog()
+  //         .atWarn()
+  //         .log(`Failed to export functions-servers: ${getErrorMessage(e)}`);
+  //     }
+  //     writer.write("]");
+  //   },
+  // },
   {
     name: "syncs-debug",
     lastModified: getLastUpdated,
