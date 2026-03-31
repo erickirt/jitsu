@@ -513,7 +513,7 @@ model reprocessing_workers {
 model FunctionsServer {
   workspaceId      String
   class            String // 'free' | 'dedicated' | 'premium'
-  deploymentId     String?
+  deploymentId     String
   connections      String[]
   emptyConnections String[]
   createdAt        DateTime  @default(now()) @db.Timestamptz(3)
