@@ -518,7 +518,6 @@ model FunctionsServer {
   emptyConnections String[]
   createdAt        DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime? @db.Timestamptz(3)
-  shutdownAt       DateTime? @db.Timestamptz(3)
 
   @@id([workspaceId, class])
 }
