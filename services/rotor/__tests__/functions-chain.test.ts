@@ -480,7 +480,10 @@ describe.each(testModes)("Test Functions Chain ($name mode)", ({ name: modeName,
           },
           options: {
             ...conn.options,
-            functionsClasses: [functionsClass],
+            functionsServer: {
+              deploymentId: functionsClass, // that is used by functions to determine their class in tests
+              status: functionsClass === "legacy" ? "legacy" : "functions",
+            },
           },
           // we need to prevent usage of cached functions chain
           updatedAt: new Date(),
