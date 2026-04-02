@@ -71,7 +71,7 @@ func newAbstractTransactionalStream(id string, p SQLAdapter, tableName string, m
 		ps.batchFileSkipLines = types2.NewSet[uint32]()
 		discriminatorField := bulker.DiscriminatorFieldOption.Get(&ps.options)
 		if len(discriminatorField) > 0 {
-			ps.discriminatorColumn = p.ColumnName(strings.Join(discriminatorField, "_"))
+			ps.discriminatorColumn = p.ColumnName(ps.nameTransformer(strings.Join(discriminatorField, "_")))
 			ps.useDiscriminator = true
 		}
 	}
