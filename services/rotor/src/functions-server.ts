@@ -1128,6 +1128,7 @@ async function main() {
         connection: stripConnection(connection),
         functions: workerFuncs,
         warehouseEnabled: false,
+        functionsClass: "free",
         debugTill: connectionData?.debugTill,
         fetchLogLevel: connectionData?.fetchLogLevel,
         props: connectionData?.functionsEnv || {},
@@ -1346,83 +1347,116 @@ async function main() {
   // Create HTTP server using Deno.serve
   let isShuttingDown = false;
 
+  // // Track connection age by remoteAddr:remotePort key.
+  // // After 20s, send Connection: close to force client to reconnect.
+  // const connectionFirstSeen = new Map<string, number>();
+  // const maxConnectionAgeMs = 20_000;
+  // // Periodically clean up stale entries (connections that closed without hitting the age limit)
+  // setInterval(() => {
+  //   const now = Date.now();
+  //   for (const [key, firstSeen] of connectionFirstSeen) {
+  //     if (now - firstSeen > maxConnectionAgeMs * 2) {
+  //       connectionFirstSeen.delete(key);
+  //     }
+  //   }
+  // }, 60_000);
+
   // @ts-ignore
-  const server = (Deno as any).serve({ port, hostname: "0.0.0.0" }, async (req: Request): Promise<Response> => {
-    let extraHeaders: Record<string, string> = {};
+  const server = (Deno as any).serve(
+    { port, hostname: "0.0.0.0" },
+    async (req: Request, info: any): Promise<Response> => {
+      let extraHeaders: Record<string, string> = {};
 
-    if (isShuttingDown) {
-      extraHeaders = { Connection: "close" };
-    }
+      // // Track connection age and close long-lived connections
+      // if (info?.remoteAddr) {
+      //   const connKey = `${info.remoteAddr.hostname}:${info.remoteAddr.port}`;
+      //   const now = Date.now();
+      //   const firstSeen = connectionFirstSeen.get(connKey);
+      //   if (firstSeen === undefined) {
+      //     connectionFirstSeen.set(connKey, now);
+      //   } else if (now - firstSeen > maxConnectionAgeMs) {
+      //     extraHeaders = { Connection: "close" };
+      //     connectionFirstSeen.delete(connKey);
+      //   }
+      // }
 
-    if (req.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: extraHeaders });
-    }
-
-    const url = new URL(req.url);
-    const pathname = url.pathname;
-
-    try {
-      // Health check
-      if (pathname === "/health" || pathname === "/") {
-        return handleHealth();
+      if (isShuttingDown) {
+        extraHeaders = { Connection: "close" };
       }
 
-      const endpoint = pathname === "/multi" ? "multi" : pathname.startsWith("/connection/") ? "connection" : "other";
-      const sw = stopwatch();
-      promConcurrentRequests.labels(deploymentId, endpoint).inc();
-      let actorId = "";
-      let status = 200;
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: extraHeaders });
+      }
+
+      const url = new URL(req.url);
+      const pathname = url.pathname;
 
       try {
-        // Multi connection handler
-        if (pathname === "/multi") {
-          const result = await handleMulti(req, url);
-          actorId = result.actorId;
-          status = result.response.status;
-          return result.response;
+        // Health check
+        if (pathname === "/health" || pathname === "/") {
+          return handleHealth();
         }
 
-        // UDF test runner
-        if (pathname === "/udfrun" && req.method === "POST") {
-          const body = await parseBody(req);
-          log.atInfo().log(`[udfrun] Running function: ${body?.functionId} workspace: ${body?.workspaceId}`);
-          const udfStore = env.MONGODB_URL
-            ? createMongoStore(body.workspaceId, mongodb, true, false)
-            : createMemoryStore(body.store || {});
-          const result = await runUdfInWorker(body, udfStore, conEntityStore);
-          if (result.error) {
-            log
-              .atError()
-              .log(
-                `[udfrun] Error running function: ${body?.functionId} workspace: ${body?.workspaceId}\n${result.error.name}: ${result.error.message}`
-              );
+        const endpoint = pathname === "/multi" ? "multi" : pathname.startsWith("/connection/") ? "connection" : "other";
+        const sw = stopwatch();
+        promConcurrentRequests.labels(deploymentId, endpoint).inc();
+        let actorId = "";
+        let status = 200;
+
+        try {
+          // Multi connection handler
+          if (pathname === "/multi") {
+            const result = await handleMulti(req, url);
+            actorId = result.actorId;
+            status = result.response.status;
+            return result.response;
           }
-          result.backend = "functions-server";
-          return jsonResponse(200, result);
-        }
 
-        // Single connection handler
-        const match = pathname.match(/^\/connection\/([^\/]+)$/);
-        if (match) {
-          const result = await handleConnection(req, match[1]);
-          actorId = result.actorId;
-          status = result.response.status;
-          return result.response;
-        }
+          // UDF test runner
+          if (pathname === "/udfrun" && req.method === "POST") {
+            const body = await parseBody(req);
+            log.atInfo().log(`[udfrun] Running function: ${body?.functionId} workspace: ${body?.workspaceId}`);
+            const udfStore = env.MONGODB_URL
+              ? createMongoStore(body.workspaceId, mongodb, true, false)
+              : createMemoryStore(body.store || {});
+            const result = await runUdfInWorker(body, udfStore, conEntityStore);
+            if (result.error) {
+              log
+                .atError()
+                .log(
+                  `[udfrun] Error running function: ${body?.functionId} workspace: ${body?.workspaceId}\n${result.error.name}: ${result.error.message}`
+                );
+            }
+            result.backend = "functions-server";
+            return jsonResponse(200, result);
+          }
 
-        // Not found
-        status = 404;
-        return errorResponse(404, "Not found. Use /connection/<connection-id>, /multi?ids=conn1,conn2,..., or /udfrun");
-      } finally {
-        promConcurrentRequests.labels(deploymentId, endpoint).dec();
-        promRequestDuration.labels(deploymentId, endpoint, actorId).observe(sw.elapsedMs());
-        promRequestCount.labels(deploymentId, endpoint, actorId, String(status)).inc();
+          // Single connection handler
+          const match = pathname.match(/^\/connection\/([^\/]+)$/);
+          if (match) {
+            const result = await handleConnection(req, match[1]);
+            actorId = result.actorId;
+            status = result.response.status;
+            return result.response;
+          }
+
+          // Not found
+          status = 404;
+          return errorResponse(
+            404,
+            "Not found. Use /connection/<connection-id>, /multi?ids=conn1,conn2,..., or /udfrun"
+          );
+        } finally {
+          promConcurrentRequests.labels(deploymentId, endpoint).dec();
+          promRequestDuration.labels(deploymentId, endpoint, actorId).observe(sw.elapsedMs());
+          promRequestCount.labels(deploymentId, endpoint, actorId, String(status)).inc();
+        }
+      } catch (e: any) {
+        log.atError().log(`Error processing request:`, e);
+        return errorResponse(500, e.message);
       }
-    } catch (e: any) {
-      log.atError().log(`Error processing request:`, e);
-      return errorResponse(500, e.message);
     }
-  });
+  );
 
   log.atInfo().log(`Server running at http://localhost:${port}`);
   log.atInfo().log(`Runtimes: ${runtimes.size} (mode: ${isFreeClass ? "worker" : "in-process"})`);

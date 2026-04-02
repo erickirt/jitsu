@@ -29,35 +29,37 @@ const resultType = z.object({
 
 export type FunctionRunType = z.infer<typeof resultType>;
 
-function extractFunctionsClasses(featuresEnabled: string[], defaultClass: string): string[] {
-  const prefix = "functionsClasses=";
-  for (const feature of featuresEnabled) {
-    if (feature.startsWith(prefix)) {
-      return feature
-        .substring(prefix.length)
-        .split(",")
-        .map(f => f.trim());
+// Class priority order: premium > dedicated > free
+const classPriority = ["premium", "dedicated", "free"];
+
+async function getDeploymentId(workspaceId: string): Promise<string | undefined> {
+  const records = await db.prisma().functionsServer.findMany({
+    where: { workspaceId },
+    select: { class: true, deploymentId: true },
+  });
+  if (records.length === 0) {
+    return undefined;
+  }
+  // Select highest priority class
+  for (const cls of classPriority) {
+    const record = records.find(r => r.class === cls);
+    if (record?.deploymentId) {
+      return record.deploymentId;
     }
   }
-  return [defaultClass];
+  return undefined;
 }
 
-function getUdfRunUrl(
-  workspaceId: string,
-  functionsClasses: string[],
-  serverEnv: ReturnType<typeof getServerEnv>
-): string {
+function getUdfRunUrl(deploymentId: string, serverEnv: ReturnType<typeof getServerEnv>): string {
   const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
-  const isLegacy = functionsClasses.includes("legacy") || functionsClasses.includes("");
-  if (!template || isLegacy) {
+  if (!template) {
     const rotorURL = requireDefined(
       serverEnv.ROTOR_URL,
       `env ROTOR_URL is not set. Rotor is required to run functions`
     );
     return rotorURL + "/udfrun";
   }
-  const functionsClass = functionsClasses[0];
-  const baseUrl = template.replace("${workspaceId}", functionsClass === "free" ? "free" : workspaceId);
+  const baseUrl = template.replace("${workspaceId}", deploymentId);
   return baseUrl + "/udfrun";
 }
 
@@ -85,22 +87,24 @@ export const api: Api = {
       await verifyAccessWithRole(user, workspaceId, "editEntities");
       const serverEnv = getServerEnv();
 
-      const workspace = await db.prisma().workspace.findFirst({
-        where: { id: workspaceId },
-        select: { featuresEnabled: true },
-      });
-      const functionsClasses = extractFunctionsClasses(
-        workspace?.featuresEnabled ?? [],
-        serverEnv.DEFAULT_FUNCTIONS_CLASS
-      );
-      const url = getUdfRunUrl(workspaceId, functionsClasses, serverEnv);
+      const deploymentId = await getDeploymentId(workspaceId);
+      if (!deploymentId) {
+        return resultType.parse({
+          error: {
+            name: "FunctionRuntimeNotReady",
+            message:
+              "Function runtime for this workspace is being initialized. Please try again in a few minutes. If this message persists, please contact support.",
+          },
+          store: {},
+          logs: [],
+        });
+      }
+      const url = getUdfRunUrl(deploymentId, serverEnv);
 
       log
         .atInfo()
         .log(
-          `Running function ${
-            body.functionId
-          } for workspace ${workspaceId} via ${url} (classes: ${functionsClasses.join(",")})`
+          `Running function ${body.functionId} for workspace ${workspaceId} via ${url} (deployment: ${deploymentId})`
         );
 
       const rotorAuthKey = serverEnv.ROTOR_AUTH_KEY;

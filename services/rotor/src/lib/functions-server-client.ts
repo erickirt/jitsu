@@ -66,15 +66,11 @@ export function shouldUseFunctionsServer(functionsClasses: string[]): boolean {
 /**
  * Get the functions server URL for a workspace
  */
-export function getFunctionsServerUrl(
-  workspaceId: string,
-  connectionId: string,
-  functionsClass: Omit<FunctionsClass, "legacy">
-): string {
+export function getFunctionsServerUrl(deploymentId: string, connectionId: string): string {
   // reload it here for tests. In tests we reset serverEnv cache to dynamically set FS server port
   const serverEnv = getServerEnv();
   const template = serverEnv.FUNCTIONS_SERVER_URL_TEMPLATE;
-  const baseUrl = template.replace("${workspaceId}", functionsClass === "free" ? "free" : workspaceId);
+  const baseUrl = template.replace("${workspaceId}", deploymentId);
   return `${baseUrl}/connection/${connectionId}`;
 }
 
@@ -106,9 +102,8 @@ export type FunctionsServerResult = {
  * Call the functions server to execute UDF pipeline for an event
  */
 export async function callFunctionsServer(
-  workspaceId: string,
+  deploymentId: string,
   connectionId: string,
-  functionsClass: Omit<FunctionsClass, "legacy">,
   event: AnyEvent,
   eventContext: EventContext,
   chainCtx: FunctionChainContext,
@@ -116,7 +111,7 @@ export async function callFunctionsServer(
   eventsLogger: EventsStore,
   fetchTimeoutMs?: number
 ): Promise<FunctionsServerResult> {
-  const url = getFunctionsServerUrl(workspaceId, connectionId, functionsClass);
+  const url = getFunctionsServerUrl(deploymentId, connectionId);
 
   let response: Awaited<ReturnType<typeof request>> | undefined;
   try {
@@ -135,6 +130,14 @@ export async function callFunctionsServer(
       dispatcher: undiciAgent,
     });
 
+    if (response.statusCode === 404) {
+      log.atWarn().log(`Functions server endpoint not found for connection ${connectionId} (404).`);
+      return {
+        events: [],
+        execLog: [],
+        logs: [],
+      };
+    }
     if (response.statusCode !== 200) {
       const errorText = await response.body.text();
       throw new RetryError(`Functions server returned ${response.statusCode}: ${errorText}`);
@@ -191,9 +194,8 @@ export async function callFunctionsServer(
  * Uses FunctionChainContext to properly log function execution results with correct context.
  */
 export function createFunctionsServerWrapper(
-  workspaceId: string,
+  deploymentId: string,
   connectionId: string,
-  functionsClass: Omit<FunctionsClass, "legacy">,
   chainCtx: FunctionChainContext,
   funcCtx: FunctionContext,
   eventsLogger: EventsStore,
@@ -202,9 +204,8 @@ export function createFunctionsServerWrapper(
   return async (event: AnyEvent, ctx: EventContext) => {
     try {
       const result = await callFunctionsServer(
-        workspaceId,
+        deploymentId,
         connectionId,
-        functionsClass,
         event,
         ctx,
         chainCtx,

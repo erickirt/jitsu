@@ -202,9 +202,6 @@ func (o *Operator) reconcile() {
 
 	// Group workspaces by functions class
 	dedicatedWorkspaces := make(map[string]*WorkspaceData) // workspaceID -> WorkspaceData
-	// Dedicated/premium workspaces with 0 connections or 0 functions don't get a K8s deployment
-	// but still need a FunctionsServer record so Rotor knows the workspace class
-	emptyDedicatedWorkspaces := make(map[string]*WorkspaceData)
 	freeWorkspaces := make([]*WorkspaceData, 0)
 
 	for _, ws := range wsData.workspaces {
@@ -228,7 +225,7 @@ func (o *Operator) reconcile() {
 			wData := *wsWorkspaceData // Copy
 			wData.FunctionsClass = utils.Ternary(slices.Contains(functionsClasses, FunctionsClassPremium), FunctionsClassPremium, FunctionsClassDedicated)
 			if len(wData.Connections) == 0 || len(wData.Functions) == 0 {
-				emptyDedicatedWorkspaces[ws.ID] = &wData
+				freeWorkspaces = append(freeWorkspaces, wsWorkspaceData)
 				continue
 			}
 			dedicatedWorkspaces[ws.ID] = &wData
@@ -294,7 +291,9 @@ func (o *Operator) reconcile() {
 		} else {
 			// Update existing deployment
 			needDeploy := false
-			if existing.ConfigHash != deploymentData.ConfigHash {
+			if existing.ShutdownAt != nil {
+				needDeploy = true
+			} else if existing.ConfigHash != deploymentData.ConfigHash {
 				needDeploy = true
 				logging.Infof("Updating deployment %s (hash changed: %s -> %s)",
 					deploymentID, existing.ConfigHash, deploymentData.ConfigHash)
@@ -327,7 +326,7 @@ func (o *Operator) reconcile() {
 		if existing.ShutdownAt != nil {
 			continue // already marked
 		}
-		if o.allWorkspacesHandled(existing, existingDeployments, emptyDedicatedWorkspaces, wsData) {
+		if o.allWorkspacesHandled(existing, existingDeployments, wsData) {
 			shutdownAt := time.Now().Add(10 * time.Minute)
 			if err := o.setDeploymentShutdownAt(ctx, existing, shutdownAt); err != nil {
 				logging.Errorf("Failed to mark deployment %s for shutdown: %v", deploymentID, err)
@@ -359,7 +358,7 @@ func (o *Operator) reconcile() {
 
 	// Upsert FunctionsServer records only for fully rolled out deployments
 	if o.functionsServerDB != nil {
-		o.syncFunctionsServerTable(desiredDeployments, existingDeployments, emptyDedicatedWorkspaces)
+		o.syncFunctionsServerTable(desiredDeployments, existingDeployments)
 	}
 
 	logging.Debugf("[reconcile] total: %dms", sw.ElapsedMs())
@@ -390,16 +389,11 @@ func (o *Operator) setDeploymentShutdownAt(ctx context.Context, data *Deployment
 // - has a rolled-out deployment of another class in existingDeployments, or
 // - is in emptyDedicatedWorkspaces (no functions or connections — no deployment needed), or
 // - no longer exists in the repository at all.
-func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeployments map[string]*DeploymentData, emptyDedicatedWorkspaces map[string]*WorkspaceData, wsData *WorkspacesData) bool {
+func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeployments map[string]*DeploymentData, wsData *WorkspacesData) bool {
 	for _, wsID := range existing.WorkspaceIDs {
 		// Check if workspace still exists in the repository
 		if _, wsExists := wsData.byID[wsID]; !wsExists {
 			// Workspace gone from repository — handled
-			continue
-		}
-
-		// Check if workspace is in emptyDedicatedWorkspaces (no functions or connections)
-		if _, isEmpty := emptyDedicatedWorkspaces[wsID]; isEmpty {
 			continue
 		}
 
@@ -425,7 +419,7 @@ func (o *Operator) allWorkspacesHandled(existing *DeploymentData, existingDeploy
 // and for empty dedicated workspaces (0 functions or 0 connections) that have no K8s deployment.
 // Uses connection data from deployment annotations (rolled-out state) and existingDeployments for timestamps.
 // Only syncs deployments that are still desired (skips old deployments pending shutdown).
-func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*DeploymentData, existingDeployments map[string]*DeploymentData, emptyDedicatedWorkspaces map[string]*WorkspaceData) {
+func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*DeploymentData, existingDeployments map[string]*DeploymentData) {
 	// Sync records from rolled-out K8s deployments using connections map from annotation
 	for deploymentID, existing := range existingDeployments {
 		if _, desired := desiredDeployments[deploymentID]; !desired {
@@ -443,18 +437,6 @@ func (o *Operator) syncFunctionsServerTable(desiredDeployments map[string]*Deplo
 			logging.Errorf("Failed to replace FunctionsServer records for deployment %s (%d records): %v", deploymentID, len(records), err)
 		} else {
 			o.functionsServerDB.MarkDeploymentSynced(deploymentID, existing.ConfigHash)
-		}
-	}
-	// Sync records for dedicated/premium workspaces with no functions or connections
-	for wsID, data := range emptyDedicatedWorkspaces {
-		if !o.functionsServerDB.IsDeploymentChanged(wsID, data.ConfigHash) {
-			continue
-		}
-		records := BuildRecordsFromWorkspaceData(data)
-		if err := o.functionsServerDB.ReplaceRecordsForDeployment(wsID, records, data.MaxUpdatedAt, data.MaxUpdatedAt); err != nil {
-			logging.Errorf("Failed to replace FunctionsServer record for empty dedicated workspace %s: %v", wsID, err)
-		} else {
-			o.functionsServerDB.MarkDeploymentSynced(wsID, data.ConfigHash)
 		}
 	}
 }
@@ -610,7 +592,7 @@ func (o *Operator) buildFreeShardedDeployments(workspaces []*WorkspaceData) map[
 		}
 
 		sort.Strings(workspaceIDs)
-		configHash := CalculateConfigHash(allConnections, allFunctions)
+		configHash := CalculateConfigHash(allConnections, allFunctions, workspaceIDs)
 
 		shardID := freeShardDeploymentID(shardIdx, numShards)
 		result[shardID] = &DeploymentData{

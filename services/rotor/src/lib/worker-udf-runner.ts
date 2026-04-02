@@ -18,7 +18,6 @@ export async function runUdfInWorker(
   store: TTLStore,
   conEntityStore: EntityStore<EnrichedConnectionConfig>
 ): Promise<any> {
-  const logs: any[] = [];
   const udfTimeoutMs = parseNumber(env.UDF_TIMEOUT_MS, 5000);
   const dumpStore = () => (typeof (store as any).dump === "function" ? (store as any).dump() : {});
 
@@ -87,7 +86,8 @@ export async function runUdfInWorker(
         optionsHash: "",
       },
       functions: [{ id: `udf.${request.functionId}`, iifeCode }],
-      warehouseEnabled: env.FUNCTIONS_CLASS !== "free",
+      functionsClass: env.FUNCTIONS_CLASS,
+      warehouseEnabled: true,
       props: request.variables || {},
     };
 
@@ -100,20 +100,7 @@ export async function runUdfInWorker(
     const fetchImpl = makeFetch(
       "functionsDebugger",
       {
-        log(connectionId: string, level: LogLevel, msg: Record<string, any>) {
-          let statusText;
-          if (msg.error) {
-            statusText = `${msg.error}`;
-          } else {
-            statusText = `${msg.statusText ?? ""}${msg.status ? `(${msg.status})` : ""}`;
-          }
-          logs.push({
-            message: `${msg.method} ${msg.url} :: ${statusText}`,
-            level: msg.error ? "error" : "debug",
-            timestamp: new Date(),
-            type: "http",
-          });
-        },
+        log(connectionId: string, level: LogLevel, msg: Record<string, any>) {},
         close() {},
         deadLetter() {},
       },
@@ -127,7 +114,7 @@ export async function runUdfInWorker(
           error: { message: `Function execution timed out after ${udfTimeoutMs}ms`, name: "TimeoutError" },
           result: {},
           store: dumpStore(),
-          logs,
+          logs: [],
         });
       }, udfTimeoutMs);
 
@@ -147,13 +134,13 @@ export async function runUdfInWorker(
         }
 
         if (msg.type === "log") {
-          logs.push({
-            message: msg.message + (Array.isArray(msg.args) && msg.args.length > 0 ? `, ${msg.args.join(",")}` : ""),
-            level: msg.level,
-            timestamp: new Date(msg.timestamp),
-            type: "log",
-          });
-          return;
+          // logs.push({
+          //   message: msg.message + (Array.isArray(msg.args) && msg.args.length > 0 ? `, ${msg.args.join(",")}` : ""),
+          //   level: msg.level,
+          //   timestamp: new Date(msg.timestamp),
+          //   type: "log",
+          // });
+          // return;
         }
 
         if (msg.type === "result") {
@@ -166,7 +153,7 @@ export async function runUdfInWorker(
               error: { message: err.message, stack: err.stack, name: err.name, retryPolicy: err.retryPolicy },
               result: {},
               store: dumpStore(),
-              logs,
+              logs: msg.logs,
             });
           } else {
             const dropped = msg.events.length === 0;
@@ -174,7 +161,7 @@ export async function runUdfInWorker(
               dropped,
               result: dropped ? {} : msg.events.length === 1 ? msg.events[0] : msg.events,
               store: dumpStore(),
-              logs,
+              logs: msg.logs,
             });
           }
           return;
@@ -205,9 +192,6 @@ export async function runUdfInWorker(
                 body: await res.text(),
               };
             } else if (method === "warehouse.query") {
-              if (env.FUNCTIONS_CLASS === "free") {
-                throw new Error("Warehouse queries are not available on the free plan.");
-              }
               const [destinationId, sql, params] = args;
               result = await warehouseQuery(request.workspaceId, conEntityStore, destinationId, sql, params);
             }
@@ -225,7 +209,7 @@ export async function runUdfInWorker(
           error: { message: err.message, name: "WorkerError" },
           result: {},
           store: dumpStore(),
-          logs,
+          logs: [],
         });
       };
 
@@ -243,14 +227,14 @@ export async function runUdfInWorker(
         },
         result: {},
         store: dumpStore(),
-        logs,
+        logs: [],
       };
     }
     return {
       error: { message: e.message, name: e.name || "Error", stack: e.stack },
       result: {},
       store: dumpStore(),
-      logs,
+      logs: [],
     };
   }
 }

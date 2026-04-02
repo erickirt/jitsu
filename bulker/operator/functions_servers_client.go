@@ -19,7 +19,6 @@ type FunctionsServerRecord struct {
 	DeploymentID     string
 	Connections      []string
 	EmptyConnections []string
-	ShutdownAt       *time.Time
 }
 
 // FunctionsServerDB handles direct PostgreSQL operations for the FunctionsServer table
@@ -76,14 +75,13 @@ func (db *FunctionsServerDB) ReplaceRecordsForDeployment(deploymentID string, re
 		batch := &pgx.Batch{}
 		for _, r := range records {
 			batch.Queue(
-				`INSERT INTO newjitsu."FunctionsServer" ("workspaceId", "class", "deploymentId", "connections", "emptyConnections", "createdAt", "updatedAt", "shutdownAt")
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				`INSERT INTO newjitsu."FunctionsServer" ("workspaceId", "class", "deploymentId", "connections", "emptyConnections", "createdAt", "updatedAt")
+				 VALUES ($1, $2, $3, $4, $5, $6, $7)
 				 ON CONFLICT ("workspaceId", "class") DO UPDATE SET
 				     "deploymentId" = EXCLUDED."deploymentId",
 				     "connections" = EXCLUDED."connections",
 				     "emptyConnections" = EXCLUDED."emptyConnections",
-				     "updatedAt" = EXCLUDED."updatedAt",
-				     "shutdownAt" = EXCLUDED."shutdownAt"`,
+				     "updatedAt" = EXCLUDED."updatedAt"`,
 				r.WorkspaceID,
 				r.Class,
 				r.DeploymentID,
@@ -91,7 +89,6 @@ func (db *FunctionsServerDB) ReplaceRecordsForDeployment(deploymentID string, re
 				r.EmptyConnections,
 				createdAt,
 				updatedAt,
-				r.ShutdownAt,
 			)
 		}
 		br := tx.SendBatch(ctx, batch)
@@ -156,52 +153,6 @@ func groupConnectionsByWorkspace(connections []*EnrichedConnectionConfig) (withF
 		}
 	}
 	return
-}
-
-// BuildRecordsFromDeploymentData builds FunctionsServer records from deployment data
-func BuildRecordsFromDeploymentData(data *DeploymentData) []FunctionsServerRecord {
-	connectionsByWorkspace, emptyConnectionsByWorkspace := groupConnectionsByWorkspace(data.Connections)
-
-	records := make([]FunctionsServerRecord, 0, len(data.WorkspaceIDs))
-	for _, wsID := range data.WorkspaceIDs {
-		record := FunctionsServerRecord{
-			WorkspaceID:      wsID,
-			Class:            data.FunctionsClass,
-			DeploymentID:     data.DeploymentID,
-			Connections:      connectionsByWorkspace[wsID],
-			EmptyConnections: emptyConnectionsByWorkspace[wsID],
-		}
-		if record.Connections == nil {
-			record.Connections = []string{}
-		}
-		if record.EmptyConnections == nil {
-			record.EmptyConnections = []string{}
-		}
-		records = append(records, record)
-	}
-
-	return records
-}
-
-// BuildRecordsFromWorkspaceData builds FunctionsServer records from workspace data
-func BuildRecordsFromWorkspaceData(data *WorkspaceData) []FunctionsServerRecord {
-	connectionsByWorkspace, emptyConnectionsByWorkspace := groupConnectionsByWorkspace(data.Connections)
-
-	record := FunctionsServerRecord{
-		WorkspaceID:      data.WorkspaceID,
-		Class:            data.FunctionsClass,
-		DeploymentID:     data.WorkspaceID,
-		Connections:      connectionsByWorkspace[data.WorkspaceID],
-		EmptyConnections: emptyConnectionsByWorkspace[data.WorkspaceID],
-	}
-	if record.Connections == nil {
-		record.Connections = []string{}
-	}
-	if record.EmptyConnections == nil {
-		record.EmptyConnections = []string{}
-	}
-
-	return []FunctionsServerRecord{record}
 }
 
 // ConnectionsMapEntry holds per-workspace connection IDs for the deployment annotation

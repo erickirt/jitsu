@@ -475,29 +475,6 @@ func getFunctionsClasses(options map[string]any, defaultClass string) []string {
 	return result
 }
 
-// shouldUseFunctionsServer checks if destination should use functions server (not legacy)
-func shouldUseFunctionsServer(functionsClasses []string) bool {
-	for _, c := range functionsClasses {
-		if c == "legacy" || c == "" {
-			return false
-		}
-	}
-	return len(functionsClasses) > 0
-}
-
-// getFunctionsServerURL constructs the functions server URL for a workspace
-func getFunctionsServerURL(template, workspaceId string, functionsClasses []string) string {
-	// For "free" class, use "free" as workspace identifier
-	wsId := workspaceId
-	for _, c := range functionsClasses {
-		if c == "free" {
-			wsId = "free"
-			break
-		}
-	}
-	return strings.Replace(template, "${workspaceId}", wsId, 1)
-}
-
 type SyncDestinationsResponse struct {
 	Destinations []*SyncDestinationsData `json:"destinations,omitempty"`
 	OK           bool                    `json:"ok"`
@@ -520,34 +497,64 @@ func (r *Router) processSyncDestination(message *IngestMessage, stream *StreamWi
 	}
 	var functionsResults map[string]any
 
-	// Filter destinations that have functions defined
-	functionDestinations := utils.ArrayFilter(filteredDestinations, func(d *ShortDestinationConfig) bool {
-		funcs, ok := d.Options["functions"].([]any)
-		if !ok || len(funcs) == 0 {
-			return false
+	// Group destinations by functionsServer status
+	// "functions" → route to functions server using deploymentId
+	// "empty" → skip functions, pass through
+	// "missing" or no functionsServer → drop
+	type fsInfo struct {
+		DeploymentID string `json:"deploymentId"`
+		Status       string `json:"status"`
+	}
+	// Group function destinations by deploymentId for batching
+	byDeployment := make(map[string][]*ShortDestinationConfig)
+	legacyDestinations := make([]*ShortDestinationConfig, 0)
+	for _, d := range filteredDestinations {
+		fs, _ := d.Options["functionsServer"].(map[string]any)
+		if fs == nil {
+			continue // no functionsServer info — skip
 		}
-		return true
-	})
-
-	if len(functionDestinations) > 0 {
-		functionsResults = make(map[string]any)
-
-		// Determine endpoint: check first destination's functionsClasses
-		// All destinations in a stream have the same functionsClasses
-		classes := getFunctionsClasses(functionDestinations[0].Options, r.config.DefaultFunctionsClass)
-		if shouldUseFunctionsServer(classes) {
-			// Use functions server (new format with execLog)
-			fsURL := getFunctionsServerURL(r.config.FunctionsServerURLTemplate, stream.Stream.WorkspaceId, classes)
-			endpointURL := fsURL + "/multi"
-			r.callFunctionsEndpoint(stream, functionDestinations, endpointURL, messageBytes, functionsResults, false)
-		} else {
-			// Use rotor (legacy format)
-			endpointURL := r.config.RotorURL + "/func/multi"
-			r.callRotorEndpoint(functionDestinations, endpointURL, messageBytes, functionsResults)
+		status, _ := fs["status"].(string)
+		if status == "missing" || status == "empty" {
+			continue // missing: not yet registered; empty: no functions to run
+		}
+		if status == "legacy" {
+			legacyDestinations = append(legacyDestinations, d)
+			continue
+		}
+		if status == "functions" {
+			deploymentID, _ := fs["deploymentId"].(string)
+			if deploymentID != "" {
+				byDeployment[deploymentID] = append(byDeployment[deploymentID], d)
+			}
 		}
 	}
+
+	if len(byDeployment) > 0 || len(legacyDestinations) > 0 {
+		functionsResults = make(map[string]any)
+
+		for deploymentID, destinations := range byDeployment {
+			fsURL := strings.Replace(r.config.FunctionsServerURLTemplate, "${workspaceId}", deploymentID, 1)
+			endpointURL := fsURL + "/multi"
+			r.callFunctionsEndpoint(stream, destinations, endpointURL, messageBytes, functionsResults, false)
+		}
+
+		if len(legacyDestinations) > 0 {
+			endpointURL := r.config.RotorURL + "/func/multi"
+			r.callRotorEndpoint(legacyDestinations, endpointURL, messageBytes, functionsResults)
+		}
+	}
+
 	data := make([]*SyncDestinationsData, 0, len(filteredDestinations))
 	for _, d := range filteredDestinations {
+		fs, _ := d.Options["functionsServer"].(map[string]any)
+		status := ""
+		if fs != nil {
+			status, _ = fs["status"].(string)
+		}
+		// Skip "missing" destinations
+		if status == "missing" || status == "" {
+			continue
+		}
 		IngestedMessages(d.ConnectionId, "success", "").Inc()
 		dOptions := DeviceOptions[d.DestinationType]
 		newEvents, ok := functionsResults[d.ConnectionId].([]any)

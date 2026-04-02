@@ -20,6 +20,7 @@ export type WorkerConnectionInit = {
   functions: WorkerFunctionInit[];
   /** Whether warehouse queries are allowed */
   warehouseEnabled: boolean;
+  functionsClass: string;
   /** debugTill ISO string (if set) */
   debugTill?: string;
   /** fetchLogLevel from connection options */

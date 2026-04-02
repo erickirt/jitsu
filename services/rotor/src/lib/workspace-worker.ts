@@ -90,6 +90,7 @@ type ConnectionChain = {
   debugTill?: string;
   fetchLogLevel?: string;
   warehouseEnabled: boolean;
+  functionsClass: string;
 };
 
 const chains = new Map<string, ConnectionChain>();
@@ -229,6 +230,15 @@ function buildContext(
         return Promise.reject(
           new Error("Warehouse queries are not available on the free plan. Please upgrade to use this feature.")
         );
+      }
+      if (chain.functionsClass === "free") {
+        logs.push({
+          level: "warn",
+          functionId,
+          functionType,
+          message: `Warehouse queries can always be run in the Functions Debugger. However, running this feature in production requires a paid subscription.`,
+          timestamp: new Date().toISOString(),
+        });
       }
       return callMain("warehouse.query", [destinationId, sql, params]);
     },
@@ -397,6 +407,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         debugTill: conn.debugTill,
         fetchLogLevel: conn.fetchLogLevel,
         warehouseEnabled: conn.warehouseEnabled,
+        functionsClass: conn.functionsClass,
       });
     }
     self.postMessage({ type: "ready" });
