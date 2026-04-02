@@ -290,6 +290,7 @@ async function exportRotorConnections(writer: Writer) {
       workspace: { deleted: false },
       version: { gt: 0 },
     },
+    include: { workspace: true },
     orderBy: { id: "asc" },
   });
   while (true) {
@@ -409,8 +410,8 @@ async function exportRotorConnections(writer: Writer) {
       ...(pb.intermediateStorageCredentials ?? ({} as any)),
       profileWindowDays: (pb.connectionOptions ?? ({} as any)).profileWindow,
       profileBuilderId: pb.id,
-      eventsCollectionName: `profiles-raw-${pb.workspaceId}-${pb.id}`,
-      traitsCollectionName: `profiles-traits-${pb.workspaceId}-${pb.id}`,
+      eventsCollectionName: `profiles-raw-${pb.workspace.id}-${pb.id}`,
+      traitsCollectionName: `profiles-traits-${pb.workspace.id}-${pb.id}`,
     };
     const opts = {
       functionsEnv: (pb.connectionOptions ?? ({} as any)).variables,
@@ -420,6 +421,13 @@ async function exportRotorConnections(writer: Writer) {
         },
         ...((pb.connectionOptions ?? ({} as any)).functions || []),
       ],
+      functionsServer: selectFunctionsServer(
+        functionsServers,
+        pb.workspace.id,
+        pb.id,
+        functionsClassFunc(pb.workspace)
+      ),
+      workspaceUpdatedAt: pb.workspace.updatedAt,
     };
     writer.write(
       JSON.stringify({
