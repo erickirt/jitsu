@@ -9,13 +9,6 @@ const { dns } = interceptors;
 
 const log = getLog("functions-server-client");
 
-export type FunctionsClass = "premium" | "dedicated" | "free" | "legacy";
-// Functions class constants (must match operator values)
-export const FunctionsClassDedicated = "dedicated";
-export const FunctionsClassPremium = "premium";
-export const FunctionsClassFree = "free";
-export const FunctionsClassLegacy = "legacy";
-
 const serverEnv = getServerEnv();
 
 const concurrency = parseNumber(serverEnv.CONCURRENCY, 10);
@@ -35,33 +28,6 @@ export const undiciAgent = new Agent({
     affinity: 4, // prefer IPv4
   })
 );
-/**
- * Get the functions classes from connection options.
- * functionsClasses is set during connection export from workspace.featuresEnabled.
- */
-export function getFunctionsClassesFromOptions(options: any): FunctionsClass[] {
-  if (options?.functionsClasses && Array.isArray(options.functionsClasses) && options.functionsClasses.length > 0) {
-    const classes = options.functionsClasses.filter(
-      (f: string) =>
-        f === FunctionsClassPremium ||
-        f === FunctionsClassDedicated ||
-        f === FunctionsClassFree ||
-        f === FunctionsClassLegacy
-    ) as FunctionsClass[];
-    if (classes.length > 0) {
-      return classes;
-    }
-  }
-
-  return [serverEnv.DEFAULT_FUNCTIONS_CLASS] as FunctionsClass[];
-}
-
-/**
- * Check if a workspace should use the functions server (not legacy)
- */
-export function shouldUseFunctionsServer(functionsClasses: string[]): boolean {
-  return !functionsClasses.includes(FunctionsClassLegacy) && !functionsClasses.includes("");
-}
 
 /**
  * Get the functions server URL for a workspace

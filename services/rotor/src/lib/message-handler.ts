@@ -19,7 +19,6 @@ import { buildFunctionChain, checkError, FuncChain, FuncChainFilter, runChain } 
 import { Redis } from "ioredis";
 import { fromJitsuClassic } from "@jitsu/functions-lib";
 import { mongoAnonymousEventsStore } from "./mongodb";
-import { getFunctionsClassesFromOptions } from "./functions-server-client";
 const log = getLog("rotor");
 
 const anonymousEventsStore = mongoAnonymousEventsStore();
@@ -158,8 +157,6 @@ export async function rotorMessageHandler(
   const useFunctionsServer = functionsServer.status !== "legacy";
   // skipUdf: when "empty" — connection has no UDF functions, skip UDF step entirely
   const skipUdf = functionsServer.status === "empty";
-
-  const functionsClasses = getFunctionsClassesFromOptions(connection.options);
 
   let lastUpdated = Math.max(
     new Date(connection.updatedAt || 0).getTime(),
