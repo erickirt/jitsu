@@ -3,8 +3,8 @@ module github.com/jitsucom/bulker/eventslog
 go 1.26
 
 require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.44.0
-	github.com/gomodule/redigo v1.8.9
+	github.com/ClickHouse/clickhouse-go/v2 v2.45.0
+	github.com/gomodule/redigo v1.9.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
@@ -66,7 +66,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
