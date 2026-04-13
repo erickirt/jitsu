@@ -177,7 +177,9 @@ export async function compileUdfToFile(
 // Unlike compileUdfToFile, this does NOT write to disk – the code string
 // is sent to the worker via postMessage.
 export async function compileUdfToIIFE(code: string, functionId: string, env: any): Promise<string> {
-  const envs = `var process = { env: ${JSON.stringify(env || {})} };\nvar console = { log() {}, warn() {}, error() {}, info() {}, debug() {}, trace() {}, dir() {}, table() {} };\n`;
+  const envs = `var process = { env: ${JSON.stringify(
+    env || {}
+  )} };\nvar console = { log() {}, warn() {}, error() {}, info() {}, debug() {}, trace() {}, dir() {}, table() {} };\n`;
   const fullCode = envs + code;
 
   const result = await esbuild.build({
