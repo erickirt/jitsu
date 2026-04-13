@@ -34,7 +34,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -42,21 +41,27 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Claude PR Review
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Review PR #${{ github.event.pull_request.number || inputs.pr_number }} in repo ${{ github.repository }}.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
 
-            Steps:
-            1. Run `gh pr diff ${{ github.event.pull_request.number || inputs.pr_number }}` to get the diff.
-            2. Run `gh pr view ${{ github.event.pull_request.number || inputs.pr_number }}` to get the PR title/description.
-            3. ${{ env.REVIEW_INSTRUCTIONS }}
-            4. Post inline comments on specific lines using the inline comment tool.
-            5. Post a brief summary comment on the PR with overall findings.
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
+      - name: Run Claude PR Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          PR="${{ github.event.pull_request.number || inputs.pr_number }}"
+          claude -p \
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*)" \
+            "Review PR #${PR} in repo ${{ github.repository }}.
+
+          Steps:
+          1. Run \`gh pr diff ${PR}\` to get the diff.
+          2. Run \`gh pr view ${PR}\` to get the PR title/description.
+          3. ${{ env.REVIEW_INSTRUCTIONS }}
+          4. Post inline comments using: gh api repos/${{ github.repository }}/pulls/${PR}/reviews
+             with event=COMMENT and a comments array for line-level feedback.
+          5. Post a brief top-level summary using: gh pr comment ${PR} --body '...'"
 
   claude-review-commit:
     if: |
@@ -65,8 +70,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -92,19 +95,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Install Claude Code
+        if: steps.check-pr.outputs.pr_count == '0'
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Run Claude Commit Review
         if: steps.check-pr.outputs.pr_count == '0'
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Review commit ${{ github.sha || inputs.commit_sha }} in repo ${{ github.repository }}.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.sha || inputs.commit_sha }}"
+          claude -p \
+            --allowedTools "Bash(git show:*),Bash(gh api:*)" \
+            "Review commit ${SHA} in repo ${{ github.repository }}.
 
-            Steps:
-            1. Run `git show ${{ github.sha || inputs.commit_sha }}` to get the diff.
-            2. ${{ env.REVIEW_INSTRUCTIONS }}
-            3. Post your review as a commit comment:
-               gh api repos/${{ github.repository }}/commits/${{ github.sha || inputs.commit_sha }}/comments \
-                 -f body="YOUR REVIEW TEXT"
-          claude_args: |
-            --allowedTools "Bash(git show:*),Bash(gh api:*)"
+          Steps:
+          1. Run \`git show ${SHA}\` to get the diff.
+          2. ${{ env.REVIEW_INSTRUCTIONS }}
+          3. Post your review as a commit comment:
+             gh api repos/${{ github.repository }}/commits/${SHA}/comments -f body='YOUR REVIEW'"
