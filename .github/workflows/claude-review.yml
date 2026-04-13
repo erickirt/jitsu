@@ -49,19 +49,21 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          REVIEW_INSTR: ${{ env.REVIEW_INSTRUCTIONS }}
         run: |
-          PR="${{ github.event.pull_request.number || inputs.pr_number }}"
-          claude -p \
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*)" \
-            "Review PR #${PR} in repo ${{ github.repository }}.
+          cat << 'EOF' | envsubst | claude --print \
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*)"
+          Review PR #$PR_NUMBER in repo $REPO.
 
           Steps:
-          1. Run \`gh pr diff ${PR}\` to get the diff.
-          2. Run \`gh pr view ${PR}\` to get the PR title/description.
-          3. ${{ env.REVIEW_INSTRUCTIONS }}
-          4. Post inline comments using: gh api repos/${{ github.repository }}/pulls/${PR}/reviews
-             with event=COMMENT and a comments array for line-level feedback.
-          5. Post a brief top-level summary using: gh pr comment ${PR} --body '...'"
+          1. Run `gh pr diff $PR_NUMBER` to get the diff.
+          2. Run `gh pr view $PR_NUMBER` to get the PR title/description.
+          3. $REVIEW_INSTR
+          4. Post inline comments: gh api repos/$REPO/pulls/$PR_NUMBER/reviews -f event=COMMENT -f body="summary" --field "comments[][path]=FILE" --field "comments[][position]=LINE" --field "comments[][body]=COMMENT"
+          5. Post a brief top-level summary: gh pr comment $PR_NUMBER --body "YOUR REVIEW"
+          EOF
 
   claude-review-commit:
     if: |
@@ -105,14 +107,16 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.sha || inputs.commit_sha }}
+          REPO: ${{ github.repository }}
+          REVIEW_INSTR: ${{ env.REVIEW_INSTRUCTIONS }}
         run: |
-          SHA="${{ github.sha || inputs.commit_sha }}"
-          claude -p \
-            --allowedTools "Bash(git show:*),Bash(gh api:*)" \
-            "Review commit ${SHA} in repo ${{ github.repository }}.
+          cat << 'EOF' | envsubst | claude --print \
+            --allowedTools "Bash(git show:*),Bash(gh api:*)"
+          Review commit $COMMIT_SHA in repo $REPO.
 
           Steps:
-          1. Run \`git show ${SHA}\` to get the diff.
-          2. ${{ env.REVIEW_INSTRUCTIONS }}
-          3. Post your review as a commit comment:
-             gh api repos/${{ github.repository }}/commits/${SHA}/comments -f body='YOUR REVIEW'"
+          1. Run `git show $COMMIT_SHA` to get the diff.
+          2. $REVIEW_INSTR
+          3. Post your review as a commit comment: gh api repos/$REPO/commits/$COMMIT_SHA/comments -f body="YOUR REVIEW"
+          EOF
