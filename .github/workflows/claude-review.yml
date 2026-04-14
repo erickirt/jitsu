@@ -126,12 +126,21 @@ jobs:
           fi
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Print Claude Code version
+        run: claude --version
 
       - name: Install code-review plugin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: claude plugin install code-review@claude-plugins-official
+        run: |
+          # Refresh marketplace catalog, then install plugin
+          claude plugin marketplace update claude-plugins-official 2>/dev/null || \
+            claude plugin marketplace add anthropics/claude-plugins-official
+          claude plugin install code-review@claude-plugins-official
 
       - name: Run code review
         env:
