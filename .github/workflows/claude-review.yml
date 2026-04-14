@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: claude-review-${{ github.event.pull_request.number || inputs.pr_number || inputs.commit_sha || github.sha }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -58,19 +58,25 @@ jobs:
             local SHA="$1"
             local SHORT="${SHA:0:12}"
             local BRANCH_HEAD="temp/review-head-$SHORT"
+            local BRANCH_BASE="temp/review-base-$SHORT"
 
             echo "Creating temp PR for $SHORT"
 
-            # Fetch commit metadata
+            # Fetch commit metadata and parent SHA
             local COMMIT_INFO
-            COMMIT_INFO=$(gh api "repos/$REPO/commits/$SHA" --jq '{msg: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name)}')
-            local MSG AUTHOR
+            COMMIT_INFO=$(gh api "repos/$REPO/commits/$SHA" --jq '{parent: .parents[0].sha, msg: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name)}')
+            local PARENT MSG AUTHOR
+            PARENT=$(echo "$COMMIT_INFO" | jq -r '.parent')
             MSG=$(echo "$COMMIT_INFO" | jq -r '.msg')
             AUTHOR=$(echo "$COMMIT_INFO" | jq -r '.author')
 
-            # Push commit as head branch; use newjitsu as base (avoids pushing workflow files which requires extra perms)
+            # Push head branch via git
             git fetch origin "$SHA" --depth=1
             git push origin FETCH_HEAD:refs/heads/"$BRANCH_HEAD" --force
+
+            # Create base branch via API (points to parent SHA without pushing objects — avoids workflow-file push restriction)
+            gh api repos/$REPO/git/refs -f ref="refs/heads/$BRANCH_BASE" -f sha="$PARENT" 2>/dev/null \
+              || gh api repos/$REPO/git/refs/heads/$BRANCH_BASE -X PATCH -f sha="$PARENT" --silent
 
             local PR_BODY
             PR_BODY=$(printf '## Automated code review\n\nTemporary PR for reviewing a commit pushed directly to `newjitsu`.\n**This PR will be closed automatically after the review.**\n\n| Field | Value |\n|-------|-------|\n| Commit | [`%s`](https://github.com/%s/commit/%s) |\n| Message | %s |\n| Author | @%s |' \
@@ -80,7 +86,7 @@ jobs:
             PR_URL=$(gh pr create \
               --repo "$REPO" \
               --head "$BRANCH_HEAD" \
-              --base "newjitsu" \
+              --base "$BRANCH_BASE" \
               --title "Auto-review: $SHORT" \
               --body "$PR_BODY")
 
@@ -89,6 +95,7 @@ jobs:
             echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
             echo "is_temp=true"         >> $GITHUB_OUTPUT
             echo "branch_head=$BRANCH_HEAD" >> $GITHUB_OUTPUT
+            echo "branch_base=$BRANCH_BASE" >> $GITHUB_OUTPUT
             echo "Created temp PR #$PR_NUMBER — $PR_URL"
           }
 
@@ -199,8 +206,10 @@ jobs:
           if [ "$IS_TEMP" = "true" ]; then
             gh pr close "$PR_NUMBER" --repo "$REPO" 2>/dev/null || true
             echo "Closed temp PR #$PR_NUMBER"
+            BRANCH_BASE="${{ steps.resolve-pr.outputs.branch_base }}"
             if [ -n "$BRANCH_HEAD" ]; then
               git push origin --delete "$BRANCH_HEAD" 2>/dev/null || true
-              echo "Deleted temp branch $BRANCH_HEAD"
+              [ -n "$BRANCH_BASE" ] && git push origin --delete "$BRANCH_BASE" 2>/dev/null || true
+              echo "Deleted temp branches"
             fi
           fi
