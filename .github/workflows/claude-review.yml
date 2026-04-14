@@ -39,7 +39,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5.0.0
         with:
-          fetch-depth: 2
+          fetch-depth: 1
 
       - name: Resolve PR number
         id: resolve-pr
@@ -49,80 +49,86 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
+          make_temp_pr() {
+            local SHA="$1"
+            local SHORT="${SHA:0:12}"
+            local BRANCH_HEAD="temp/review-head-$SHORT"
+            local BRANCH_BASE="temp/review-base-$SHORT"
+
+            echo "Creating temp PR for $SHORT"
+
+            # Fetch the commit and its parent, then push as temp branches
+            local PARENT
+            PARENT=$(gh api "repos/$REPO/commits/$SHA" --jq '.parents[0].sha')
+            git fetch origin "$SHA" --depth=1
+            git push origin FETCH_HEAD:refs/heads/"$BRANCH_HEAD"
+            git fetch origin "$PARENT" --depth=1
+            git push origin FETCH_HEAD:refs/heads/"$BRANCH_BASE"
+
+            local PR_URL
+            PR_URL=$(gh pr create \
+              --repo "$REPO" \
+              --head "$BRANCH_HEAD" \
+              --base "$BRANCH_BASE" \
+              --title "Auto-review: $SHORT" \
+              --body "Temporary PR for commit review. Will be closed automatically.")
+
+            local PR_NUMBER
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
             echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "is_temp=true"         >> $GITHUB_OUTPUT
+            echo "branch_head=$BRANCH_HEAD" >> $GITHUB_OUTPUT
+            echo "branch_base=$BRANCH_BASE" >> $GITHUB_OUTPUT
+            echo "Created temp PR #$PR_NUMBER — $PR_URL"
+          }
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "is_temp=false" >> $GITHUB_OUTPUT
-            echo "Resolved: PR #$PR_NUMBER from pull_request event"
+            echo "Resolved: PR #${{ github.event.pull_request.number }} from pull_request event"
 
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
             PR_NUMBER="${{ inputs.pr_number }}"
-            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "is_temp=false" >> $GITHUB_OUTPUT
-            echo "Resolved: PR #$PR_NUMBER from workflow_dispatch input"
+            STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state -q .state)
+            echo "PR #$PR_NUMBER state: $STATE"
+
+            if [ "$STATE" = "OPEN" ]; then
+              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+              echo "is_temp=false" >> $GITHUB_OUTPUT
+            else
+              # Merged or closed — create a fresh temp PR from the PR's head commit
+              HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)
+              echo "PR is $STATE — creating temp PR from head $HEAD_SHA"
+              make_temp_pr "$HEAD_SHA"
+              # Post comment on the original PR linking to the temp review PR
+              TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
+              gh pr comment "$PR_NUMBER" --repo "$REPO" \
+                --body "Re-review via temp PR: https://github.com/$REPO/pull/$TEMP_PR_NUMBER" \
+                2>/dev/null || true
+            fi
 
           else
             SHA="${{ github.sha }}"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.commit_sha }}" ]; then
-              SHA="${{ inputs.commit_sha }}"
-            fi
+            [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+              && [ -n "${{ inputs.commit_sha }}" ] \
+              && SHA="${{ inputs.commit_sha }}"
             echo "Resolving PR for commit $SHA"
 
             EXISTING_PR=$(gh api "repos/$REPO/commits/$SHA/pulls" \
               -H "Accept: application/vnd.github.groot-preview+json" \
-              --jq '.[0].number // empty' 2>/dev/null || true)
+              --jq '[.[] | select(.state == "open")] | .[0].number // empty' \
+              2>/dev/null || true)
 
             if [ -n "$EXISTING_PR" ]; then
               echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
               echo "is_temp=false" >> $GITHUB_OUTPUT
-              echo "Resolved: found existing PR #$EXISTING_PR for commit $SHA"
+              echo "Resolved: found open PR #$EXISTING_PR for commit $SHA"
             else
-              echo "No existing PR found — creating temporary PR"
-              SHORT="${SHA:0:12}"
-              BRANCH_HEAD="temp/review-head-$SHORT"
-              BRANCH_BASE="temp/review-base-$SHORT"
-              PARENT=$(git rev-parse "$SHA^")
-
-              git push origin "$SHA:refs/heads/$BRANCH_HEAD"
-              git push origin "$PARENT:refs/heads/$BRANCH_BASE"
-
-              PR_URL=$(gh pr create \
-                --repo "$REPO" \
-                --head "$BRANCH_HEAD" \
-                --base "$BRANCH_BASE" \
-                --title "Auto-review: $SHORT" \
-                --body "Temporary PR for commit review. Will be closed automatically.")
-
-              PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-              echo "is_temp=true" >> $GITHUB_OUTPUT
-              echo "branch_head=$BRANCH_HEAD" >> $GITHUB_OUTPUT
-              echo "branch_base=$BRANCH_BASE" >> $GITHUB_OUTPUT
-
-              # Post commit comment with PR link
+              make_temp_pr "$SHA"
+              TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
               gh api "repos/$REPO/commits/$SHA/comments" \
-                -f body="Code review in progress: $PR_URL"
-
-              echo "Created temp PR #$PR_NUMBER — $PR_URL"
+                -f body="Code review in progress: https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
             fi
-          fi
-
-      - name: Reopen PR if closed
-        id: reopen-pr
-        if: steps.resolve-pr.outputs.pr_number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          PR_NUMBER="${{ steps.resolve-pr.outputs.pr_number }}"
-          STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state -q .state)
-          echo "PR #$PR_NUMBER state: $STATE"
-          if [ "$STATE" = "CLOSED" ]; then
-            gh pr reopen "$PR_NUMBER" --repo "$REPO"
-            echo "was_closed=true" >> $GITHUB_OUTPUT
-            echo "Reopened PR #$PR_NUMBER for review"
-          else
-            echo "was_closed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Install Claude Code
@@ -133,15 +139,6 @@ jobs:
       - name: Print Claude Code version
         run: claude --version
 
-      - name: Install code-review plugin
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          # Refresh marketplace catalog, then install plugin
-          claude plugin marketplace update claude-plugins-official 2>/dev/null || \
-            claude plugin marketplace add anthropics/claude-plugins-official
-          claude plugin install code-review@claude-plugins-official
-
       - name: Run code review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -149,16 +146,38 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.resolve-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
+          REVIEW_INSTRUCTIONS: ${{ env.REVIEW_INSTRUCTIONS }}
         run: |
-          # Check out the PR branch so the plugin auto-detects the correct PR
-          gh pr checkout "$PR_NUMBER" --repo "$REPO"
+          set -euo pipefail
 
-          RESULT=$(claude -p "/code-review:review" \
-            --output-format json \
-            --allowedTools "Bash(gh:*)")
+          # Fetch PR diff and title (limit diff size to avoid context overflow)
+          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title -q .title)
+          DIFF=$(gh pr diff "$PR_NUMBER" --repo "$REPO" | head -c 80000)
 
+          # Schema: summary + optional inline comments
+          SCHEMA='{"type":"object","required":["summary"],"properties":{"summary":{"type":"string","description":"Top-level review summary (markdown)"},"inline_comments":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{"path":{"type":"string","description":"File path relative to repo root"},"line":{"type":"integer","description":"Line number in the new file version"},"body":{"type":"string","description":"Comment text (markdown)"}}}}}}'
+
+          # Run review — pipe diff as prompt, no external tool access needed
+          RESULT=$(printf 'Review PR: %s\n\nInstructions:\n%s\n\nDiff:\n%s' \
+            "$PR_TITLE" "$REVIEW_INSTRUCTIONS" "$DIFF" \
+            | claude -p --output-format json --json-schema "$SCHEMA" --tools "")
+
+          # Log token usage and cost
           echo "$RESULT" | jq -r '"Tokens: in=\(.usage.input_tokens) out=\(.usage.output_tokens) cache_read=\(.usage.cache_read_input_tokens // 0) cache_write=\(.usage.cache_creation_input_tokens // 0)"'
           echo "$RESULT" | jq -r '"Cost: $\(.cost_usd)"'
+
+          # Build GitHub PR review payload (summary + inline comments)
+          SUMMARY=$(echo "$RESULT" | jq -r '.structured_output.summary')
+          COMMENTS=$(echo "$RESULT" | jq -c \
+            '[.structured_output.inline_comments // [] | .[] | {path: .path, line: .line, side: "RIGHT", body: .body}]')
+
+          PAYLOAD=$(jq -n \
+            --arg body "$SUMMARY" \
+            --argjson comments "$COMMENTS" \
+            '{"body": $body, "event": "COMMENT", "comments": $comments}')
+
+          REVIEW=$(echo "$PAYLOAD" | gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input -)
+          echo "Review posted: $(echo "$REVIEW" | jq -r '.html_url')"
 
       - name: Cleanup
         if: always()
@@ -168,7 +187,6 @@ jobs:
         run: |
           PR_NUMBER="${{ steps.resolve-pr.outputs.pr_number }}"
           IS_TEMP="${{ steps.resolve-pr.outputs.is_temp }}"
-          WAS_CLOSED="${{ steps.reopen-pr.outputs.was_closed }}"
           BRANCH_HEAD="${{ steps.resolve-pr.outputs.branch_head }}"
           BRANCH_BASE="${{ steps.resolve-pr.outputs.branch_base }}"
 
@@ -177,12 +195,11 @@ jobs:
             exit 0
           fi
 
-          if [ "$IS_TEMP" = "true" ] || [ "$WAS_CLOSED" = "true" ]; then
+          if [ "$IS_TEMP" = "true" ]; then
             gh pr close "$PR_NUMBER" --repo "$REPO" 2>/dev/null || true
-            echo "Closed PR #$PR_NUMBER"
-          fi
-
-          if [ "$IS_TEMP" = "true" ] && [ -n "$BRANCH_HEAD" ]; then
-            git push origin --delete "$BRANCH_HEAD" "$BRANCH_BASE" 2>/dev/null || true
-            echo "Deleted temp branches $BRANCH_HEAD and $BRANCH_BASE"
+            echo "Closed temp PR #$PR_NUMBER"
+            if [ -n "$BRANCH_HEAD" ]; then
+              git push origin --delete "$BRANCH_HEAD" "$BRANCH_BASE" 2>/dev/null || true
+              echo "Deleted temp branches $BRANCH_HEAD and $BRANCH_BASE"
+            fi
           fi
