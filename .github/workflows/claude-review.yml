@@ -220,10 +220,15 @@ jobs:
 
             # Check if there is already an open PR for this commit — if so, review it
             # directly instead of creating a redundant temp PR.
+            # Note: gh api exits non-zero on HTTP errors (e.g. 422 for unknown SHA) and
+            # writes the error JSON to stdout. We suppress stderr and force exit 0 with
+            # || true, but stdout may still hold the JSON. Guard: only accept a numeric
+            # value as a real PR number; discard any error payload.
             EXISTING_PR=$(gh api "repos/$REPO/commits/$SHA/pulls" \
               -H "Accept: application/vnd.github.groot-preview+json" \
               --jq '[.[] | select(.state == "open")] | .[0].number // empty' \
               2>/dev/null || true)
+            [[ "$EXISTING_PR" =~ ^[0-9]+$ ]] || EXISTING_PR=""
 
             if [ -n "$EXISTING_PR" ]; then
               echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
