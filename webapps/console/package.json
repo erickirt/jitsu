@@ -113,7 +113,7 @@
     "@types/js-yaml": "^4.0.5",
     "@types/lodash": "catalog:",
     "@types/node": "catalog:",
-    "@types/nodemailer": "^6.4.17",
+    "@types/nodemailer": "^8.0.0",
     "@types/pg": "^8.16.0",
     "@types/pg-query-stream": "^3.4.0",
     "@types/react": "catalog:",

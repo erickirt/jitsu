@@ -13,8 +13,8 @@ catalog:
   esbuild: ^0.27.0
   tslib: ^2.6.3
   "@types/node": ^18.15.3
-  vitest: ^2.1.9
-  "@vitest/ui": ^2.1.9
+  vitest: ^4.1.4
+  "@vitest/ui": ^4.1.4
   lodash: ^4.18.1
   "@types/lodash": ^4.17.24
   ts-node: ^10.9.2
