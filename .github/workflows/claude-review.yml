@@ -77,19 +77,8 @@ jobs:
             git push origin FETCH_HEAD:refs/heads/"$BRANCH_BASE" --force
 
             local PR_BODY
-            PR_BODY=$(cat << EOF
-## Automated code review
-
-Temporary PR for reviewing a commit pushed directly to \`newjitsu\`.
-**This PR will be closed automatically after the review.**
-
-| Field | Value |
-|-------|-------|
-| Commit | [\`$SHORT\`](https://github.com/$REPO/commit/$SHA) |
-| Message | $MSG |
-| Author | @$AUTHOR |
-EOF
-)
+            PR_BODY=$(printf '## Automated code review\n\nTemporary PR for reviewing a commit pushed directly to `newjitsu`.\n**This PR will be closed automatically after the review.**\n\n| Field | Value |\n|-------|-------|\n| Commit | [`%s`](https://github.com/%s/commit/%s) |\n| Message | %s |\n| Author | @%s |' \
+              "$SHORT" "$REPO" "$SHA" "$MSG" "$AUTHOR")
 
             local PR_URL
             PR_URL=$(gh pr create \
