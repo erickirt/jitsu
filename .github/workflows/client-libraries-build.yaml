@@ -102,6 +102,17 @@ jobs:
             -e GITHUB_ACTIONS=true \
             -e ACTIONS_ID_TOKEN_REQUEST_URL \
             -e ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -e GITHUB_REF \
+            -e GITHUB_SHA \
+            -e GITHUB_REPOSITORY \
+            -e GITHUB_REPOSITORY_ID \
+            -e GITHUB_REPOSITORY_OWNER_ID \
+            -e GITHUB_SERVER_URL \
+            -e GITHUB_EVENT_NAME \
+            -e GITHUB_RUN_ID \
+            -e GITHUB_RUN_ATTEMPT \
+            -e GITHUB_WORKFLOW_REF \
+            -e RUNNER_ENVIRONMENT \
             jitsucom/jitsu-builder:latest tail -f /dev/null
 
       - name: 📦 Fetch dependencies from store
