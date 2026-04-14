@@ -103,7 +103,7 @@ jobs:
             PR_NUMBER="${{ github.event.pull_request.number }}"
             echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
             echo "is_temp=false" >> $GITHUB_OUTPUT
-            echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER"
+            echo "subject_url=https://github.com/$REPO/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
 
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
             PR_NUMBER="${{ inputs.pr_number }}"
@@ -113,14 +113,14 @@ jobs:
             if [ "$STATE" = "OPEN" ]; then
               echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
               echo "is_temp=false" >> $GITHUB_OUTPUT
-              echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER"
+              echo "subject_url=https://github.com/$REPO/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
             else
-              # Merged or closed — create a fresh temp PR from the PR's head commit
               HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)
               echo "PR is $STATE — creating temp PR from head $HEAD_SHA"
               make_temp_pr "$HEAD_SHA"
               TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
-              echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER (closed) via temp PR https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
+              echo "subject_url=https://github.com/$REPO/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
+              echo "temp_pr_url=https://github.com/$REPO/pull/$TEMP_PR_NUMBER" >> $GITHUB_OUTPUT
               gh pr comment "$PR_NUMBER" --repo "$REPO" \
                 --body "Re-review via temp PR: https://github.com/$REPO/pull/$TEMP_PR_NUMBER" \
                 2>/dev/null || true
@@ -140,15 +140,22 @@ jobs:
             if [ -n "$EXISTING_PR" ]; then
               echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
               echo "is_temp=false" >> $GITHUB_OUTPUT
-              echo "Reviewing: https://github.com/$REPO/pull/$EXISTING_PR (commit https://github.com/$REPO/commit/$SHA)"
+              echo "subject_url=https://github.com/$REPO/pull/$EXISTING_PR" >> $GITHUB_OUTPUT
             else
               make_temp_pr "$SHA"
               TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
-              echo "Reviewing: https://github.com/$REPO/commit/$SHA via temp PR https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
+              echo "subject_url=https://github.com/$REPO/commit/$SHA" >> $GITHUB_OUTPUT
+              echo "temp_pr_url=https://github.com/$REPO/pull/$TEMP_PR_NUMBER" >> $GITHUB_OUTPUT
               gh api "repos/$REPO/commits/$SHA/comments" \
                 -f body="Code review in progress: https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
             fi
           fi
+
+      - name: Print review subject
+        run: |
+          echo "Subject:  ${{ steps.resolve-pr.outputs.subject_url }}"
+          TEMP="${{ steps.resolve-pr.outputs.temp_pr_url }}"
+          [ -n "$TEMP" ] && echo "Temp PR:  $TEMP" || true
 
       - name: Install Claude Code
         run: |
