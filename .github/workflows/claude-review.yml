@@ -34,7 +34,7 @@ jobs:
       github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-review-${{ github.event.pull_request.number || github.sha }}
+      group: claude-review-${{ github.event.pull_request.number || inputs.pr_number || inputs.commit_sha || github.sha }}
       cancel-in-progress: true
     permissions:
       contents: write
@@ -98,9 +98,10 @@ jobs:
           }
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
             echo "is_temp=false" >> $GITHUB_OUTPUT
-            echo "Resolved: PR #${{ github.event.pull_request.number }} from pull_request event"
+            echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER"
 
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
             PR_NUMBER="${{ inputs.pr_number }}"
@@ -110,13 +111,14 @@ jobs:
             if [ "$STATE" = "OPEN" ]; then
               echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
               echo "is_temp=false" >> $GITHUB_OUTPUT
+              echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER"
             else
               # Merged or closed — create a fresh temp PR from the PR's head commit
               HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)
               echo "PR is $STATE — creating temp PR from head $HEAD_SHA"
               make_temp_pr "$HEAD_SHA"
-              # Post comment on the original PR linking to the temp review PR
               TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
+              echo "Reviewing: https://github.com/$REPO/pull/$PR_NUMBER (closed) via temp PR https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
               gh pr comment "$PR_NUMBER" --repo "$REPO" \
                 --body "Re-review via temp PR: https://github.com/$REPO/pull/$TEMP_PR_NUMBER" \
                 2>/dev/null || true
@@ -127,7 +129,6 @@ jobs:
             [ "${{ github.event_name }}" = "workflow_dispatch" ] \
               && [ -n "${{ inputs.commit_sha }}" ] \
               && SHA="${{ inputs.commit_sha }}"
-            echo "Resolving PR for commit $SHA"
 
             EXISTING_PR=$(gh api "repos/$REPO/commits/$SHA/pulls" \
               -H "Accept: application/vnd.github.groot-preview+json" \
@@ -137,10 +138,11 @@ jobs:
             if [ -n "$EXISTING_PR" ]; then
               echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
               echo "is_temp=false" >> $GITHUB_OUTPUT
-              echo "Resolved: found open PR #$EXISTING_PR for commit $SHA"
+              echo "Reviewing: https://github.com/$REPO/pull/$EXISTING_PR (commit https://github.com/$REPO/commit/$SHA)"
             else
               make_temp_pr "$SHA"
               TEMP_PR_NUMBER=$(grep 'pr_number=' $GITHUB_OUTPUT | tail -1 | cut -d= -f2)
+              echo "Reviewing: https://github.com/$REPO/commit/$SHA via temp PR https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
               gh api "repos/$REPO/commits/$SHA/comments" \
                 -f body="Code review in progress: https://github.com/$REPO/pull/$TEMP_PR_NUMBER"
             fi
@@ -177,9 +179,11 @@ jobs:
             --output-format json \
             --allowedTools "Bash(gh:*)")
 
-          # Log token usage and cost
+          # Log token usage, cost, and Claude's output
           echo "$RESULT" | jq -r '"Tokens: in=\(.usage.input_tokens) out=\(.usage.output_tokens) cache_read=\(.usage.cache_read_input_tokens // 0) cache_write=\(.usage.cache_creation_input_tokens // 0)"'
-          echo "$RESULT" | jq -r '"Cost: $\(.cost_usd)"'
+          echo "$RESULT" | jq -r '"Cost: $\(.cost_usd // "n/a")"'
+          echo "--- Claude output ---"
+          echo "$RESULT" | jq -r '.result // "(no output)"'
 
       - name: Cleanup
         if: always()
