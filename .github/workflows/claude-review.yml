@@ -81,17 +81,18 @@ jobs:
           #   WORKFLOW_TOKEN secret) would solve this, but for now we skip gracefully.
           make_temp_pr() {
             local SHA="$1"
+
+            # Fetch commit metadata in one API call: full SHA, parent SHA, message, author.
+            # Also resolves short SHAs to full SHAs — git fetch requires the full 40-char SHA.
+            local COMMIT_INFO
+            COMMIT_INFO=$(gh api "repos/$REPO/commits/$SHA" \
+              --jq '{sha: .sha, parent: .parents[0].sha, msg: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name)}')
+            local PARENT MSG AUTHOR
+            SHA=$(echo "$COMMIT_INFO" | jq -r '.sha')   # may upgrade short → full SHA
             local SHORT="${SHA:0:12}"
             local BRANCH_HEAD="temp/review-head-$SHORT"
             local BRANCH_BASE="temp/review-base-$SHORT"
-
             echo "Creating temp PR for $SHORT"
-
-            # Fetch commit metadata in one API call: parent SHA, first line of message, author
-            local COMMIT_INFO
-            COMMIT_INFO=$(gh api "repos/$REPO/commits/$SHA" \
-              --jq '{parent: .parents[0].sha, msg: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name)}')
-            local PARENT MSG AUTHOR
             PARENT=$(echo "$COMMIT_INFO" | jq -r '.parent')
             MSG=$(echo "$COMMIT_INFO" | jq -r '.msg')
             AUTHOR=$(echo "$COMMIT_INFO" | jq -r '.author')
