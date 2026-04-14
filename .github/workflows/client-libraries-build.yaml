@@ -146,17 +146,17 @@ jobs:
           # Publish @jitsu/protocols
           echo "Publishing @jitsu/protocols..."
           PKG_TOKEN=$(curl -sf -X POST -H "Authorization: Bearer ${OIDC_TOKEN}" "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/%40jitsu%2Fprotocols" | jq -r '.token')
-          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd types/protocols && npm publish --tag ${NPM_TAG} --access public"
+          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd types/protocols && npm publish --tag ${NPM_TAG} --access public --provenance"
 
           # Publish @jitsu/js
           echo "Publishing @jitsu/js..."
           PKG_TOKEN=$(curl -sf -X POST -H "Authorization: Bearer ${OIDC_TOKEN}" "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/%40jitsu%2Fjs" | jq -r '.token')
-          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd libs/jitsu-js && npm publish --tag ${NPM_TAG} --access public"
+          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd libs/jitsu-js && npm publish --tag ${NPM_TAG} --access public --provenance"
 
           # Publish @jitsu/jitsu-react
           echo "Publishing @jitsu/jitsu-react..."
           PKG_TOKEN=$(curl -sf -X POST -H "Authorization: Bearer ${OIDC_TOKEN}" "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/%40jitsu%2Fjitsu-react" | jq -r '.token')
-          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd libs/jitsu-react && npm publish --tag ${NPM_TAG} --access public"
+          docker exec -e NODE_AUTH_TOKEN="${PKG_TOKEN}" builder sh -c "cd libs/jitsu-react && npm publish --tag ${NPM_TAG} --access public --provenance"
 
       - name: 🧹 Cleanup container
         if: always()

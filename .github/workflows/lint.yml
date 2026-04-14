@@ -228,29 +228,33 @@ jobs:
               value: ${{ github.actor }}
 
   deploy:
-    name: 🐳 Build Docker Images
+    name: 🐳 Trigger Docker Images Build
     needs: [lint-and-format, bulker-test]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      packages: write
-      id-token: write
-    uses: ./.github/workflows/services-build.yaml
-    secrets: inherit
-    # Note: skip_install doesn't work as packages are installed inside docker
+      actions: write
+    steps:
+      - name: 🚀 Trigger services-build workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run services-build.yaml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.ref_name }}
 
   deploy-client-libraries:
-    name: 📦 Build Client Libraries
+    name: 📦 Trigger Client Libraries Build
     needs: [lint-and-format]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-jsclient')
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      packages: read
-      id-token: write
-    uses: ./.github/workflows/client-libraries-build.yaml
-    secrets: inherit
-    # Note: skip_install doesn't work as packages are installed inside docker
+      actions: write
+    steps:
+      - name: 🚀 Trigger client-libraries-build workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run client-libraries-build.yaml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.ref_name }}
