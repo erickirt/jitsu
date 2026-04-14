@@ -9,6 +9,8 @@ on:
       - synchronize
       - edited
       - ready_for_review
+    branches-ignore:
+      - 'fix/claude-review*'
   push:
     branches: [newjitsu]
   workflow_dispatch:
@@ -31,6 +33,9 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number || github.sha }}
+      cancel-in-progress: true
     permissions:
       contents: write
       pull-requests: write
@@ -57,13 +62,34 @@ jobs:
 
             echo "Creating temp PR for $SHORT"
 
-            # Fetch the commit and its parent, then push as temp branches
-            local PARENT
-            PARENT=$(gh api "repos/$REPO/commits/$SHA" --jq '.parents[0].sha')
+            # Fetch commit metadata and parent SHA
+            local COMMIT_INFO
+            COMMIT_INFO=$(gh api "repos/$REPO/commits/$SHA" --jq '{parent: .parents[0].sha, msg: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name)}')
+            local PARENT MSG AUTHOR
+            PARENT=$(echo "$COMMIT_INFO" | jq -r '.parent')
+            MSG=$(echo "$COMMIT_INFO" | jq -r '.msg')
+            AUTHOR=$(echo "$COMMIT_INFO" | jq -r '.author')
+
+            # Push commit and its parent as temp branches (force to handle leftovers from cancelled runs)
             git fetch origin "$SHA" --depth=1
-            git push origin FETCH_HEAD:refs/heads/"$BRANCH_HEAD"
+            git push origin FETCH_HEAD:refs/heads/"$BRANCH_HEAD" --force
             git fetch origin "$PARENT" --depth=1
-            git push origin FETCH_HEAD:refs/heads/"$BRANCH_BASE"
+            git push origin FETCH_HEAD:refs/heads/"$BRANCH_BASE" --force
+
+            local PR_BODY
+            PR_BODY=$(cat << EOF
+## Automated code review
+
+Temporary PR for reviewing a commit pushed directly to \`newjitsu\`.
+**This PR will be closed automatically after the review.**
+
+| Field | Value |
+|-------|-------|
+| Commit | [\`$SHORT\`](https://github.com/$REPO/commit/$SHA) |
+| Message | $MSG |
+| Author | @$AUTHOR |
+EOF
+)
 
             local PR_URL
             PR_URL=$(gh pr create \
@@ -71,7 +97,7 @@ jobs:
               --head "$BRANCH_HEAD" \
               --base "$BRANCH_BASE" \
               --title "Auto-review: $SHORT" \
-              --body "Temporary PR for commit review. Will be closed automatically.")
+              --body "$PR_BODY")
 
             local PR_NUMBER
             PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
@@ -139,6 +165,12 @@ jobs:
       - name: Print Claude Code version
         run: claude --version
 
+      - name: Install code-review plugin
+        run: |
+          claude plugin marketplace update claude-plugins-official 2>/dev/null \
+            || claude plugin marketplace add anthropics/claude-plugins-official
+          claude plugin install code-review@claude-plugins-official --yes
+
       - name: Run code review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -150,34 +182,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Fetch PR diff and title (limit diff size to avoid context overflow)
-          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title -q .title)
-          DIFF=$(gh pr diff "$PR_NUMBER" --repo "$REPO" | head -c 80000)
-
-          # Schema: summary + optional inline comments
-          SCHEMA='{"type":"object","required":["summary"],"properties":{"summary":{"type":"string","description":"Top-level review summary (markdown)"},"inline_comments":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{"path":{"type":"string","description":"File path relative to repo root"},"line":{"type":"integer","description":"Line number in the new file version"},"body":{"type":"string","description":"Comment text (markdown)"}}}}}}'
-
-          # Run review — pipe diff as prompt, no external tool access needed
-          RESULT=$(printf 'Review PR: %s\n\nInstructions:\n%s\n\nDiff:\n%s' \
-            "$PR_TITLE" "$REVIEW_INSTRUCTIONS" "$DIFF" \
-            | claude -p --output-format json --json-schema "$SCHEMA" --tools "")
+          # Run review — plugin installs a skill that auto-triggers from the task description
+          RESULT=$(claude -p \
+            "Review PR #$PR_NUMBER in $REPO. You MUST use the code-review skill to analyze this PR. If the code-review skill is not available, output an error message and stop. Instructions: $REVIEW_INSTRUCTIONS" \
+            --output-format json \
+            --allowedTools "Bash(gh:*)")
 
           # Log token usage and cost
           echo "$RESULT" | jq -r '"Tokens: in=\(.usage.input_tokens) out=\(.usage.output_tokens) cache_read=\(.usage.cache_read_input_tokens // 0) cache_write=\(.usage.cache_creation_input_tokens // 0)"'
           echo "$RESULT" | jq -r '"Cost: $\(.cost_usd)"'
-
-          # Build GitHub PR review payload (summary + inline comments)
-          SUMMARY=$(echo "$RESULT" | jq -r '.structured_output.summary')
-          COMMENTS=$(echo "$RESULT" | jq -c \
-            '[.structured_output.inline_comments // [] | .[] | {path: .path, line: .line, side: "RIGHT", body: .body}]')
-
-          PAYLOAD=$(jq -n \
-            --arg body "$SUMMARY" \
-            --argjson comments "$COMMENTS" \
-            '{"body": $body, "event": "COMMENT", "comments": $comments}')
-
-          REVIEW=$(echo "$PAYLOAD" | gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input -)
-          echo "Review posted: $(echo "$REVIEW" | jq -r '.html_url')"
 
       - name: Cleanup
         if: always()
