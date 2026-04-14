@@ -158,7 +158,7 @@ jobs:
         run: |
           claude plugin marketplace update claude-plugins-official 2>/dev/null \
             || claude plugin marketplace add anthropics/claude-plugins-official
-          claude plugin install code-review@claude-plugins-official --yes
+          claude plugin install code-review@claude-plugins-official
 
       - name: Run code review
         env:
