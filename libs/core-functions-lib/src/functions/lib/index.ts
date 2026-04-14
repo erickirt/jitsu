@@ -58,7 +58,12 @@ export function isPrivateIP(addr: string): boolean {
         return isPrivateIP(v4part);
       }
     }
-    return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80");
+    return (
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80")
+    );
   }
   return false;
 }
