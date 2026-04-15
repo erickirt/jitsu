@@ -54,19 +54,29 @@ jobs:
         run: |
           set -euo pipefail
           echo "workflow_ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+          REVIEW_MODE=""
+          SUBJECT_URL=""
+          COMPARE_BASE=""
+          COMPARE_HEAD=""
+          PR_NUMBER=""
+          COMMIT_SHA=""
+          HEAD_SHA=""
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            SUBJECT_URL="https://github.com/$REPO/pull/$PR_NUMBER"
+            REVIEW_MODE="pr"
+            COMPARE_BASE="$BASE_SHA"
+            COMPARE_HEAD="$HEAD_SHA"
             echo "event_name=pull_request" >> "$GITHUB_OUTPUT"
             echo "review_mode=pr" >> "$GITHUB_OUTPUT"
             echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
             echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
             echo "compare_base=$BASE_SHA" >> "$GITHUB_OUTPUT"
             echo "compare_head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-            echo "subject_url=https://github.com/$REPO/pull/$PR_NUMBER" >> "$GITHUB_OUTPUT"
-            echo "Reviewing open PR #$PR_NUMBER at head $HEAD_SHA against base $BASE_SHA"
+            echo "subject_url=$SUBJECT_URL" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
             PR_NUMBER="${{ inputs.pr_number }}"
             PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,url,headRefOid,baseRefOid)
@@ -74,9 +84,12 @@ jobs:
             URL=$(echo "$PR_JSON" | jq -r '.url')
             HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
             BASE_SHA=$(echo "$PR_JSON" | jq -r '.baseRefOid')
-            echo "Manual PR dispatch for #$PR_NUMBER ($STATE)"
 
             if [ "$STATE" = "OPEN" ]; then
+              SUBJECT_URL="$URL"
+              REVIEW_MODE="pr"
+              COMPARE_BASE="$BASE_SHA"
+              COMPARE_HEAD="$HEAD_SHA"
               echo "event_name=workflow_dispatch" >> "$GITHUB_OUTPUT"
               echo "review_mode=pr" >> "$GITHUB_OUTPUT"
               echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
@@ -98,10 +111,13 @@ jobs:
             RESOLVED_SHA=$(echo "$COMMIT_JSON" | jq -r '.sha')
             PARENT_SHA=$(echo "$COMMIT_JSON" | jq -r '.parent')
             URL=$(echo "$COMMIT_JSON" | jq -r '.url')
+            COMMIT_SHA="$RESOLVED_SHA"
+            SUBJECT_URL="$URL"
             COMPARE_BASE="$PARENT_SHA"
             if [ -z "$COMPARE_BASE" ] || [ "$COMPARE_BASE" = "null" ]; then
               COMPARE_BASE="$RESOLVED_SHA^"
             fi
+            COMPARE_HEAD="$RESOLVED_SHA"
             if [ "${{ github.event_name }}" = "push" ]; then
               PR_COUNT=$(gh api "repos/$REPO/commits/$RESOLVED_SHA/pulls" \
                 -H "Accept: application/vnd.github.groot-preview+json" \
@@ -111,18 +127,23 @@ jobs:
                 echo "review_mode=skip" >> "$GITHUB_OUTPUT"
                 echo "skip_reason=commit already belongs to $PR_COUNT pull request(s)" >> "$GITHUB_OUTPUT"
                 echo "subject_url=$URL" >> "$GITHUB_OUTPUT"
-                echo "Skipping push review for $RESOLVED_SHA because GitHub associates it with $PR_COUNT PR(s)"
+                echo "AI review target: mode=skip subject=$URL"
+                echo "Skip reason: commit already belongs to $PR_COUNT pull request(s)"
                 exit 0
               fi
             fi
+            REVIEW_MODE="commit"
             echo "event_name=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
             echo "review_mode=commit" >> "$GITHUB_OUTPUT"
             echo "commit_sha=$RESOLVED_SHA" >> "$GITHUB_OUTPUT"
             echo "compare_base=$COMPARE_BASE" >> "$GITHUB_OUTPUT"
             echo "compare_head=$RESOLVED_SHA" >> "$GITHUB_OUTPUT"
             echo "subject_url=$URL" >> "$GITHUB_OUTPUT"
-            echo "Reviewing commit $RESOLVED_SHA against $COMPARE_BASE"
           fi
+          echo "AI review target: mode=$REVIEW_MODE subject=$SUBJECT_URL"
+          echo "Compare range: $COMPARE_BASE..$COMPARE_HEAD"
+          [ -n "$PR_NUMBER" ] && echo "PR: $PR_NUMBER"
+          [ -n "$COMMIT_SHA" ] && echo "Commit: $COMMIT_SHA"
 
       - name: Checkout review target
         if: ${{ steps.resolve-target.outputs.review_mode != 'skip' }}
@@ -173,16 +194,6 @@ jobs:
           echo "Context file:"
           cat .github/codex/context/review-target.json
 
-      - name: Print review subject
-        run: |
-          echo "Subject:      ${{ steps.resolve-target.outputs.subject_url }}"
-          echo "Review mode:  ${{ steps.resolve-target.outputs.review_mode }}"
-          [ -n "${{ steps.resolve-target.outputs.skip_reason }}" ] && echo "Skip reason:  ${{ steps.resolve-target.outputs.skip_reason }}" || true
-          echo "Compare base: ${{ steps.resolve-target.outputs.compare_base }}"
-          echo "Compare head: ${{ steps.resolve-target.outputs.compare_head }}"
-          [ -n "${{ steps.resolve-target.outputs.pr_number }}" ] && echo "PR number:    ${{ steps.resolve-target.outputs.pr_number }}" || true
-          [ -n "${{ steps.resolve-target.outputs.commit_sha }}" ] && echo "Commit SHA:   ${{ steps.resolve-target.outputs.commit_sha }}" || true
-
       - name: Check OPENAI_API_KEY
         if: ${{ steps.resolve-target.outputs.review_mode != 'skip' }}
         env:
@@ -190,9 +201,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${OPENAI_API_KEY:-}" ]; then
-            echo "OPENAI_API_KEY is empty or unavailable to this workflow run." >&2
-            echo "Expected source: org secret OPENAI_API_KEY." >&2
-            echo "Check org secret visibility, repository access, and Actions secret availability for this ref." >&2
+            echo "OPENAI_API_KEY secret is empty or unavailable to this workflow run." >&2
             exit 1
           fi
           echo "OPENAI_API_KEY is present."
@@ -204,7 +213,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .github/codex/prompts/review.md
+          prompt-file: .github/workflows/ai-review.prompt.md
           output-file: .github/codex/output/codex-final-message.md
           model: gpt-5.3-codex
           effort: high
