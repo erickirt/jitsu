@@ -274,6 +274,53 @@ jobs:
               '
           }
 
+          resolve_inline_anchor() {
+            local path="$1"
+            local preferred_side="${2:-RIGHT}"
+            local preferred_line="${3:-}"
+
+            if [ -n "$preferred_line" ] && line_in_diff_side "$preferred_side" "$path" "$preferred_line"; then
+              echo "${preferred_side}:${preferred_line}"
+              return 0
+            fi
+
+            local right_anchor
+            right_anchor=$(git diff --unified=0 "$COMPARE_BASE" "$COMPARE_HEAD" -- "$path" | \
+              awk '
+                match($0, /^@@ -([0-9]+)(,([0-9]+))? \+([0-9]+)(,([0-9]+))? @@/, m) {
+                  start = m[4]
+                  count = (m[6] == "" ? 1 : m[6])
+                  if (count > 0) {
+                    print start
+                    exit 0
+                  }
+                }
+              ')
+            if [ -n "$right_anchor" ]; then
+              echo "RIGHT:${right_anchor}"
+              return 0
+            fi
+
+            local left_anchor
+            left_anchor=$(git diff --unified=0 "$COMPARE_BASE" "$COMPARE_HEAD" -- "$path" | \
+              awk '
+                match($0, /^@@ -([0-9]+)(,([0-9]+))? \+([0-9]+)(,([0-9]+))? @@/, m) {
+                  start = m[1]
+                  count = (m[3] == "" ? 1 : m[3])
+                  if (count > 0) {
+                    print start
+                    exit 0
+                  }
+                }
+              ')
+            if [ -n "$left_anchor" ]; then
+              echo "LEFT:${left_anchor}"
+              return 0
+            fi
+
+            return 1
+          }
+
           EVENT="APPROVE"
           if [ "$HIGH_COUNT" -gt 0 ]; then
             EVENT="REQUEST_CHANGES"
@@ -295,20 +342,25 @@ jobs:
               continue
             fi
 
-            if [ -n "$LINE_VALUE" ] && line_in_diff_side "$SIDE_VALUE" "$PATH_VALUE" "$LINE_VALUE"; then
-              jq -n \
-                --arg path "$PATH_VALUE" \
-                --arg body "$COMMENT_BODY" \
-                --arg side "$SIDE_VALUE" \
-                --argjson line "$LINE_VALUE" \
-                '{path: $path, body: $body, line: $line, side: $side}' >> /tmp/pr-comments.ndjson
-            else
-              echo "Falling back to file-level PR comment for $PATH_VALUE (${LINE_VALUE:-no-line})"
-              jq -n \
-                --arg path "$PATH_VALUE" \
-                --arg body "$COMMENT_BODY" \
-                '{path: $path, body: $body, subject_type: "file"}' >> /tmp/pr-comments.ndjson
+            ANCHOR=$(resolve_inline_anchor "$PATH_VALUE" "$SIDE_VALUE" "$LINE_VALUE" || true)
+            if [ -z "$ANCHOR" ]; then
+              echo "Skipping inline PR comment with no diff anchor for $PATH_VALUE (${LINE_VALUE:-no-line}): $TITLE"
+              continue
             fi
+            ANCHOR_SIDE="${ANCHOR%%:*}"
+            ANCHOR_LINE="${ANCHOR##*:}"
+            if [ -n "$LINE_VALUE" ] && [ "$ANCHOR_SIDE" = "$SIDE_VALUE" ] && [ "$ANCHOR_LINE" = "$LINE_VALUE" ]; then
+              echo "Using requested inline anchor for $PATH_VALUE:$LINE_VALUE ($SIDE_VALUE)"
+            else
+              echo "Using fallback inline anchor for $PATH_VALUE: requested ${SIDE_VALUE}:${LINE_VALUE:-none}, resolved ${ANCHOR_SIDE}:${ANCHOR_LINE}"
+            fi
+
+            jq -n \
+              --arg path "$PATH_VALUE" \
+              --arg body "$COMMENT_BODY" \
+              --arg side "$ANCHOR_SIDE" \
+              --argjson line "$ANCHOR_LINE" \
+              '{path: $path, body: $body, line: $line, side: $side}' >> /tmp/pr-comments.ndjson
           done
 
           jq -s '.' /tmp/pr-comments.ndjson > /tmp/pr-comments.json
