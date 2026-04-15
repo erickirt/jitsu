@@ -184,6 +184,20 @@ jobs:
           [ -n "${{ steps.resolve-target.outputs.pr_number }}" ] && echo "PR number:    ${{ steps.resolve-target.outputs.pr_number }}" || true
           [ -n "${{ steps.resolve-target.outputs.commit_sha }}" ] && echo "Commit SHA:   ${{ steps.resolve-target.outputs.commit_sha }}" || true
 
+      - name: Check OPENAI_API_KEY
+        if: ${{ steps.resolve-target.outputs.review_mode != 'skip' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY is empty or unavailable to this workflow run." >&2
+            echo "Expected source: org secret OPENAI_API_KEY." >&2
+            echo "Check org secret visibility, repository access, and Actions secret availability for this ref." >&2
+            exit 1
+          fi
+          echo "OPENAI_API_KEY is present."
+
       - name: Run Codex analysis
         if: ${{ steps.resolve-target.outputs.review_mode != 'skip' }}
         id: run-codex
