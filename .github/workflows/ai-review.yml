@@ -163,7 +163,7 @@ jobs:
           cat .github/codex/context/review-target.txt
 
       # PR mode requires a GitHub App with repo access and Pull requests: Read & write.
-      # Create app: https://github.com/settings/apps/new
+      # Create app: https://github.com/organizations/jitsucom/settings/apps/new
       # Install app to org/repo: https://github.com/settings/installations
       # App settings page (replace APP_SLUG): https://github.com/settings/apps/APP_SLUG
       # Generate private key in app settings, then store these repo/org secrets:
