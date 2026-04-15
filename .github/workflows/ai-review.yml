@@ -361,11 +361,17 @@ jobs:
               '
           }
 
-          BODY=$(jq -r '.body' .github/codex/output/review.json)
-          echo "Posting commit summary comment to $COMMIT_SHA"
-          gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
-            --method POST \
-            -f body="$BODY"
+          FINDING_COUNT=$(jq '.findings | length' .github/codex/output/review.json)
+          if [ "$FINDING_COUNT" -eq 0 ]; then
+            BODY=$(jq -r '.body' .github/codex/output/review.json)
+            echo "No findings detected; posting summary commit comment to $COMMIT_SHA"
+            gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
+              --method POST \
+              -f body="$BODY"
+            exit 0
+          fi
+
+          echo "Posting $FINDING_COUNT detailed commit finding comment(s) without a separate summary comment"
 
           jq -c '.findings[]' .github/codex/output/review.json | while read -r finding; do
             TITLE=$(echo "$finding" | jq -r '.title')
