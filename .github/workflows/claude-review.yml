@@ -262,9 +262,8 @@ jobs:
 
       - name: Install code-review plugin
         run: |
-          # The code-review plugin installs a skill that auto-triggers when Claude sees
-          # a review task description. In -p (print) mode, user-invoked slash commands
-          # are silently dropped; the skill must be invoked by the model from the prompt.
+          # Installs the code-review command. Claude invokes it via the Skill tool
+          # (--dangerously-skip-permissions allows this in the ephemeral runner).
           claude plugin marketplace update claude-plugins-official 2>/dev/null \
             || claude plugin marketplace add anthropics/claude-plugins-official
           claude plugin install code-review@claude-plugins-official
@@ -280,19 +279,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Run review via the code-review skill (auto-invoked from the task description).
-          # --allowedTools "Bash(gh:*)" lets Claude call gh CLI to fetch the diff and post
-          # review comments directly. --output-format json captures usage stats.
-          RESULT=$(claude -p \
-            "Review PR #$PR_NUMBER in $REPO. You MUST use the code-review skill to analyze this PR. If the code-review skill is not available, output an error message and stop. Instructions: $REVIEW_INSTRUCTIONS" \
-            --output-format json \
-            --allowedTools "Bash(gh:*)")
+          LOG_FILE="/tmp/claude-review-${{ github.run_id }}.jsonl"
 
-          # Log token usage and cost for cost tracking
-          echo "$RESULT" | jq -r '"Tokens: in=\(.usage.input_tokens) out=\(.usage.output_tokens) cache_read=\(.usage.cache_read_input_tokens // 0) cache_write=\(.usage.cache_creation_input_tokens // 0)"'
-          echo "$RESULT" | jq -r '"Cost: $\(.cost_usd // "n/a")"'
-          echo "--- Claude output ---"
-          echo "$RESULT" | jq -r '.result // "(no output)"'
+          # --dangerously-skip-permissions: runner is ephemeral, no interactive approvals needed.
+          # No --allowedTools restriction so the model can invoke the code-review skill via
+          # the Skill tool, which in turn uses its own declared gh-only tool set.
+          # --output-format stream-json: streams each event as newline-delimited JSON for
+          # the artifact; tee keeps live output in the Actions log as well.
+          claude -p \
+            "Review PR #$PR_NUMBER in $REPO using the code-review skill. Instructions: $REVIEW_INSTRUCTIONS" \
+            --output-format stream-json \
+            --dangerously-skip-permissions \
+            2>&1 | tee "$LOG_FILE"
+
+          # Log token usage and cost from the result event line
+          RESULT_LINE=$(grep '"type":"result"' "$LOG_FILE" 2>/dev/null | tail -1 || true)
+          if [ -n "$RESULT_LINE" ]; then
+            echo "$RESULT_LINE" | jq -r '"Tokens: in=\(.usage.input_tokens // 0) out=\(.usage.output_tokens // 0) cache_read=\(.usage.cache_read_input_tokens // 0) cache_write=\(.usage.cache_creation_input_tokens // 0)"'
+            echo "$RESULT_LINE" | jq -r '"Cost: $\(.cost_usd // "n/a")"'
+          fi
+
+          echo "LOG=$LOG_FILE" >> $GITHUB_ENV
+
+      - name: Upload review log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-review-log-${{ github.run_id }}
+          path: /tmp/claude-review-${{ github.run_id }}.jsonl
+          retention-days: 30
 
       - name: Cleanup
         if: always()
