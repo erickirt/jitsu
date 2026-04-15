@@ -1,0 +1,393 @@
+
+name: AI Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+  push:
+    branches: [newjitsu]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review (leave blank to review a commit)
+        required: false
+      commit_sha:
+        description: Commit SHA to review (leave blank when using PR number)
+        required: false
+
+env:
+  REVIEW_INSTRUCTIONS: |
+    Review for bugs, security issues, and correctness problems. Keep feedback actionable.
+    Skip style/formatting nitpicks. If the change looks good, say so briefly.
+
+jobs:
+  ai-review:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    # Concurrency key uses the actual subject being reviewed (PR number or commit SHA),
+    # not github.sha (which is the same for all dispatch runs on the same branch).
+    # cancel-in-progress: false means a second dispatch for the same subject queues
+    # rather than cancelling the running review.
+    concurrency:
+      group: ai-review-${{ github.event.pull_request.number || inputs.pr_number || inputs.commit_sha || github.sha }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Resolve review target
+        id: resolve-target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            echo "event_name=pull_request" >> "$GITHUB_OUTPUT"
+            echo "review_mode=pr" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_base=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=refs/pull/$PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+            echo "subject_url=https://github.com/$REPO/pull/$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "Reviewing open PR #$PR_NUMBER at head $HEAD_SHA against base $BASE_SHA"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
+            PR_NUMBER="${{ inputs.pr_number }}"
+            PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,url,headRefOid,baseRefOid)
+            STATE=$(echo "$PR_JSON" | jq -r '.state')
+            URL=$(echo "$PR_JSON" | jq -r '.url')
+            HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+            BASE_SHA=$(echo "$PR_JSON" | jq -r '.baseRefOid')
+            echo "Manual PR dispatch for #$PR_NUMBER ($STATE)"
+
+            if [ "$STATE" = "OPEN" ]; then
+              echo "event_name=workflow_dispatch" >> "$GITHUB_OUTPUT"
+              echo "review_mode=pr" >> "$GITHUB_OUTPUT"
+              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+              echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+              echo "compare_base=$BASE_SHA" >> "$GITHUB_OUTPUT"
+              echo "compare_head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=refs/pull/$PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+              echo "subject_url=$URL" >> "$GITHUB_OUTPUT"
+            else
+              echo "Open PR review objects are not supported for PR state $STATE without a live PR diff."
+              echo "Use commit_sha to review the merged commit directly." >&2
+              exit 1
+            fi
+          else
+            SHA="${{ github.sha }}"
+            [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+              && [ -n "${{ inputs.commit_sha }}" ] \
+              && SHA="${{ inputs.commit_sha }}"
+            COMMIT_JSON=$(gh api "repos/$REPO/commits/$SHA" --jq '{sha: .sha, parent: (.parents[0].sha // ""), url: .html_url}')
+            RESOLVED_SHA=$(echo "$COMMIT_JSON" | jq -r '.sha')
+            PARENT_SHA=$(echo "$COMMIT_JSON" | jq -r '.parent')
+            URL=$(echo "$COMMIT_JSON" | jq -r '.url')
+            COMPARE_BASE="$PARENT_SHA"
+            if [ -z "$COMPARE_BASE" ] || [ "$COMPARE_BASE" = "null" ]; then
+              COMPARE_BASE="$RESOLVED_SHA^"
+            fi
+            echo "event_name=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
+            echo "review_mode=commit" >> "$GITHUB_OUTPUT"
+            echo "commit_sha=$RESOLVED_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_base=$COMPARE_BASE" >> "$GITHUB_OUTPUT"
+            echo "compare_head=$RESOLVED_SHA" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=$RESOLVED_SHA" >> "$GITHUB_OUTPUT"
+            echo "subject_url=$URL" >> "$GITHUB_OUTPUT"
+            echo "Reviewing commit $RESOLVED_SHA against $COMPARE_BASE"
+          fi
+
+      - name: Checkout review target
+        uses: actions/checkout@v5.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.resolve-target.outputs.checkout_ref }}
+
+      - name: Prepare review context
+        id: prepare-context
+        env:
+          REVIEW_MODE: ${{ steps.resolve-target.outputs.review_mode }}
+          PR_NUMBER: ${{ steps.resolve-target.outputs.pr_number }}
+          COMMIT_SHA: ${{ steps.resolve-target.outputs.commit_sha || steps.resolve-target.outputs.head_sha }}
+          HEAD_SHA: ${{ steps.resolve-target.outputs.head_sha }}
+          COMPARE_BASE: ${{ steps.resolve-target.outputs.compare_base }}
+          COMPARE_HEAD: ${{ steps.resolve-target.outputs.compare_head }}
+          SUBJECT_URL: ${{ steps.resolve-target.outputs.subject_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/codex/context .github/codex/output
+
+          git fetch --no-tags origin "$COMPARE_BASE" "$COMPARE_HEAD"
+          git diff --stat "$COMPARE_BASE" "$COMPARE_HEAD" | tee .github/codex/output/diff-stat.txt
+          git diff --name-only "$COMPARE_BASE" "$COMPARE_HEAD" | tee .github/codex/output/diff-files.txt
+
+          jq -n \
+            --arg review_mode "$REVIEW_MODE" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg compare_base "$COMPARE_BASE" \
+            --arg compare_head "$COMPARE_HEAD" \
+            --arg subject_url "$SUBJECT_URL" \
+            --arg instructions "${REVIEW_INSTRUCTIONS//$'\n'/ }" \
+            '{
+              review_mode: $review_mode,
+              pr_number: ($pr_number | select(length > 0)),
+              commit_sha: ($commit_sha | select(length > 0)),
+              head_sha: ($head_sha | select(length > 0)),
+              compare_base: $compare_base,
+              compare_head: $compare_head,
+              subject_url: $subject_url,
+              instructions: $instructions
+            }' > .github/codex/context/review-target.json
+
+          echo "Context file:"
+          cat .github/codex/context/review-target.json
+
+      - name: Print review subject
+        run: |
+          echo "Subject:      ${{ steps.resolve-target.outputs.subject_url }}"
+          echo "Review mode:  ${{ steps.resolve-target.outputs.review_mode }}"
+          echo "Compare base: ${{ steps.resolve-target.outputs.compare_base }}"
+          echo "Compare head: ${{ steps.resolve-target.outputs.compare_head }}"
+          [ -n "${{ steps.resolve-target.outputs.pr_number }}" ] && echo "PR number:    ${{ steps.resolve-target.outputs.pr_number }}" || true
+          [ -n "${{ steps.resolve-target.outputs.commit_sha }}" ] && echo "Commit SHA:   ${{ steps.resolve-target.outputs.commit_sha }}" || true
+
+      - name: Run Codex analysis
+        id: run-codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/review.md
+          output-file: .github/codex/output/codex-final-message.md
+          model: gpt-5.3-codex
+          effort: high
+          sandbox: workspace-write
+
+      - name: Validate review output
+        id: validate-review
+        env:
+          REVIEW_MODE: ${{ steps.resolve-target.outputs.review_mode }}
+        run: |
+          set -euo pipefail
+
+          test -f .github/codex/output/review.json
+          test -f .github/codex/output/review.md
+
+          jq '
+            if (.summary | type) != "string" then error("summary must be a string") else . end |
+            if (.body | type) != "string" then error("body must be a string") else . end |
+            if (.findings | type) != "array" then error("findings must be an array") else . end
+          ' .github/codex/output/review.json > /tmp/validated-review.json
+
+          HIGH_COUNT=$(jq '[.findings[] | select(.severity == "high")] | length' /tmp/validated-review.json)
+          FINDING_COUNT=$(jq '.findings | length' /tmp/validated-review.json)
+
+          echo "finding_count=$FINDING_COUNT" >> "$GITHUB_OUTPUT"
+          echo "high_count=$HIGH_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Validated review output for $REVIEW_MODE subject"
+          jq '.' /tmp/validated-review.json
+
+      - name: Post PR review
+        if: ${{ steps.resolve-target.outputs.review_mode == 'pr' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve-target.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.resolve-target.outputs.head_sha }}
+          HIGH_COUNT: ${{ steps.validate-review.outputs.high_count }}
+          COMPARE_BASE: ${{ steps.resolve-target.outputs.compare_base }}
+          COMPARE_HEAD: ${{ steps.resolve-target.outputs.compare_head }}
+        run: |
+          set -euo pipefail
+
+          line_in_diff_side() {
+            local side="$1"
+            local path="$2"
+            local line="$3"
+
+            git diff --unified=0 "$COMPARE_BASE" "$COMPARE_HEAD" -- "$path" | \
+              awk -v target="$line" -v want="$side" '
+                match($0, /^@@ -([0-9]+)(,([0-9]+))? \+([0-9]+)(,([0-9]+))? @@/, m) {
+                  if (want == "LEFT") {
+                    start = m[1]
+                    count = (m[3] == "" ? 1 : m[3])
+                  } else {
+                    start = m[4]
+                    count = (m[6] == "" ? 1 : m[6])
+                  }
+                  if (count == 0) {
+                    next
+                  }
+                  if (target >= start && target < start + count) {
+                    found = 1
+                  }
+                }
+                END {
+                  exit(found ? 0 : 1)
+                }
+              '
+          }
+
+          EVENT="APPROVE"
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            EVENT="REQUEST_CHANGES"
+          elif [ "$(jq '.findings | length' .github/codex/output/review.json)" -gt 0 ]; then
+            EVENT="COMMENT"
+          fi
+
+          : > /tmp/pr-comments.ndjson
+          jq -c '.findings[]' .github/codex/output/review.json | while read -r finding; do
+            TITLE=$(echo "$finding" | jq -r '.title')
+            FINDING_BODY=$(echo "$finding" | jq -r '.body')
+            PATH_VALUE=$(echo "$finding" | jq -r '.path // empty')
+            LINE_VALUE=$(echo "$finding" | jq -r '.line // empty')
+            SIDE_VALUE=$(echo "$finding" | jq -r '.side // "RIGHT"')
+            COMMENT_BODY="**$TITLE**"$'\n\n'"$FINDING_BODY"
+
+            if [ -z "$PATH_VALUE" ]; then
+              echo "Skipping inline PR comment with no path: $TITLE"
+              continue
+            fi
+
+            if [ -n "$LINE_VALUE" ] && line_in_diff_side "$SIDE_VALUE" "$PATH_VALUE" "$LINE_VALUE"; then
+              jq -n \
+                --arg path "$PATH_VALUE" \
+                --arg body "$COMMENT_BODY" \
+                --arg side "$SIDE_VALUE" \
+                --argjson line "$LINE_VALUE" \
+                '{path: $path, body: $body, line: $line, side: $side}' >> /tmp/pr-comments.ndjson
+            else
+              echo "Falling back to file-level PR comment for $PATH_VALUE (${LINE_VALUE:-no-line})"
+              jq -n \
+                --arg path "$PATH_VALUE" \
+                --arg body "$COMMENT_BODY" \
+                '{path: $path, body: $body, subject_type: "file"}' >> /tmp/pr-comments.ndjson
+            fi
+          done
+
+          jq -s '.' /tmp/pr-comments.ndjson > /tmp/pr-comments.json
+          jq --arg event "$EVENT" --arg commit_id "$HEAD_SHA" --slurpfile comments /tmp/pr-comments.json '
+            {
+              body: .body,
+              event: $event,
+              commit_id: $commit_id,
+              comments: $comments[0]
+            }
+          ' .github/codex/output/review.json > /tmp/pr-review.json
+
+          echo "Posting PR review payload:"
+          cat /tmp/pr-review.json
+
+          gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            --method POST \
+            --input /tmp/pr-review.json
+
+      - name: Post commit review comments
+        if: ${{ steps.resolve-target.outputs.review_mode == 'commit' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ steps.resolve-target.outputs.commit_sha }}
+          COMPARE_BASE: ${{ steps.resolve-target.outputs.compare_base }}
+          COMPARE_HEAD: ${{ steps.resolve-target.outputs.compare_head }}
+        run: |
+          set -euo pipefail
+
+          line_in_added_diff() {
+            local path="$1"
+            local line="$2"
+
+            git diff --unified=0 "$COMPARE_BASE" "$COMPARE_HEAD" -- "$path" | \
+              awk -v target="$line" '
+                match($0, /^@@ -([0-9]+)(,([0-9]+))? \+([0-9]+)(,([0-9]+))? @@/, m) {
+                  start = m[4]
+                  count = (m[6] == "" ? 1 : m[6])
+                  if (count == 0) {
+                    next
+                  }
+                  if (target >= start && target < start + count) {
+                    found = 1
+                  }
+                }
+                END {
+                  exit(found ? 0 : 1)
+                }
+              '
+          }
+
+          BODY=$(jq -r '.body' .github/codex/output/review.json)
+          echo "Posting commit summary comment to $COMMIT_SHA"
+          gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
+            --method POST \
+            -f body="$BODY"
+
+          jq -c '.findings[]' .github/codex/output/review.json | while read -r finding; do
+            TITLE=$(echo "$finding" | jq -r '.title')
+            FINDING_BODY=$(echo "$finding" | jq -r '.body')
+            PATH_VALUE=$(echo "$finding" | jq -r '.path // empty')
+            LINE_VALUE=$(echo "$finding" | jq -r '.line // empty')
+            COMMENT_BODY="**$TITLE**"$'\n\n'"$FINDING_BODY"
+
+            if [ -n "$PATH_VALUE" ] && [ -n "$LINE_VALUE" ] && line_in_added_diff "$PATH_VALUE" "$LINE_VALUE"; then
+              echo "Posting inline commit comment for $PATH_VALUE:$LINE_VALUE"
+              gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
+                --method POST \
+                -f body="$COMMENT_BODY" \
+                -f path="$PATH_VALUE" \
+                -F line="$LINE_VALUE"
+            else
+              echo "Posting general commit comment for finding: $TITLE"
+              gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
+                --method POST \
+                -f body="$COMMENT_BODY"
+            fi
+          done
+
+      - name: Write workflow summary
+        if: always()
+        run: |
+          {
+            echo "## AI Review"
+            echo
+            echo "- Subject: ${{ steps.resolve-target.outputs.subject_url }}"
+            echo "- Mode: ${{ steps.resolve-target.outputs.review_mode }}"
+            echo "- Findings: ${{ steps.validate-review.outputs.finding_count || 'n/a' }}"
+            echo "- Blocking findings: ${{ steps.validate-review.outputs.high_count || 'n/a' }}"
+            echo
+            if [ -f .github/codex/output/review.md ]; then
+              cat .github/codex/output/review.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload review log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-log-${{ github.run_id }}
+          path: .github/codex/output
+          retention-days: 30
+
+      - name: Fail on blocking findings
+        if: always() && steps.validate-review.outcome == 'success'
+        run: |
+          if [ "${{ steps.validate-review.outputs.high_count }}" -gt 0 ]; then
+            echo "Blocking findings detected: ${{ steps.validate-review.outputs.high_count }}"
+            exit 1
+          fi
+          echo "No blocking findings detected"
