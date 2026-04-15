@@ -223,7 +223,7 @@ jobs:
           model: gpt-5.3-codex
           effort: high
           codex-home: .github/codex/home
-          sandbox: workspace-write
+          sandbox: danger-full-access
 
       - name: "✅ Validate review output"
         if: ${{ steps.resolve-target.outputs.review_mode == 'commit' }}
