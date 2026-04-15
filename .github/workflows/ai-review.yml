@@ -338,62 +338,28 @@ jobs:
           COMPARE_HEAD: ${{ steps.resolve-target.outputs.compare_head }}
         run: |
           set -euo pipefail
-
-          line_in_added_diff() {
-            local path="$1"
-            local line="$2"
-
-            git diff --unified=0 "$COMPARE_BASE" "$COMPARE_HEAD" -- "$path" | \
-              awk -v target="$line" '
-                match($0, /^@@ -([0-9]+)(,([0-9]+))? \+([0-9]+)(,([0-9]+))? @@/, m) {
-                  start = m[4]
-                  count = (m[6] == "" ? 1 : m[6])
-                  if (count == 0) {
-                    next
-                  }
-                  if (target >= start && target < start + count) {
-                    found = 1
-                  }
-                }
-                END {
-                  exit(found ? 0 : 1)
-                }
-              '
-          }
-
-          FINDING_COUNT=$(jq '.findings | length' .github/codex/output/review.json)
-          if [ "$FINDING_COUNT" -eq 0 ]; then
-            BODY=$(jq -r '.body' .github/codex/output/review.json)
-            echo "No findings detected; posting summary commit comment to $COMMIT_SHA"
-            gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
-              --method POST \
-              -f body="$BODY"
-            exit 0
-          fi
-
-          echo "Posting $FINDING_COUNT detailed commit finding comment(s) without a separate summary comment"
-
-          jq -c '.findings[]' .github/codex/output/review.json | while read -r finding; do
-            TITLE=$(echo "$finding" | jq -r '.title')
-            FINDING_BODY=$(echo "$finding" | jq -r '.body')
-            PATH_VALUE=$(echo "$finding" | jq -r '.path // empty')
-            LINE_VALUE=$(echo "$finding" | jq -r '.line // empty')
-            COMMENT_BODY="**$TITLE**"$'\n\n'"$FINDING_BODY"
-
-            if [ -n "$PATH_VALUE" ] && [ -n "$LINE_VALUE" ] && line_in_added_diff "$PATH_VALUE" "$LINE_VALUE"; then
-              echo "Posting inline commit comment for $PATH_VALUE:$LINE_VALUE"
-              gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
-                --method POST \
-                -f body="$COMMENT_BODY" \
-                -f path="$PATH_VALUE" \
-                -F line="$LINE_VALUE"
+          BODY=$(jq -r '.body' .github/codex/output/review.json)
+          FINDINGS_MD=$(jq -r '
+            if (.findings | length) == 0 then
+              ""
             else
-              echo "Posting general commit comment for finding: $TITLE"
-              gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
-                --method POST \
-                -f body="$COMMENT_BODY"
-            fi
-          done
+              "\n\n### Detailed Findings\n" +
+              ( .findings
+                | map(
+                    "- **[" + .severity + "]** " + .title +
+                    (if ((.path // "") != "" and ((.line // 0) > 0)) then " (`" + .path + ":" + (.line|tostring) + "`)" else "" end) +
+                    "\n\n  " + .body
+                  )
+                | join("\n\n")
+              )
+            end
+          ' .github/codex/output/review.json)
+
+          COMMENT_BODY="$BODY$FINDINGS_MD"
+          echo "Posting one consolidated commit review comment to $COMMIT_SHA"
+          gh api "repos/$REPO/commits/$COMMIT_SHA/comments" \
+            --method POST \
+            -f body="$COMMENT_BODY"
 
       - name: Write workflow summary
         if: always()
