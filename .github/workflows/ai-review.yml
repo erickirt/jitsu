@@ -208,6 +208,7 @@ jobs:
           output-file: .github/codex/output/codex-final-message.md
           model: gpt-5.3-codex
           effort: high
+          codex-home: .github/codex/home
           sandbox: workspace-write
 
       - name: Validate review output
@@ -234,6 +235,68 @@ jobs:
           echo "high_count=$HIGH_COUNT" >> "$GITHUB_OUTPUT"
           echo "Validated review output for $REVIEW_MODE subject"
           jq '.' /tmp/validated-review.json
+
+      - name: Estimate token usage and cost
+        if: ${{ steps.resolve-target.outputs.review_mode != 'skip' }}
+        id: estimate-cost
+        env:
+          CODEX_HOME: .github/codex/home
+          MODEL: gpt-5.3-codex
+          # Standard text-token rates per 1M tokens, sourced from:
+          # https://developers.openai.com/api/docs/models/gpt-5.3-codex
+          PRICE_INPUT_PER_M: "1.75"
+          PRICE_CACHED_INPUT_PER_M: "0.175"
+          PRICE_OUTPUT_PER_M: "14.0"
+        run: |
+          set -euo pipefail
+
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "price_source=https://developers.openai.com/api/docs/models/gpt-5.3-codex" >> "$GITHUB_OUTPUT"
+
+          SESSION_FILE=$(find "$CODEX_HOME" -type f -name '*.jsonl' -print 2>/dev/null | xargs ls -t 2>/dev/null | head -n1 || true)
+          if [ -z "$SESSION_FILE" ]; then
+            echo "Codex session log (*.jsonl) not found under $CODEX_HOME. Token usage unavailable."
+            echo "usage_found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Inspecting Codex session log: $SESSION_FILE"
+          USAGE_JSON=$(jq -cn '
+            reduce inputs as $line (null;
+              if ($line.type == "event_msg" and ($line.payload.type // "") == "token_count")
+              then $line.payload.info.total_token_usage
+              else .
+              end
+            )
+          ' "$SESSION_FILE")
+
+          if [ -z "$USAGE_JSON" ] || [ "$USAGE_JSON" = "null" ]; then
+            echo "No token_count event found in Codex session log. Token usage unavailable."
+            echo "usage_found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          INPUT_TOKENS=$(echo "$USAGE_JSON" | jq -r '.input_tokens // 0')
+          CACHED_INPUT_TOKENS=$(echo "$USAGE_JSON" | jq -r '.cached_input_tokens // 0')
+          OUTPUT_TOKENS=$(echo "$USAGE_JSON" | jq -r '.output_tokens // 0')
+          TOTAL_TOKENS=$(echo "$USAGE_JSON" | jq -r '.total_tokens // (.input_tokens + .output_tokens)')
+
+          COST_USD=$(awk -v i="$INPUT_TOKENS" -v ci="$CACHED_INPUT_TOKENS" -v o="$OUTPUT_TOKENS" \
+            -v pi="$PRICE_INPUT_PER_M" -v pci="$PRICE_CACHED_INPUT_PER_M" -v po="$PRICE_OUTPUT_PER_M" \
+            'BEGIN {
+               cost = (i/1000000.0)*pi + (ci/1000000.0)*pci + (o/1000000.0)*po;
+               printf "%.6f", cost
+             }')
+
+          echo "usage_found=true" >> "$GITHUB_OUTPUT"
+          echo "input_tokens=$INPUT_TOKENS" >> "$GITHUB_OUTPUT"
+          echo "cached_input_tokens=$CACHED_INPUT_TOKENS" >> "$GITHUB_OUTPUT"
+          echo "output_tokens=$OUTPUT_TOKENS" >> "$GITHUB_OUTPUT"
+          echo "total_tokens=$TOTAL_TOKENS" >> "$GITHUB_OUTPUT"
+          echo "estimated_cost_usd=$COST_USD" >> "$GITHUB_OUTPUT"
+
+          echo "Token usage: input=$INPUT_TOKENS cached_input=$CACHED_INPUT_TOKENS output=$OUTPUT_TOKENS total=$TOTAL_TOKENS"
+          echo "Estimated run cost (USD): $COST_USD"
 
       - name: Post PR review
         if: ${{ steps.resolve-target.outputs.review_mode == 'pr' }}
@@ -426,6 +489,15 @@ jobs:
             [ -n "${{ steps.resolve-target.outputs.skip_reason }}" ] && echo "- Skip reason: ${{ steps.resolve-target.outputs.skip_reason }}"
             echo "- Findings: ${{ steps.validate-review.outputs.finding_count || 'n/a' }}"
             echo "- Blocking findings: ${{ steps.validate-review.outputs.high_count || 'n/a' }}"
+            echo "- Model: ${{ steps.estimate-cost.outputs.model || 'n/a' }}"
+            if [ "${{ steps.estimate-cost.outputs.usage_found || 'false' }}" = "true" ]; then
+              echo "- Token usage: input=${{ steps.estimate-cost.outputs.input_tokens }}, cached_input=${{ steps.estimate-cost.outputs.cached_input_tokens }}, output=${{ steps.estimate-cost.outputs.output_tokens }}, total=${{ steps.estimate-cost.outputs.total_tokens }}"
+              echo "- Estimated model cost (USD): ${{ steps.estimate-cost.outputs.estimated_cost_usd }}"
+            else
+              echo "- Token usage: unavailable"
+              echo "- Estimated model cost (USD): unavailable"
+            fi
+            [ -n "${{ steps.estimate-cost.outputs.price_source }}" ] && echo "- Pricing source: ${{ steps.estimate-cost.outputs.price_source }}"
             echo
             if [ -f .github/codex/output/review.md ]; then
               cat .github/codex/output/review.md
