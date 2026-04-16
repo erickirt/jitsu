@@ -16,7 +16,7 @@ on:
 
 jobs:
   ai-review:
-    uses: jitsucom/ai-review/.github/workflows/ai-review.yml@main
+    uses: jitsucom/github-workflows/.github/workflows/ai-review.yml@main
     secrets: inherit
     with:
       pr_number: ${{ inputs.pr_number }}
