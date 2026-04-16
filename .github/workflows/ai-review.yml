@@ -18,3 +18,6 @@ jobs:
   ai-review:
     uses: jitsucom/ai-review/.github/workflows/ai-review.yml@main
     secrets: inherit
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      commit_sha: ${{ inputs.commit_sha }}
