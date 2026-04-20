@@ -207,6 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      pull-requests: read
     steps:
       - name: Dispatch AI review for open security PRs
         env:
