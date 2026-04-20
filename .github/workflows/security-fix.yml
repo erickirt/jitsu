@@ -33,7 +33,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write
 
     steps:
       - name: 📥 Checkout code
@@ -181,6 +180,9 @@ jobs:
 
       - name: 🔒 Fix vulnerabilities with Codex
         id: run-codex
+        # openai is a major vendor with a controlled release process; @v1 is a
+        # sufficient pin. SHA-pinning every OpenAI action update would be more
+        # overhead than the risk warrants.
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -193,19 +195,28 @@ jobs:
           sandbox: danger-full-access
           codex-home: .github/codex/home
 
-      # ai-review.yml skips PRs opened by jitsu-code-review[bot] (codex-action's
-      # write-access check fails for app-bot actors). We dispatch it manually here
-      # so security PRs still get reviewed. This is safe to run over all open
-      # security/* PRs — this workflow is manual, so a re-review on an older PR
-      # is intentional and harmless.
-      - name: 🔍 Trigger AI review for security PRs
-        if: ${{ inputs.dry_run != true }}
+  # Separate job so actions: write is not available to the Codex step above.
+  # ai-review.yml skips PRs opened by jitsu-code-review[bot] (codex-action's
+  # write-access check fails for app-bot actors), so we dispatch it manually.
+  # Running over all open security/* PRs is intentional — this workflow is
+  # manual, so a re-review on an older PR is harmless.
+  trigger-review:
+    name: 🔍 Trigger AI Review
+    needs: scan-and-fix
+    if: ${{ inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch AI review for open security PRs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr list --base newjitsu --state open --json number,headRefName \
+          gh pr list --repo ${{ github.repository }} --base newjitsu --state open \
+            --json number,headRefName \
             --jq '[.[] | select(.headRefName | startswith("security/")) | .number | tostring] | .[]' \
           | while IFS= read -r num; do
               echo "Dispatching AI review for PR #$num"
-              gh workflow run ai-review.yml --ref newjitsu -f pr_number="$num"
+              gh workflow run ai-review.yml --repo ${{ github.repository }} --ref newjitsu -f pr_number="$num"
             done
+
