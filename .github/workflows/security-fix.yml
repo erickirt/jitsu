@@ -33,6 +33,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
 
     steps:
       - name: 📥 Checkout code
@@ -201,5 +202,5 @@ jobs:
             --jq '[.[] | select(.headRefName | startswith("security/")) | .number | tostring] | .[]' \
           | while IFS= read -r num; do
               echo "Dispatching AI review for PR #$num"
-              gh workflow run ai-review.yml --ref newjitsu -f pr_number="$num" || true
+              gh workflow run ai-review.yml --ref newjitsu -f pr_number="$num"
             done
