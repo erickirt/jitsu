@@ -193,6 +193,11 @@ jobs:
           sandbox: danger-full-access
           codex-home: .github/codex/home
 
+      # ai-review.yml skips PRs opened by jitsu-code-review[bot] (codex-action's
+      # write-access check fails for app-bot actors). We dispatch it manually here
+      # so security PRs still get reviewed. This is safe to run over all open
+      # security/* PRs — this workflow is manual, so a re-review on an older PR
+      # is intentional and harmless.
       - name: 🔍 Trigger AI review for security PRs
         if: ${{ inputs.dry_run != true }}
         env:

@@ -16,6 +16,10 @@ on:
 
 jobs:
   ai-review:
+    # Skip auto-trigger for PRs opened by the bot. codex-action's write-access
+    # check calls the collaborators API which returns 'none' for app-bot actors,
+    # causing the review to fail. security-fix.yml dispatches the review manually
+    # for bot-opened PRs instead.
     if: github.actor != 'jitsu-code-review[bot]'
     uses: jitsucom/github-workflows/.github/workflows/ai-review.yml@1.10.20260420
     secrets:
