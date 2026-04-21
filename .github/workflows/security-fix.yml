@@ -1,8 +1,8 @@
 name: 🔒 Security Vulnerability Fix
 
 on:
-#  schedule:
-#    - cron: "0 8 * * 1" # Every Monday at 8:00 UTC
+  schedule:
+    - cron: "0 8 * * 1" # Every Monday at 8:00 UTC
   workflow_dispatch:
     inputs:
       dry_run:
@@ -33,6 +33,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      security-events: read
 
     steps:
       - name: 📥 Checkout code
@@ -58,37 +59,40 @@ jobs:
           cache-dependency-path: "bulker/**/*.sum"
 
       - name: 📦 Install dependencies
+        if: false
         run: pnpm install --frozen-lockfile
         continue-on-error: true
 
       - name: 🔍 Run npm audit
         id: npm-audit
+        if: false
         run: |
-          pnpm audit --json > /tmp/npm-audit.json 2>/dev/null || true
+          pnpm audit --json > .npm-audit.json 2>/dev/null || true
           echo "npm audit complete"
           # Summary for logs
-          jq -r '.advisories // {} | length' /tmp/npm-audit.json 2>/dev/null || echo "0"
+          jq -r '.advisories // {} | length' .npm-audit.json 2>/dev/null || echo "0"
 
       - name: 🔍 Run govulncheck
         id: go-vuln
+        if: false
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          mkdir -p /tmp/go-vulns
+          mkdir -p .go-vulns
 
           for moddir in bulker/*/; do
             if [ -f "${moddir}go.mod" ]; then
               modname=$(basename "${moddir}")
               echo "Scanning ${moddir}..."
-              govulncheck -C "${{ github.workspace }}/${moddir}" -json ./... > "/tmp/go-vulns/${modname}.json" 2>/dev/null || true
+              govulncheck -C "${{ github.workspace }}/${moddir}" -json ./... > ".go-vulns/${modname}.json" 2>/dev/null || true
             fi
           done
-          jq -s 'flatten' /tmp/go-vulns/*.json > /tmp/go-vulns.json 2>/dev/null || echo '[]' > /tmp/go-vulns.json
+          jq -s 'flatten' .go-vulns/*.json > .go-vulns.json 2>/dev/null || echo '[]' > .go-vulns.json
           echo "govulncheck complete"
 
       - name: 🔍 Fetch Dependabot alerts
         id: dependabot
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_TOKEN }}
         run: |
           gh api repos/${{ github.repository }}/dependabot/alerts \
             --jq '[.[] | select(.state == "open") | {
@@ -100,8 +104,8 @@ jobs:
               ecosystem: .security_vulnerability.package.ecosystem,
               vulnerable_range: .security_vulnerability.vulnerable_version_range,
               fixed_version: .security_vulnerability.first_patched_version.identifier
-            }]' > /tmp/dependabot-alerts.json 2>/dev/null || echo '[]' > /tmp/dependabot-alerts.json
-          echo "Dependabot alerts: $(jq length /tmp/dependabot-alerts.json)"
+            }]' > .dependabot-alerts.json || echo '[]' > .dependabot-alerts.json
+          echo "Dependabot alerts: $(jq length .dependabot-alerts.json)"
 
       - name: 📝 Write Codex prompt
         env:
@@ -120,49 +124,59 @@ jobs:
           - Minimum severity: $MIN_SEVERITY
           - This is a monorepo with:
             - Node.js/pnpm workspace (libs/, services/, webapps/, cli/, types/)
-            - Go modules in bulker/ directory
+            - Go side: Go workspace rooted at bulker/ (bulker/go.work). All Go modules are members of this workspace — do NOT treat them as independent repos. Workspace members are listed in bulker/go.work.
             - Root package.json has pnpm.overrides for version pinning
 
           ## Available scan results
-          - Dependabot alerts: /tmp/dependabot-alerts.json (MOST RELIABLE — use this as primary source)
-          - npm audit: /tmp/npm-audit.json
-          - Go vulncheck: /tmp/go-vulns.json
+          - Dependabot alerts: .dependabot-alerts.json (MOST RELIABLE — use this as primary source)
 
-          ## Your task
-          1. Read /tmp/dependabot-alerts.json first. Filter by MIN_SEVERITY (severity order: critical > high > moderate > low).
-          2. For each vulnerability (or group of trivial same-ecosystem patches):
+          ## Instructions
 
-             a. **Analyze the fix**:
-                - Check if the package is a direct dependency (grep in package.json files) or transitive.
-                - For transitive deps: use pnpm overrides in root package.json (pattern: "pkg@<fixed_version": "^fixed_version").
-                - For direct deps: bump the version in the relevant package.json.
-                - For Go deps: run go -C bulker/modulename get pkg@version && go -C bulker/modulename mod tidy.
-                - Check if the fixed version is a major version bump. If so:
-                  - Check the package's changelog/migration guide.
-                  - Verify the new version's API is compatible.
-                  - If breaking changes exist, note them in the PR description.
-                  - If the major bump is risky, create the PR but mark it as needing manual review.
+          IMPORTANT: All examples below use PLACEHOLDER names. You must substitute real values from the scan results. Do NOT run any placeholder literally.
 
-             b. **Apply the fix**:
-                - Create a branch: security/fix-{package-name} (or security/fix-batch-{date} for grouped trivial patches).
-                - Make the changes.
-                - For Node.js: run pnpm install to update the lockfile.
-                - For Go: run go mod tidy in affected modules.
-                - Commit with message: fix(security): upgrade {package} to {version} ({CVE})
+          1. Read the alerts file: cat .dependabot-alerts.json | jq .
+          2. Check existing PRs to avoid duplicates: gh pr list --search "security" --state open
+          3. Process each alert (or batch trivial ones together):
 
-             c. **Create a PR** (unless DRY_RUN is true):
-                - Title: fix(security): {package} {CVE} ({severity})
-                - Body should include:
-                  - CVE ID and severity
-                  - What the vulnerability is (1 sentence)
-                  - What was changed (override vs direct bump vs Go module update)
-                  - Whether this is a major version bump
-                  - Any breaking changes or risks noted
-                - Use: gh pr create --base newjitsu --title "..." --body "..."
+          ### For npm/Node.js packages:
+          - Check if the package is a direct dependency: grep -r '"ACTUAL_PKG_NAME"' */package.json libs/*/package.json webapps/*/package.json cli/*/package.json
+          - If transitive: add a pnpm override to root package.json. Example pattern for the overrides object: "actual-pkg@<FIXED_VER": "^FIXED_VER"
+          - If direct: bump the version in the relevant package.json file
+          - MANDATORY: ANY change to ANY package.json (root or workspace member) MUST be followed by `pnpm install` at the repo root before committing — this updates pnpm-lock.yaml. Commit both the package.json changes and the updated pnpm-lock.yaml together.
+          - If pnpm install fails, revert the changes and skip that vulnerability.
 
-             d. **Reset** back to newjitsu before the next fix:
-                git checkout newjitsu && git reset --hard origin/newjitsu
+          ### For Go packages (Go workspace at bulker/):
+          - Find every workspace member that depends on the vulnerable package: `grep -l 'ACTUAL_PKG' bulker/*/go.mod`
+          - For EACH matching member, update inside that module directory:
+              go -C bulker/ACTUAL_MODULE get ACTUAL_PKG@vFIXED
+              go -C bulker/ACTUAL_MODULE mod tidy
+          - After updating all affected members, sync the workspace: `go -C bulker work sync`
+          - Commit the changed `go.mod`/`go.sum` files of each affected member plus `bulker/go.work.sum` together.
+          - Do NOT edit `bulker/go.work` itself — only the workspace `use (...)` list lives there and it must not change for a security fix.
+          - If any `go mod tidy` or `go work sync` fails, revert and skip.
 
+          ### Creating PRs:
+          - Create a new branch from newjitsu: git checkout -b security/fix-ACTUAL-PKG-NAME
+          - Stage and commit changes with a descriptive message
+          - Push and create PR: git push -u origin HEAD && gh pr create --base newjitsu --title "TITLE" --body "BODY"
+          - After creating PR, reset for the next fix: git checkout newjitsu && git reset --hard origin/newjitsu
+
+          ### Grouping:
+          - Batch multiple trivial pnpm override fixes (no major version bumps) into one PR
+          - Keep major version bumps or risky changes as separate PRs
+
+          ### PR description should include:
+          - CVE ID and severity
+          - One-sentence vulnerability description
+          - What was changed
+          - Whether this is a major version bump and any risks
+
+          ## Rules
+          - NEVER modify the newjitsu branch directly — always use a new branch
+          - NEVER run placeholder commands — always substitute real package names and versions
+          - If a fix fails, revert and move on
+          EOF
+          
           3. Group trivial patches together: if multiple vulnerabilities can be fixed by
              simple pnpm overrides with no major version bumps, batch them into one PR.
              Keep major version bumps or risky changes as individual PRs.
