@@ -94,7 +94,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_TOKEN }}
         run: |
-          gh api repos/${{ github.repository }}/dependabot/alerts \
+          set -euo pipefail
+          gh api repos/${{ github.repository }}/dependabot/alerts --paginate \
             --jq '[.[] | select(.state == "open") | {
               number: .number,
               cve: .security_advisory.cve_id,
@@ -104,7 +105,7 @@ jobs:
               ecosystem: .security_vulnerability.package.ecosystem,
               vulnerable_range: .security_vulnerability.vulnerable_version_range,
               fixed_version: .security_vulnerability.first_patched_version.identifier
-            }]' > .dependabot-alerts.json || echo '[]' > .dependabot-alerts.json
+            }]' > .dependabot-alerts.json
           echo "Dependabot alerts: $(jq length .dependabot-alerts.json)"
 
       - name: 📝 Write Codex prompt
