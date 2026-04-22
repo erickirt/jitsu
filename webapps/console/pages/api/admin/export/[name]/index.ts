@@ -702,19 +702,11 @@ async function functionsClassByWorkspace(): Promise<Map<string, { class: string;
                      left join customers c on c.customer_id = s.customer_id
               where status<>''`);
   for (const row of rows.rows) {
-    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
     const status = row.status;
-    if (status === "active" || status === "trialing") {
+    if (status === "active" || status === "trialing" || status === "past_due" || status === "unpaid") {
       workspacesWithClasses.set(row.id, { class: "dedicated", status: "active" });
     } else if (status === "canceled") {
       if (row.period_end.getTime() > now) {
-        workspacesWithClasses.set(row.id, { class: "dedicated", status: "active" });
-      }
-    } else if (status === "past_due" || status === "unpaid") {
-      if (row.period_end.getTime() + oneMonthMs > now) {
-        // keep dedicated instance for 30 days of past due subscription
-        workspacesWithClasses.set(row.id, { class: "dedicated", status });
-      } else if (row.period_end.getTime() > now) {
         workspacesWithClasses.set(row.id, { class: "dedicated", status: "active" });
       }
     }

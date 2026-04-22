@@ -329,7 +329,7 @@ func (o *Operator) reconcile() {
 			continue // already marked
 		}
 		if o.allWorkspacesHandled(existing, existingDeployments, wsData) {
-			shutdownAt := time.Now().Add(10 * time.Minute)
+			shutdownAt := time.Now().Add(15 * time.Minute)
 			if err := o.setDeploymentShutdownAt(ctx, existing, shutdownAt); err != nil {
 				logging.Errorf("Failed to mark deployment %s for shutdown: %v", deploymentID, err)
 			} else {
