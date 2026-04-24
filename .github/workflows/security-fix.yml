@@ -42,15 +42,20 @@ jobs:
           fetch-depth: 1
           ref: newjitsu
 
-      - name: 🔧 Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
+      # setup-node MUST run before setup-pnpm: pnpm/action-setup@v4 binds its
+      # CLI shim to whichever Node is active at install time, so if pnpm goes
+      # first, every later `pnpm` call still runs on the runner's default
+      # Node 20 (triggers "Unsupported engine: wanted {node:>=22}") even after
+      # setup-node bumps the PATH to Node 22.
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: 🔧 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: 🔧 Setup Go
         uses: actions/setup-go@v6
@@ -167,11 +172,17 @@ jobs:
              gh pr list --search "security" --state open
              Skip any alert whose fix is already covered by an open PR.
           2. Filter alerts by MIN_SEVERITY (severity order: critical > high > moderate > low).
-          3. Group trivial patches together: multiple npm override-only fixes with no
-             major version bumps → one PR. Major version bumps or risky changes →
-             separate PRs.
-          4. For each alert (or batch), follow the ecosystem-specific steps below,
-             then the PR creation steps.
+          3. Group the remaining alerts into AT MOST TWO PRs — one per stack:
+             - All npm / Node.js fixes → a single PR on branch security/fix-npm-YYYY-MM-DD
+             - All Go fixes → a single PR on branch security/fix-go-YYYY-MM-DD
+             This is mandatory: pnpm-lock.yaml, go.sum, and bulker/go.work.sum
+             otherwise cause merge conflicts if two concurrent PRs touch them.
+             If a fix is risky (major version bump, breaking change), still include
+             it in the per-stack PR but flag it prominently in the PR body so a
+             reviewer can split it out manually.
+          4. Apply every ecosystem-specific step below for all alerts in that
+             stack BEFORE creating the PR. Do NOT push incremental commits per
+             alert — one branch, one commit per stack, one PR per stack.
           5. If DRY_RUN is true, output a report of what would be done and do NOT
              create branches, commits, or PRs.
 
@@ -182,8 +193,13 @@ jobs:
           - Transitive-only: add an entry to the pnpm.overrides block in root package.json.
             Pattern: "ACTUAL_PKG_NAME@<FIXED_VER": "^FIXED_VER"
           - Direct dependency: bump the version in the package.json that declares it.
-          - MANDATORY after any package.json change: run `pnpm install` at the repo root.
-            This updates pnpm-lock.yaml. Commit both package.json and pnpm-lock.yaml together.
+          - MANDATORY after any change to package.json OR pnpm-workspace.yaml
+            (root or any workspace member): run `pnpm install --no-frozen-lockfile`
+            at the repo root. Omitting --no-frozen-lockfile breaks in CI because pnpm
+            defaults to --frozen-lockfile when CI=true and refuses to update
+            pnpm-lock.yaml when overrides / catalog / workspace config has changed.
+            This step updates pnpm-lock.yaml. Commit the manifest changes
+            (package.json and/or pnpm-workspace.yaml) together with pnpm-lock.yaml.
           - If pnpm install fails, revert the changes and skip that vulnerability.
 
           ### Go packages (Go workspace at bulker/)
@@ -204,15 +220,21 @@ jobs:
 
           ### Creating PRs
 
-          - Branch name: security/fix-ACTUAL-PKG-NAME (or security/fix-batch-YYYY-MM-DD for grouped npm overrides).
-          - Commit message: fix(security): upgrade ACTUAL_PKG to FIXED_VER (ACTUAL_CVE)
+          There are at most two PRs per run — one per stack — so the structure is:
+
+          - Branch name:
+              security/fix-npm-YYYY-MM-DD   (all npm fixes)
+              security/fix-go-YYYY-MM-DD    (all Go fixes)
+          - Single commit per branch:
+              fix(security): batch npm dependency security fixes   (or batch go ...)
           - Push and open PR:
               git push -u origin HEAD
-              gh pr create --base newjitsu --title "fix(security): ACTUAL_PKG ACTUAL_CVE (ACTUAL_SEVERITY)" --body "..."
-          - PR body must include: CVE ID, severity, 1-sentence vuln description,
-            what was changed (override / direct bump / Go module update), whether
-            this is a major version bump, any breaking changes or risks.
-          - After creating the PR, reset before the next fix:
+              gh pr create --base newjitsu --title "fix(security): <stack> security fixes (YYYY-MM-DD)" --body "..."
+          - PR body must enumerate every included fix, one bullet per CVE:
+              - CVE_ID (SEVERITY): short vuln description — ACTUAL_PKG FROM_VER → FIXED_VER
+            Plus a final "Risks" section calling out any major version bumps or
+            breaking changes that a reviewer should split into a separate follow-up PR.
+          - After creating the first PR, reset before starting the other stack:
               git checkout newjitsu && git reset --hard origin/newjitsu
 
           ## Rules
