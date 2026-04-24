@@ -225,6 +225,18 @@ jobs:
           - When in doubt between one PR or many, prefer many small PRs.
           PROMPT_EOF
 
+      - name: 🧰 Reinstall Codex CLI (workaround)
+        # openai/codex-action@v1 relies on a globally-installed @openai/codex.
+        # On GitHub-hosted runners the platform-specific optional dep
+        # (@openai/codex-linux-x64) sometimes gets skipped, producing:
+        #   "Missing optional dependency @openai/codex-linux-x64"
+        # Force a clean reinstall with --include=optional before the action.
+        run: |
+          set -euo pipefail
+          npm uninstall -g @openai/codex >/dev/null 2>&1 || true
+          npm install -g --include=optional @openai/codex@latest
+          codex --version
+
       - name: 🔒 Fix vulnerabilities with Codex
         id: run-codex
         # openai is a major vendor with a controlled release process; @v1 is a
