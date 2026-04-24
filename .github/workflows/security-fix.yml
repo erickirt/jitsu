@@ -114,82 +114,114 @@ jobs:
           MIN_SEVERITY: ${{ inputs.severity || 'moderate' }}
           REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           mkdir -p .github/codex
-          cat > .github/codex/security-fix.prompt.md << PROMPT_EOF
+
+          # Runtime context is written with printf (so env vars expand) and the
+          # static prompt body is appended via a QUOTED heredoc ('PROMPT_EOF')
+          # so backticks, $vars, and glob chars inside the markdown are passed
+          # through literally instead of being interpreted by the shell.
+          {
+            printf '## Runtime context\n'
+            printf '- Repository: %s\n' "$REPO"
+            printf '- Base branch: newjitsu\n'
+            printf '- Dry run mode: %s\n' "$DRY_RUN"
+            printf '- Minimum severity: %s\n\n' "$MIN_SEVERITY"
+          } > .github/codex/security-fix.prompt.md
+
+          cat >> .github/codex/security-fix.prompt.md << 'PROMPT_EOF'
           You are a security engineer fixing dependency vulnerabilities in a monorepo.
 
-          ## Context
-          - Repository: $REPO
-          - Base branch: newjitsu
-          - Dry run mode: $DRY_RUN
-          - Minimum severity: $MIN_SEVERITY
-          - This is a monorepo with:
-            - Node.js/pnpm workspace (libs/, services/, webapps/, cli/, types/)
-            - Go side: Go workspace rooted at bulker/ (bulker/go.work). All Go modules are members of this workspace — do NOT treat them as independent repos. Workspace members are listed in bulker/go.work.
-            - Root package.json has pnpm.overrides for version pinning
+          ## Operating mode (read first)
 
-          ## Available scan results
-          - Dependabot alerts: .dependabot-alerts.json (MOST RELIABLE — use this as primary source)
+          You are running non-interactively inside a GitHub Actions job. There is
+          no human to answer questions. Do not ask for confirmation, do not stop
+          to request clarification, do not print plans and wait — just execute.
+          When a step is ambiguous, pick the option described in the Rules
+          section below; if there is no matching rule, skip that vulnerability
+          and move on. Finish by printing a short summary of what you did.
 
-          ## Instructions
+          ## Repo layout
 
-          IMPORTANT: All examples below use PLACEHOLDER names. You must substitute real values from the scan results. Do NOT run any placeholder literally.
+          - Node.js/pnpm workspace rooted at repo root (libs/, services/, webapps/, cli/, types/).
+          - Go workspace rooted at bulker/ (bulker/go.work). All Go modules are members of this workspace — do NOT treat them as independent repos. Workspace members are listed in bulker/go.work.
+          - Root package.json has a pnpm.overrides block for pinning transitive versions.
 
-          1. Read the alerts file: cat .dependabot-alerts.json | jq .
-          2. Check existing PRs to avoid duplicates: gh pr list --search "security" --state open
-          3. Process each alert (or batch trivial ones together):
+          ## Input
 
-          ### For npm/Node.js packages:
-          - Check if the package is a direct dependency: grep -r '"ACTUAL_PKG_NAME"' */package.json libs/*/package.json webapps/*/package.json cli/*/package.json
-          - If transitive: add a pnpm override to root package.json. Example pattern for the overrides object: "actual-pkg@<FIXED_VER": "^FIXED_VER"
-          - If direct: bump the version in the relevant package.json file
-          - MANDATORY: ANY change to ANY package.json (root or workspace member) MUST be followed by `pnpm install` at the repo root before committing — this updates pnpm-lock.yaml. Commit both the package.json changes and the updated pnpm-lock.yaml together.
+          The primary source of work is .dependabot-alerts.json (already produced
+          by an earlier step). It is a JSON array; each entry has: number, cve,
+          severity, summary, package, ecosystem, vulnerable_range, fixed_version.
+
+          Read it with: cat .dependabot-alerts.json | jq .
+
+          ## Procedure
+
+          IMPORTANT: All examples below use PLACEHOLDER names in ALL_CAPS
+          (ACTUAL_PKG_NAME, FIXED_VER, ACTUAL_MODULE). Substitute real values
+          from the alerts before running any command. Never run a command that
+          still contains a placeholder.
+
+          1. List existing security PRs to avoid duplicates:
+             gh pr list --search "security" --state open
+             Skip any alert whose fix is already covered by an open PR.
+          2. Filter alerts by MIN_SEVERITY (severity order: critical > high > moderate > low).
+          3. Group trivial patches together: multiple npm override-only fixes with no
+             major version bumps → one PR. Major version bumps or risky changes →
+             separate PRs.
+          4. For each alert (or batch), follow the ecosystem-specific steps below,
+             then the PR creation steps.
+          5. If DRY_RUN is true, output a report of what would be done and do NOT
+             create branches, commits, or PRs.
+
+          ### npm / Node.js packages
+
+          - Determine if the package is a direct dependency:
+              grep -r '"ACTUAL_PKG_NAME"' package.json */package.json libs/*/package.json webapps/*/package.json cli/*/package.json services/*/package.json types/*/package.json
+          - Transitive-only: add an entry to the pnpm.overrides block in root package.json.
+            Pattern: "ACTUAL_PKG_NAME@<FIXED_VER": "^FIXED_VER"
+          - Direct dependency: bump the version in the package.json that declares it.
+          - MANDATORY after any package.json change: run `pnpm install` at the repo root.
+            This updates pnpm-lock.yaml. Commit both package.json and pnpm-lock.yaml together.
           - If pnpm install fails, revert the changes and skip that vulnerability.
 
-          ### For Go packages (Go workspace at bulker/):
-          - Find every workspace member that depends on the vulnerable package: `grep -l 'ACTUAL_PKG' bulker/*/go.mod`
-          - For EACH matching member, update inside that module directory:
+          ### Go packages (Go workspace at bulker/)
+
+          - Find every workspace member that depends on the package:
+              grep -l 'ACTUAL_PKG' bulker/*/go.mod
+          - For EACH matching member, run inside its module directory:
               go -C bulker/ACTUAL_MODULE get ACTUAL_PKG@vFIXED
-          - After updating all affected members, sync the workspace: `go -C bulker work sync`
-          - Manually clean go.sum and go.work.sum of hashes of old vulnerable versions
-          - Commit the changed `go.mod`/`go.sum` files of each affected member plus `bulker/go.work.sum` together.
-          - Do NOT edit `bulker/go.work` itself — only the workspace `use (...)` list lives there and it must not change for a security fix.
+          - After updating all affected members, sync the workspace:
+              go -C bulker work sync
+          - Manually drop hashes for old vulnerable versions from the affected
+            go.sum files and bulker/go.work.sum (leaving unrelated entries alone).
+          - Commit the changed go.mod/go.sum of each affected member together
+            with bulker/go.work.sum.
+          - Do NOT modify bulker/go.work — the use(...) list must not change for
+            a security fix.
+          - If `go get` or `go work sync` fails, revert and skip.
 
-          ### Creating PRs:
-          - Create a new branch from newjitsu: git checkout -b security/fix-ACTUAL-PKG-NAME
-          - Stage and commit changes with a descriptive message
-          - Push and create PR: git push -u origin HEAD && gh pr create --base newjitsu --title "TITLE" --body "BODY"
-          - After creating PR, reset for the next fix: git checkout newjitsu && git reset --hard origin/newjitsu
+          ### Creating PRs
 
-          ### Grouping:
-          - Batch multiple trivial pnpm override fixes (no major version bumps) into one PR
-          - Keep major version bumps or risky changes as separate PRs
-
-          ### PR description should include:
-          - CVE ID and severity
-          - One-sentence vulnerability description
-          - What was changed
-          - Whether this is a major version bump and any risks
+          - Branch name: security/fix-ACTUAL-PKG-NAME (or security/fix-batch-YYYY-MM-DD for grouped npm overrides).
+          - Commit message: fix(security): upgrade ACTUAL_PKG to FIXED_VER (ACTUAL_CVE)
+          - Push and open PR:
+              git push -u origin HEAD
+              gh pr create --base newjitsu --title "fix(security): ACTUAL_PKG ACTUAL_CVE (ACTUAL_SEVERITY)" --body "..."
+          - PR body must include: CVE ID, severity, 1-sentence vuln description,
+            what was changed (override / direct bump / Go module update), whether
+            this is a major version bump, any breaking changes or risks.
+          - After creating the PR, reset before the next fix:
+              git checkout newjitsu && git reset --hard origin/newjitsu
 
           ## Rules
-          - NEVER modify the newjitsu branch directly — always use a new branch
-          - NEVER run placeholder commands — always substitute real package names and versions
-          - If a fix fails, revert and move on
-          EOF
-          
-          3. Group trivial patches together: if multiple vulnerabilities can be fixed by
-             simple pnpm overrides with no major version bumps, batch them into one PR.
-             Keep major version bumps or risky changes as individual PRs.
 
-          4. If DRY_RUN is true, just output a report of what would be done. Do not create branches or PRs.
-
-          ## Important rules
-          - NEVER force push or modify the newjitsu branch directly.
-          - Always create a NEW branch for each PR.
-          - Run pnpm install after modifying package.json to verify the fix works.
-          - If pnpm install fails after a fix, revert and skip that vulnerability.
-          - For Go modules, use go -C bulker/modulename to run in the module directory.
-          - Check existing open PRs with gh pr list --search "security" to avoid duplicates.
+          - NEVER modify the newjitsu branch directly — always use a new branch.
+          - NEVER run a command that still contains an ALL_CAPS placeholder.
+          - NEVER force-push.
+          - If any command fails, revert the working tree to clean state and skip that vulnerability.
+          - When in doubt between overriding vs. bumping a direct dependency, prefer the smaller change (override).
+          - When in doubt between one PR or many, prefer many small PRs.
           PROMPT_EOF
 
       - name: 🔒 Fix vulnerabilities with Codex
@@ -201,11 +233,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Belt-and-suspenders: if codex-action or the underlying codex CLI
+          # ever reads these, they force headless behaviour.
+          CODEX_NON_INTERACTIVE: "1"
+          CI: "true"
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/security-fix.prompt.md
+          output-file: .github/codex/security-fix.output.md
           model: gpt-5.3-codex
           effort: high
+          # danger-full-access: no approval gating — required because the agent
+          # needs to run `pnpm install`, `go get`, `git commit`, `gh pr create`
+          # without waiting for a human to approve each one.
           sandbox: danger-full-access
           codex-home: .github/codex/home
 
