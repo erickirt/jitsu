@@ -117,17 +117,18 @@ jobs:
           set -euo pipefail
           mkdir -p .github/codex
 
-          # Runtime context is written with printf (so env vars expand) and the
-          # static prompt body is appended via a QUOTED heredoc ('PROMPT_EOF')
-          # so backticks, $vars, and glob chars inside the markdown are passed
-          # through literally instead of being interpreted by the shell.
-          {
-            printf '## Runtime context\n'
-            printf '- Repository: %s\n' "$REPO"
-            printf '- Base branch: newjitsu\n'
-            printf '- Dry run mode: %s\n' "$DRY_RUN"
-            printf '- Minimum severity: %s\n\n' "$MIN_SEVERITY"
-          } > .github/codex/security-fix.prompt.md
+          # Runtime context goes through an UNQUOTED heredoc so $REPO/$DRY_RUN/
+          # $MIN_SEVERITY expand. The static prompt body below uses a QUOTED
+          # heredoc ('PROMPT_EOF') so backticks, $vars, and glob chars inside
+          # the markdown pass through literally instead of being interpreted.
+          cat > .github/codex/security-fix.prompt.md <<EOF
+          ## Runtime context
+          - Repository: ${REPO}
+          - Base branch: newjitsu
+          - Dry run mode: ${DRY_RUN}
+          - Minimum severity: ${MIN_SEVERITY}
+
+          EOF
 
           cat >> .github/codex/security-fix.prompt.md << 'PROMPT_EOF'
           You are a security engineer fixing dependency vulnerabilities in a monorepo.
