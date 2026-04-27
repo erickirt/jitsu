@@ -589,18 +589,24 @@ func (o *Operator) buildFreeShardedDeployments(workspaces []*WorkspaceData) map[
 	for shardIdx, wsSlice := range shardWorkspaces {
 		var allConnections []*EnrichedConnectionConfig
 		var allFunctions []*FunctionConfig
-		var allProfileBuilders []*ProfileBuilderConfig
 		workspaceIDs := make([]string, 0, len(wsSlice))
 
 		for _, ws := range wsSlice {
 			workspaceIDs = append(workspaceIDs, ws.WorkspaceID)
 			allConnections = append(allConnections, ws.Connections...)
 			allFunctions = append(allFunctions, ws.Functions...)
-			allProfileBuilders = append(allProfileBuilders, ws.ProfileBuilders...)
+			// Profile builders are intentionally NOT aggregated for free
+			// deployments — the free-tier functions-server doesn't run the
+			// profile-builder runtime, so shipping PB ConfigMaps and PB
+			// metadata into the shared shard would just be wasted bytes plus
+			// a redeploy whenever someone on free tweaks a profile builder.
+			// Workspaces that need profile builders run on dedicated/premium.
 		}
 
 		sort.Strings(workspaceIDs)
-		configHash := CalculateConfigHash(allConnections, allFunctions, allProfileBuilders, workspaceIDs)
+		// Pass nil for profile builders so the config hash stays stable
+		// across PB changes on free-tier workspaces (no redeploy needed).
+		configHash := CalculateConfigHash(allConnections, allFunctions, nil, workspaceIDs)
 
 		shardID := freeShardDeploymentID(shardIdx, numShards)
 		result[shardID] = &DeploymentData{
@@ -609,7 +615,7 @@ func (o *Operator) buildFreeShardedDeployments(workspaces []*WorkspaceData) map[
 			WorkspaceIDs:    workspaceIDs,
 			Connections:     allConnections,
 			Functions:       allFunctions,
-			ProfileBuilders: allProfileBuilders,
+			ProfileBuilders: nil,
 			ConfigHash:      configHash,
 		}
 	}
