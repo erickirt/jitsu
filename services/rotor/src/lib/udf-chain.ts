@@ -9,9 +9,6 @@
 import * as functionLib from "@jitsu/functions-lib";
 import type { AnyEvent, EventContext, FullContext, FuncReturn } from "@jitsu/protocols/functions";
 import type { FunctionExecLog, FunctionExecRes } from "@jitsu/core-functions-lib";
-import { getLog } from "juava";
-
-const log = getLog("functions");
 
 export type ChainFunction = {
   id: string;
@@ -108,7 +105,6 @@ export async function runFunctionChain<TLog>(
           retryPolicy: err.retryPolicy,
           functionId: id,
         };
-        log.atError().withCause(err).log(`Function ${func.id} error.`);
       }
 
       execLogEntry.ms = Date.now() - startMs;
