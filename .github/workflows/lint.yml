@@ -3,14 +3,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   push:
-    branches: [newjitsu, stable-services, stable-jsclient]
+    branches: [newjitsu]
   workflow_dispatch:
 
 env:
   # The jitsu-builder container has Playwright browsers binaries preinstalled on this path:
   PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
-  BETA_BRANCH: newjitsu
-  STABLE_BRANCH: stable-services
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -240,10 +238,13 @@ jobs:
             - title: Triggered by
               value: ${{ github.actor }}
 
-  deploy:
-    name: 🐳 Trigger Docker Images Build
+  dispatch-publish:
+    name: 🚀 Dispatch Publish
+    # Auto-publish only when an explicit version-bump landed on newjitsu and
+    # lint+test passed. Every other commit goes unpublished — use the manual
+    # publish.yml dispatch for canary/beta off-cycle builds.
     needs: [lint-and-format, bulker-test]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-services')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/newjitsu'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -251,65 +252,33 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v6
+        with:
+          # Need history covering the entire push range so dorny/paths-filter
+          # (which uses `base: ${{ github.event.before }}` implicitly for push
+          # events) sees every commit in the merge, not just the tip.
+          fetch-depth: 0
 
-      - name: 🔍 Check changed files
+      - name: 🔍 Did a version file change anywhere in the push?
         id: changes
         uses: dorny/paths-filter@v4
         with:
           filters: |
-            services:
-              - 'bulker/**'          # bulker/ingest/syncctl/… Go images
-              - 'services/**'        # rotor and functions-server images
-              - 'webapps/**'         # console image
-              - 'libs/**'            # libs/functions (→ @jitsu/functions-lib NPM),
-                                     # libs/juava (→ jitsu-cli), libs/jitsu-js/react (→ console)
-              - 'cli/**'             # jitsu-cli NPM package
-              - 'types/**'           # @jitsu/protocols — imported by services and functions-lib
-              - 'all.Dockerfile'     # multi-stage build file for console/rotor/functions-server
-              - '.services.version.json'  # explicit version bump → always publish
-              - 'pnpm-lock.yaml'     # any dep change can affect build output
-              - '.github/workflows/services-build.yaml'  # re-test if the build workflow itself changes
+            version_bump:
+              - .services.version.json
+              - .jsclient.version.json
 
-      - name: 🚀 Trigger services-build workflow
-        if: steps.changes.outputs.services == 'true'
+      - name: 🚀 Trigger publish workflow
+        if: steps.changes.outputs.version_bump == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass the full push range to publish.yml so its detect job sees
+          # every file touched across all commits in the merge — we don't
+          # squash, so the version-bump commit may be earlier in the range.
+          FROM_SHA: ${{ github.event.before }}
+          TO_SHA: ${{ github.event.after }}
         run: |
-          gh workflow run services-build.yaml \
+          gh workflow run publish.yml \
             --repo ${{ github.repository }} \
-            --ref ${{ github.ref_name }}
-
-  deploy-client-libraries:
-    name: 📦 Trigger Client Libraries Build
-    needs: [lint-and-format]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/newjitsu' || github.ref == 'refs/heads/stable-jsclient')
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v6
-
-      - name: 🔍 Check changed files
-        id: changes
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            client-libs:
-              - 'libs/jitsu-js/**'       # @jitsu/js — the main browser SDK
-              - 'libs/jitsu-react/**'    # @jitsu/jitsu-react — depends on @jitsu/js
-              - 'types/**'               # @jitsu/protocols — peer-dep of @jitsu/js
-              - 'libs/common-config/**'  # common config for all client libs (eslint, tsconfig, build scripts)
-              - '.jsclient.version.json' # explicit version bump → always publish
-              - 'pnpm-lock.yaml'         # any dep change can affect build output
-              - '.github/workflows/client-libraries-build.yaml'  # re-test if build workflow changes
-
-      - name: 🚀 Trigger client-libraries-build workflow
-        if: steps.changes.outputs['client-libs'] == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run client-libraries-build.yaml \
-            --repo ${{ github.repository }} \
-            --ref ${{ github.ref_name }}
+            --ref ${{ github.ref_name }} \
+            -f from_sha="$FROM_SHA" \
+            -f to_sha="$TO_SHA"
