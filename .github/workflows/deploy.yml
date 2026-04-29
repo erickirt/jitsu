@@ -259,7 +259,7 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 🚀 Deploy `${{ steps.resolve.outputs.service }}` → `${{ steps.resolve.outputs.tag }}` (${{ steps.resolve.outputs.channel }}) ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} 🚀 Deploy `${{ steps.resolve.outputs.service }}` → `${{ steps.resolve.outputs.tag }}` (${{ steps.resolve.outputs.channel }}) ${{ job.status == 'success' && 'TRIGGERED' || 'FAILED' }}"
           blocks: |
             - title: Service
               value: ${{ steps.resolve.outputs.service }}
