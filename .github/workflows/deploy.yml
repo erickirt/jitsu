@@ -20,12 +20,35 @@ name: 🚀 Deploy
 on:
   workflow_dispatch:
     inputs:
-      services:
-        description: "Comma-separated keys from k8s/deploy-targets.yaml, or 'all'"
-        type: string
-        default: "all"
+      service:
+        description: "Service to deploy"
+        # Keep this list in sync with the keys in
+        # jitsu-cloud-infra/k8s/deploy-targets.yaml.
+        type: choice
+        options:
+          - rotor
+          - rotor-shard1
+          - rotor-shard2
+          - profiles
+          - bulker
+          - ingest
+          - operator
+          - functions-server
+          - admin
+          - reprocessing-worker
+          - syncctl
+          - sidecar
+          - cfgkpr
+          - ingmgr
+          - console
+        default: rotor
+      channel:
+        description: "Release channel — picks the latest git tag matching this channel"
+        type: choice
+        options: [beta, stable, canary]
+        default: beta
       tag:
-        description: "Image tag (default: latest stable jitsu-services* git tag)"
+        description: "Optional explicit image tag (overrides channel-based resolution)"
         type: string
         required: false
       dry_run:
@@ -86,113 +109,114 @@ jobs:
           rm -f /tmp/kustomize.tgz /tmp/kustomize
           kustomize version
 
-      - name: 🔎 Resolve tag and services
+      - name: 🔎 Resolve tag
         id: resolve
         env:
-          INPUT_SERVICES: ${{ inputs.services }}
+          INPUT_SERVICE: ${{ inputs.service }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -eu
 
-          # Resolve default tag (latest stable jitsu-services* git tag)
-          if [ -z "$INPUT_TAG" ]; then
-            LATEST=$(git tag -l 'jitsu-services*' | grep -vE '\-(beta|canary)\.' | sort -V | tail -1)
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+            echo "Tag from explicit input: $TAG"
+          else
+            # Pick the latest git tag matching the requested channel.
+            # services.yaml only pushes git tags for stable + beta; canary
+            # builds only get Docker tags, so there's nothing to resolve here.
+            case "$INPUT_CHANNEL" in
+              stable)
+                LATEST=$(git tag -l 'jitsu-services*' | grep -vE '\-(beta|canary)\.' | sort -V | tail -1)
+                ;;
+              beta)
+                LATEST=$(git tag -l 'jitsu-services*-beta.*' | sort -V | tail -1)
+                ;;
+              canary)
+                echo "::error::Canary builds don't push git tags — provide an explicit 'tag' input (e.g. 2.14.0-canary.20260101.abcd123)."
+                exit 1
+                ;;
+            esac
+
             if [ -z "$LATEST" ]; then
-              echo "::error::No stable jitsu-services* tag found and no tag input provided"
+              echo "::error::No '$INPUT_CHANNEL' git tag found in this repo. Provide an explicit 'tag' input or pick a different channel."
               exit 1
             fi
-            # Strip prefix: jitsu-services2.14.0 → 2.14.0; jitsu-services-v2.14.0 → 2.14.0
+
+            # Strip the prefix (handles both `jitsu-services2.14.0` and `jitsu-services-v2.14.0`).
             TAG=$(echo "$LATEST" | sed 's/^jitsu-services-\?v\?//')
-            echo "Default tag from latest stable git tag: $LATEST → $TAG"
-          else
-            TAG="$INPUT_TAG"
-            echo "Tag from input: $TAG"
+            echo "Latest $INPUT_CHANNEL git tag: $LATEST → $TAG"
           fi
 
-          # Resolve services list
+          # The dropdown enforces validity — but sanity-check the service is
+          # actually known to deploy-targets.yaml in case the two drift.
           REGISTRY="cloud-infra/k8s/deploy-targets.yaml"
-          ALL_KEYS=$(yq -r '.targets | keys | .[]' "$REGISTRY")
-          if [ "$INPUT_SERVICES" = "all" ]; then
-            SERVICES=$(echo "$ALL_KEYS" | tr '\n' ',' | sed 's/,$//')
-          else
-            SERVICES=$(echo "$INPUT_SERVICES" | tr -d ' ')
-            for k in $(echo "$SERVICES" | tr ',' ' '); do
-              if ! echo "$ALL_KEYS" | grep -qx "$k"; then
-                VALID=$(echo "$ALL_KEYS" | tr '\n' ',' | sed 's/,$//')
-                echo "::error::Unknown service '$k'. Valid: $VALID"
-                exit 1
-              fi
-            done
+          if ! yq -er ".targets.\"$INPUT_SERVICE\"" "$REGISTRY" > /dev/null 2>&1; then
+            echo "::error::Service '$INPUT_SERVICE' is not present in $REGISTRY. Sync the dropdown options with the registry."
+            exit 1
           fi
 
-          echo "tag=$TAG"           >> "$GITHUB_OUTPUT"
-          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "service=$INPUT_SERVICE" >> "$GITHUB_OUTPUT"
+          echo "channel=$INPUT_CHANNEL" >> "$GITHUB_OUTPUT"
           echo ""
-          echo "Plan: bump [$SERVICES] to $TAG"
+          echo "Plan: bump $INPUT_SERVICE to $TAG ($INPUT_CHANNEL)"
 
-      - name: 📝 Bump image tags
+      - name: 📝 Bump image tag
         id: bump
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
-          SERVICES: ${{ steps.resolve.outputs.services }}
+          SERVICE: ${{ steps.resolve.outputs.service }}
         run: |
           set -eu
           REGISTRY="cloud-infra/k8s/deploy-targets.yaml"
-          APPS=""
 
-          for KEY in $(echo "$SERVICES" | tr ',' ' '); do
-            FOLDER=$(yq -r ".targets.\"$KEY\".folder" "$REGISTRY")
-            ARGOCD_APP=$(yq -r ".targets.\"$KEY\".argocd_app" "$REGISTRY")
-            IMAGE=$(yq -r ".targets.\"$KEY\".image // \"\"" "$REGISTRY")
-            PATCH=$(yq -r ".targets.\"$KEY\".patch // \"\"" "$REGISTRY")
-            HELM_VALUE=$(yq -r ".targets.\"$KEY\".helm_value // \"\"" "$REGISTRY")
+          FOLDER=$(yq -r ".targets.\"$SERVICE\".folder" "$REGISTRY")
+          ARGOCD_APP=$(yq -r ".targets.\"$SERVICE\".argocd_app" "$REGISTRY")
+          IMAGE=$(yq -r ".targets.\"$SERVICE\".image // \"\"" "$REGISTRY")
+          PATCH=$(yq -r ".targets.\"$SERVICE\".patch // \"\"" "$REGISTRY")
+          HELM_VALUE=$(yq -r ".targets.\"$SERVICE\".helm_value // \"\"" "$REGISTRY")
 
-            echo "→ $KEY → $TAG  (folder: $FOLDER, argocd app: $ARGOCD_APP)"
+          echo "→ $SERVICE → $TAG  (folder: $FOLDER, argocd app: $ARGOCD_APP)"
 
-            if [ -n "$IMAGE" ]; then
-              ( cd "cloud-infra/$FOLDER" && kustomize edit set image "$IMAGE=$IMAGE:$TAG" )
-            elif [ -n "$PATCH" ]; then
-              ENV_VAR=$(yq -r ".targets.\"$KEY\".env_var" "$REGISTRY")
-              IMAGE_PREFIX=$(yq -r ".targets.\"$KEY\".image_prefix" "$REGISTRY")
-              yq -i "(.spec.template.spec.containers[].env[] | select(.name == \"$ENV_VAR\").value) = \"$IMAGE_PREFIX:$TAG\"" "cloud-infra/$FOLDER/$PATCH"
-            elif [ -n "$HELM_VALUE" ]; then
-              HELM_FILE=$(yq -r ".targets.\"$KEY\".helm_values_file" "$REGISTRY")
-              yq -i ".$HELM_VALUE = \"$TAG\"" "cloud-infra/$FOLDER/$HELM_FILE"
-            else
-              echo "::error::Target $KEY in deploy-targets.yaml has no image / patch / helm_value field"
-              exit 1
-            fi
+          if [ -n "$IMAGE" ]; then
+            ( cd "cloud-infra/$FOLDER" && kustomize edit set image "$IMAGE=$IMAGE:$TAG" )
+          elif [ -n "$PATCH" ]; then
+            ENV_VAR=$(yq -r ".targets.\"$SERVICE\".env_var" "$REGISTRY")
+            IMAGE_PREFIX=$(yq -r ".targets.\"$SERVICE\".image_prefix" "$REGISTRY")
+            yq -i "(.spec.template.spec.containers[].env[] | select(.name == \"$ENV_VAR\").value) = \"$IMAGE_PREFIX:$TAG\"" "cloud-infra/$FOLDER/$PATCH"
+          elif [ -n "$HELM_VALUE" ]; then
+            HELM_FILE=$(yq -r ".targets.\"$SERVICE\".helm_values_file" "$REGISTRY")
+            yq -i ".$HELM_VALUE = \"$TAG\"" "cloud-infra/$FOLDER/$HELM_FILE"
+          else
+            echo "::error::Target $SERVICE in deploy-targets.yaml has no image / patch / helm_value field"
+            exit 1
+          fi
 
-            APPS="$APPS $ARGOCD_APP"
-          done
-
-          # Dedupe argocd app list
-          APPS_UNIQUE=$(echo "$APPS" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')
-          echo "apps=$APPS_UNIQUE" >> "$GITHUB_OUTPUT"
+          echo "argocd_app=$ARGOCD_APP" >> "$GITHUB_OUTPUT"
+          echo "folder=$FOLDER"         >> "$GITHUB_OUTPUT"
           echo ""
-          echo "ArgoCD apps to sync: $APPS_UNIQUE"
+          echo "ArgoCD app to sync: $ARGOCD_APP"
 
       - name: 🔍 Verify rendered output
         env:
-          SERVICES: ${{ steps.resolve.outputs.services }}
+          SERVICE: ${{ steps.resolve.outputs.service }}
+          FOLDER: ${{ steps.bump.outputs.folder }}
         run: |
           set -eu
           REGISTRY="cloud-infra/k8s/deploy-targets.yaml"
-          for KEY in $(echo "$SERVICES" | tr ',' ' '); do
-            FOLDER=$(yq -r ".targets.\"$KEY\".folder" "$REGISTRY")
-            HELM_VALUE=$(yq -r ".targets.\"$KEY\".helm_value // \"\"" "$REGISTRY")
-            # Skip helm-mode folders (jitsu-platform); kustomize doesn't render them.
-            if [ -z "$HELM_VALUE" ]; then
-              echo "→ kubectl kustomize cloud-infra/$FOLDER"
-              kubectl kustomize "cloud-infra/$FOLDER" > /dev/null
-            fi
-          done
+          HELM_VALUE=$(yq -r ".targets.\"$SERVICE\".helm_value // \"\"" "$REGISTRY")
+          # Skip helm-mode folders (jitsu-platform); kustomize doesn't render them.
+          if [ -z "$HELM_VALUE" ]; then
+            echo "→ kubectl kustomize cloud-infra/$FOLDER"
+            kubectl kustomize "cloud-infra/$FOLDER" > /dev/null
+          fi
 
       - name: 📊 Show diff
         run: |
           cd cloud-infra
           if git diff --quiet; then
-            echo "No changes — services already on the requested tag."
+            echo "No changes — service already on the requested tag."
           else
             git --no-pager diff
           fi
@@ -211,7 +235,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
-          SERVICES: ${{ steps.resolve.outputs.services }}
+          SERVICE: ${{ steps.resolve.outputs.service }}
           BOT_NAME: ${{ steps.app-token.outputs.app-slug }}[bot]
           BOT_EMAIL: ${{ steps.bot-user.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com
         run: |
@@ -225,7 +249,7 @@ jobs:
           git config user.email "$BOT_EMAIL"
           git add -A
           git commit \
-            -m "deploy: bump $SERVICES to $TAG" \
+            -m "deploy: bump $SERVICE to $TAG" \
             -m "Triggered by ${{ github.actor }} via ${{ github.workflow }} run ${{ github.run_id }}."
           git push origin main
 
@@ -235,14 +259,16 @@ jobs:
         with:
           slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
           color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 🚀 Deploy `${{ steps.resolve.outputs.services }}` → `${{ steps.resolve.outputs.tag }}` ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+          header: "${{ job.status == 'success' && '✅' || '❌' }} 🚀 Deploy `${{ steps.resolve.outputs.service }}` → `${{ steps.resolve.outputs.tag }}` (${{ steps.resolve.outputs.channel }}) ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
           blocks: |
-            - title: Services
-              value: ${{ steps.resolve.outputs.services }}
+            - title: Service
+              value: ${{ steps.resolve.outputs.service }}
             - title: Tag
               value: ${{ steps.resolve.outputs.tag }}
-            - title: ArgoCD apps to sync
-              value: ${{ steps.bump.outputs.apps }}
+            - title: Channel
+              value: ${{ steps.resolve.outputs.channel }}
+            - title: ArgoCD app to sync
+              value: ${{ steps.bump.outputs.argocd_app }}
             - title: Triggered by
               value: ${{ github.actor }}
             - title: Workflow run
