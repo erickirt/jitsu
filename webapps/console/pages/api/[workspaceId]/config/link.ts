@@ -2,8 +2,7 @@ import { z } from "zod";
 import { Api, inferUrl, nextJsApiHandler, verifyAccessWithRole } from "../../../../lib/api";
 import { db } from "../../../../lib/server/db";
 import { randomId } from "juava";
-import { createScheduler, deleteScheduler, scheduleSync, updateScheduler } from "../../../../lib/server/sync";
-import { getAppEndpoint } from "../../../../lib/domains";
+import { scheduleSync } from "../../../../lib/server/sync";
 import { ConfigurationObjectLinkDbModel } from "../../../../prisma/schema";
 import { SyncOptionsType } from "../../../../lib/schema";
 import { ApiError } from "../../../../lib/shared/errors";
@@ -108,16 +107,7 @@ const postAndPutCfg = {
         where: { id: existingLink.id },
         data: { data, deleted: false, workspaceId },
       })) as SyncDbModel;
-      if (
-        (type === "sync" && data.schedule !== existingLink!.data?.["schedule"]) ||
-        data.timezone !== existingLink!.data?.["timezone"]
-      ) {
-        if (!data.schedule) {
-          await deleteScheduler(createdOrUpdated.id);
-        } else {
-          await updateScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
-        }
-      }
+      // Schedule changes are picked up by syncctl on its next /api/admin/export/syncs poll.
       await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "update", {
         prevVersion: existingLink,
         newVersion: createdOrUpdated,
@@ -133,10 +123,6 @@ const postAndPutCfg = {
           type,
         },
       })) as SyncDbModel;
-      if (type == "sync" && data.schedule) {
-        //sync scheduler immediately, so if it fails, user sees the error
-        await createScheduler(getAppEndpoint(req).baseUrl, createdOrUpdated);
-      }
       await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "create", {
         newVersion: createdOrUpdated,
       });
@@ -204,9 +190,7 @@ export const api: Api = {
         if (!updatedLink) {
           return { deleted: false };
         }
-        if (updatedLink.type == "sync") {
-          await deleteScheduler(updatedLink.id);
-        }
+        // Sync deletions are picked up by syncctl on its next /api/admin/export/syncs poll.
         await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", {
           prevVersion: updatedLink,
         });
@@ -220,9 +204,7 @@ export const api: Api = {
           data: { deleted: true },
         });
         for (const updatedLink of updatedLinks) {
-          if (updatedLink.type == "sync") {
-            await deleteScheduler(updatedLink.id);
-          }
+          // Sync deletions are picked up by syncctl on its next /api/admin/export/syncs poll.
           await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", {
             prevVersion: updatedLink,
           });

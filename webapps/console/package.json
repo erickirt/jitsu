@@ -35,7 +35,6 @@
     "@dnd-kit/utilities": "^3.2.1",
     "@fontsource/inter": "^4.5.13",
     "@fontsource/roboto-mono": "^4.5.8",
-    "@google-cloud/scheduler": "^4.0.0",
     "@jitsu-internal/webapps-shared": "workspace:*",
     "@jitsu/destination-functions": "workspace:*",
     "@jitsu/core-functions-lib": "workspace:*",

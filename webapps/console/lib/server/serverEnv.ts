@@ -79,16 +79,6 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   DEBUG_SYNCS: z.string().default("false").transform(isTruish),
 
   // ============================================
-  // Google Cloud Services
-  // ============================================
-
-  // Google Cloud Scheduler service account key (JSON)
-  GOOGLE_SCHEDULER_KEY: z.string().optional(),
-
-  // Google Cloud region for scheduler
-  GOOGLE_SCHEDULER_LOCATION: z.string().optional().default("us-central1"),
-
-  // ============================================
   // Authentication & OAuth
   // ============================================
 
