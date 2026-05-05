@@ -9,9 +9,9 @@ import { NextApiRequest } from "next";
 import hash from "object-hash";
 import { default as stableHash } from "stable-hash";
 import { WorkspaceDbModel, FunctionsServerDbModel } from "../../../../../prisma/schema";
-import pick from "lodash/pick";
 import { ProfileBuilder } from "@jitsu/destination-functions";
 import { getServerEnv } from "../../../../../lib/server/serverEnv";
+import { tryManageOauthCreds } from "../../../../../lib/server/oauth/services";
 
 const serverEnv = getServerEnv();
 const defaultFunctionsClass = serverEnv.DEFAULT_FUNCTIONS_CLASS;
@@ -829,7 +829,25 @@ async function exportWorkspacesWithProfiles(writer: Writer) {
   writer.write("]");
 }
 
-async function exportSyncsDebug(writer: Writer) {
+// Consumed by syncctl, which polls this to know what CronJobs to manage and
+// how to construct each Pod's run config. Each entry is a self-sufficient
+// snapshot of everything scheduleSync() needs at trigger time:
+//
+//   - identity (id, workspaceId, fromId, toId)
+//   - schedule + timezone (drives CronJob spec)
+//   - source.config (full service config, with OAuth-managed credentials —
+//     tryManageOauthCreds refreshes Nango tokens per poll for OAuth-using
+//     sources, so credentials are at most one poll-interval stale)
+//   - destination.config (full destination config)
+//   - sync.data (streams, disabledStreams, schemaChanges, namespace,
+//     deduplicate, …) — sidecar reads streams/disabledStreams/schemaChanges
+//     from here and applies selectStreamsFromCatalog logic itself
+//
+// Two things deliberately NOT in the export:
+//   - catalog: too large to ship per poll. Sidecar reads it from
+//     newjitsu.source_catalog directly using (package, version, versionHash).
+//   - source_state: changes per run. Sidecar reads/writes it directly.
+async function exportSyncs(writer: Writer) {
   writer.write("[");
 
   let lastId: string | undefined = undefined;
@@ -851,36 +869,91 @@ async function exportSyncsDebug(writer: Writer) {
     if (objects.length == 0) {
       break;
     }
-    getLog().atDebug().log(`Got batch of ${objects.length} objects for bulker export`);
+    getLog().atDebug().log(`Got batch of ${objects.length} syncs for export`);
     lastId = objects[objects.length - 1].id;
-    for (const { data, from, id, to, updatedAt, workspace } of objects) {
-      const destinationType = to.config.destinationType;
-      const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
-      if (!coreDestinationType) {
-        getLog().atError().log(`Unknown destination type: ${destinationType} for connection ${id}`);
-      }
+
+    // Each sync needs a Nango RPC (for OAuth-using ones) and a Postgres read
+    // (for the catalog). Run the batch in parallel so total time scales with
+    // batch size rather than sync count.
+    const enriched = await Promise.all(
+      objects.map(async ({ data, from, id, to, updatedAt, workspace }) => {
+        const destinationType = to.config.destinationType;
+        const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
+        if (!coreDestinationType) {
+          getLog().atError().log(`Unknown destination type: ${destinationType} for sync ${id}`);
+        }
+        const syncData = (data ?? {}) as Record<string, any>;
+        const serviceConfig: any = { ...(from.config as any), ...from };
+
+        // OAuth-managed credentials: passes through unchanged for non-OAuth
+        // services; refreshes the Nango token for OAuth-authorized ones.
+        // Falls back to raw credentials on Nango errors so a single bad
+        // integration doesn't poison the whole export.
+        let credentials: any = serviceConfig.credentials;
+        try {
+          credentials = await tryManageOauthCreds({ ...serviceConfig, id: from.id });
+        } catch (e: any) {
+          getLog().atError().withCause(e).log(`OAuth refresh failed for sync ${id}; using raw credentials`);
+        }
+
+        // scheduleSync applies this default for these packages — mirror it
+        // here so syncctl gets the same effective config.
+        if (
+          serviceConfig.package === "airbyte/source-postgres" ||
+          serviceConfig.package === "airbyte/source-mssql" ||
+          serviceConfig.package === "airbyte/source-singlestore"
+        ) {
+          if (credentials && typeof credentials === "object") {
+            credentials.sync_checkpoint_records = 200000;
+          }
+        }
+
+        const versionHash = `${workspace.id}_${from.id}_${juavaHash("md5", stableHash(credentials))}`;
+
+        // ClickHouse-without-provisioning override (mirrors scheduleSync).
+        const destinationConfig: any = { ...(to.config as any) };
+        if (destinationConfig.destinationType === "clickhouse" && !destinationConfig.provisioned) {
+          destinationConfig.loadAsJson = false;
+        }
+
+        return {
+          id,
+          workspaceId: workspace.id,
+          workspaceSlug: workspace.slug,
+          fromId: from.id,
+          toId: to.id,
+          source: {
+            package: serviceConfig.package,
+            version: serviceConfig.version,
+            authorized: !!serviceConfig.authorized,
+            config: { ...serviceConfig, credentials },
+          },
+          destination: {
+            type: destinationType,
+            usesBulker: !!coreDestinationType?.usesBulker,
+            config: destinationConfig,
+          },
+          schedule: syncData.schedule,
+          timezone: syncData.timezone ?? "Etc/UTC",
+          // Everything from sync.data minus the fields already promoted to
+          // top-level (schedule, timezone), plus the computed versionHash.
+          options: {
+            ...omit(syncData, "schedule", "timezone"),
+            versionHash,
+          },
+          updatedAt: dateMax(updatedAt, to.updatedAt),
+        };
+      })
+    );
+
+    for (const item of enriched) {
       if (needComma) {
         writer.write(",");
       }
-      const h = juavaHash("md5", stableHash(from.config.credentials));
-      const storageKey = `${workspace.id}_${from.id}_${h}`;
-      writer.write(
-        JSON.stringify({
-          id: id,
-          type: destinationType,
-          workspaceId: workspace.id,
-          streamId: from.id,
-          destinationId: to.id,
-          usesBulker: !!coreDestinationType?.usesBulker,
-          options: {
-            ...pick(data, "storageKey"),
-            versionHash: storageKey,
-          },
-          updatedAt: dateMax(updatedAt, to.updatedAt),
-        })
-      );
+      writer.write(JSON.stringify(item));
       needComma = true;
     }
+
     if (objects.length < batchSize) {
       break;
     }
@@ -966,9 +1039,9 @@ const exports: Export[] = [
   //   },
   // },
   {
-    name: "syncs-debug",
+    name: "syncs",
     lastModified: getLastUpdated,
-    data: exportSyncsDebug,
+    data: exportSyncs,
   },
 ];
 
