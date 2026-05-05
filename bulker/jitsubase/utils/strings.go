@@ -57,6 +57,16 @@ func ShortenStringWithEllipsis(str string, n int) string {
 	return string([]rune(str)[:n]) + "..."
 }
 
+func ShortenStringWithEllipsisMiddle(str string, n int, ellipsis string) string {
+	if len([]rune(str)) <= n {
+		return str
+	}
+	if ellipsis == "" {
+		ellipsis = "..."
+	}
+	return string([]rune(str)[:n/2]) + ellipsis + string([]rune(str)[len(str)-n/2:])
+}
+
 // IsLetterOrNumber returns true if input symbol is:
 //
 //	A - Z: 65-90
