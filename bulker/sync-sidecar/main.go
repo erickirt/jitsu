@@ -89,6 +89,9 @@ func main() {
 		case "lease-acquire":
 			runLeaseAcquire()
 			return
+		case "oauth-refresh":
+			runOAuthRefresh()
+			return
 		case "load-catalog-state":
 			runLoadCatalogState()
 			return

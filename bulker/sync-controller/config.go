@@ -62,6 +62,16 @@ type Config struct {
 	JobActiveDeadlineSeconds int32 `mapstructure:"JOB_ACTIVE_DEADLINE_SECONDS" default:"1800"`
 	JobBackoffLimit          int32 `mapstructure:"JOB_BACKOFF_LIMIT" default:"0"`
 
+	// # Nango (OAuth refresh in autonomous sync Pods)
+	// The oauth-refresh init container needs these to fetch fresh tokens
+	// from Nango at run time. When unset, OAuth-using syncs proceed with
+	// whatever tokens were embedded in the per-CronJob Secret at the last
+	// syncs export poll — the init container logs a warning and falls
+	// through. Tokens may be stale by the time the CronJob fires.
+	NangoAPIHost            string `mapstructure:"NANGO_API_HOST"`
+	NangoSecretKey          string `mapstructure:"NANGO_SECRET_KEY"`
+	GoogleAdsDeveloperToken string `mapstructure:"GOOGLE_ADS_DEVELOPER_TOKEN"`
+
 	LogLevel   string `mapstructure:"LOG_LEVEL" default:"INFO"`
 	DBLogLevel string `mapstructure:"DB_LOG_LEVEL" default:"INFO"`
 }

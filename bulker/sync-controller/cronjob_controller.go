@@ -324,16 +324,19 @@ func (c *CronJobController) buildCronJob(entry *SyncEntry) *batchv1.CronJob {
 // CronJob's jobTemplate. Init container chain:
 //
 //	lease-acquire           — exits non-zero if Lease "<syncId>" is held
-//	discover (conditional)  — airbyte source `discover`, output to /shared/discover.jsonl
+//	oauth-refresh           — always; for OAuth services calls Nango to refresh
+//	                          tokens; writes /shared/config.json
+//	discover (conditional)  — airbyte source `discover` against
+//	                          /shared/config.json; output to /shared/discover.jsonl
 //	load-catalog-state      — parses /shared/discover.jsonl (if present) into source_catalog,
 //	                          then reads source_catalog + source_state from DB,
 //	                          applies selectStreamsFromCatalog using OPTIONS_JSON,
 //	                          writes /shared/catalog.json + /shared/state.json
 //	pipes-init              — creates fifos for source ↔ sidecar streaming
 //
-// Main containers: source (airbyte read) + sidecar (existing default mode +
-// lease-renewal goroutine; SIGTERMs source via shareProcessNamespace if it
-// loses the lease).
+// Main containers: source (airbyte read against /shared/config.json) + sidecar
+// (existing default mode + lease-renewal goroutine; SIGTERMs source via
+// shareProcessNamespace if it loses the lease).
 func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplateSpec {
 	var opts struct {
 		SchemaChanges string `json:"schemaChanges"`
@@ -354,6 +357,7 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 	baseEnv := []v1.EnvVar{
 		{Name: "SYNC_ID", Value: entry.ID},
 		{Name: "WORKSPACE_ID", Value: entry.WorkspaceID},
+		{Name: "FROM_ID", Value: entry.FromID},
 		{Name: "PACKAGE", Value: entry.Source.Package},
 		{Name: "PACKAGE_VERSION", Value: entry.Source.Version},
 		{Name: "STORAGE_KEY", Value: opts.VersionHash},
@@ -366,27 +370,47 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 
 	initContainers := []v1.Container{
 		{
-			Name:    "lease-acquire",
-			Image:   c.config.SidecarImage,
-			Command: []string{"/sync-sidecar", "lease-acquire"},
-			Env:     baseEnv,
+			Name:      "lease-acquire",
+			Image:     c.config.SidecarImage,
+			Command:   []string{"/sync-sidecar", "lease-acquire"},
+			Env:       baseEnv,
 			Resources: smallResources(),
 		},
 	}
 
+	// oauth-refresh: always runs. For non-OAuth services this is a fast
+	// pass-through copy from /config/config.json → /shared/config.json. For
+	// OAuth-authorized services it calls Nango to refresh access tokens at
+	// run time so the source connector doesn't fail with stale tokens.
+	oauthEnv := append([]v1.EnvVar{}, baseEnv...)
+	oauthEnv = append(oauthEnv,
+		v1.EnvVar{Name: "NANGO_API_HOST", Value: c.config.NangoAPIHost},
+		v1.EnvVar{Name: "NANGO_SECRET_KEY", Value: c.config.NangoSecretKey},
+		v1.EnvVar{Name: "GOOGLE_ADS_DEVELOPER_TOKEN", Value: c.config.GoogleAdsDeveloperToken},
+	)
+	initContainers = append(initContainers, v1.Container{
+		Name:         "oauth-refresh",
+		Image:        c.config.SidecarImage,
+		Command:      []string{"/sync-sidecar", "oauth-refresh"},
+		Env:          oauthEnv,
+		VolumeMounts: []v1.VolumeMount{configMount, sharedMount},
+		Resources:    smallResources(),
+	})
+
 	if needsDiscover {
-		// Run airbyte source `discover`; capture mixed JSONL output to
-		// /shared/discover.jsonl for the load-catalog-state init to parse.
+		// Run airbyte source `discover` against the OAuth-refreshed config in
+		// /shared. Capture mixed JSONL output to /shared/discover.jsonl for
+		// the load-catalog-state init to parse.
 		initContainers = append(initContainers, v1.Container{
 			Name:  "discover",
 			Image: sourceImage,
 			Command: []string{"sh", "-c",
-				`eval "$AIRBYTE_ENTRYPOINT discover --config /config/config.json" > /shared/discover.jsonl 2> /shared/discover.stderr`},
+				`eval "$AIRBYTE_ENTRYPOINT discover --config /shared/config.json" > /shared/discover.jsonl 2> /shared/discover.stderr`},
 			Env: []v1.EnvVar{
 				{Name: "USE_STREAM_CAPABLE_STATE", Value: "true"},
 				{Name: "AUTO_DETECT_SCHEMA", Value: "true"},
 			},
-			VolumeMounts: []v1.VolumeMount{configMount, sharedMount},
+			VolumeMounts: []v1.VolumeMount{sharedMount},
 			Resources:    sourceResources(),
 		})
 	}
@@ -444,13 +468,13 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 				{
 					Name:    "source",
 					Image:   sourceImage,
-					Command: []string{"sh", "-c", `eval "$AIRBYTE_ENTRYPOINT read --config /config/config.json --catalog /shared/catalog.json --state /shared/state.json" 2> /pipes/stderr > /pipes/stdout`},
+					Command: []string{"sh", "-c", `eval "$AIRBYTE_ENTRYPOINT read --config /shared/config.json --catalog /shared/catalog.json --state /shared/state.json" 2> /pipes/stderr > /pipes/stdout`},
 					Env: []v1.EnvVar{
 						{Name: "USE_STREAM_CAPABLE_STATE", Value: "true"},
 						{Name: "AUTO_DETECT_SCHEMA", Value: "true"},
 						{Name: "JAVA_OPTS", Value: "-Xmx7000m"},
 					},
-					VolumeMounts: []v1.VolumeMount{configMount, sharedMount, pipesMount},
+					VolumeMounts: []v1.VolumeMount{sharedMount, pipesMount},
 					Resources:    sourceResources(),
 				},
 				{
