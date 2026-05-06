@@ -80,10 +80,29 @@ func (s *AbstractSideCar) Close() {
 }
 
 func main() {
+	// Subcommand routing for the autonomous CronJob Pod template. Each
+	// subcommand is its own short-lived program — no SideCar interface
+	// involved. Falls through to the default sidecar behavior when invoked
+	// without a subcommand (legacy reactive flow).
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "lease-acquire":
+			runLeaseAcquire()
+			return
+		case "load-catalog-state":
+			runLoadCatalogState()
+			return
+		}
+	}
+
 	startedAt, err := time.Parse(time.RFC3339, os.Getenv("STARTED_AT"))
 	if err != nil {
 		startedAt = time.Now()
 	}
+
+	// Renew the lease in the background while the main sidecar runs
+	// (no-op when RENEW_LEASE!=true, e.g. legacy reactive mode).
+	startLeaseRenewer()
 
 	command := os.Getenv("COMMAND")
 	var sidecar SideCar
