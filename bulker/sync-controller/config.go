@@ -43,6 +43,25 @@ type Config struct {
 	ConsoleURL   string `mapstructure:"CONSOLE_URL"`
 	ConsoleToken string `mapstructure:"CONSOLE_TOKEN"`
 
+	// # Repository (syncs export polling)
+	// RepositoryBaseURL is the URL of the console export endpoints, e.g.
+	// "http://console:3000/api/admin/export". The "/syncs" path is appended.
+	// If empty, the syncs repository is disabled — syncctl runs in legacy
+	// reactive-only mode and won't manage CronJobs.
+	RepositoryBaseURL          string `mapstructure:"REPOSITORY_BASE_URL"`
+	RepositoryAuthToken        string `mapstructure:"REPOSITORY_AUTH_TOKEN"`
+	RepositoryRefreshPeriodSec int    `mapstructure:"REPOSITORY_REFRESH_PERIOD_SEC" default:"30"`
+	RepositoryCacheDir         string `mapstructure:"REPOSITORY_CACHE_DIR" default:"/tmp/syncctl-cache"`
+
+	// # CronJob defaults (per autonomous sync run)
+	// JobActiveDeadlineSeconds caps the total time a Job (Pending+Running)
+	// can take before kubelet kills it. Doubles as the max-wait-for-resources
+	// timeout: a Pod that can't schedule within this window is killed and the
+	// Job is marked Failed. With JobBackoffLimit=0 the Job is not retried;
+	// the next CronJob fire happens normally on the next schedule tick.
+	JobActiveDeadlineSeconds int32 `mapstructure:"JOB_ACTIVE_DEADLINE_SECONDS" default:"1800"`
+	JobBackoffLimit          int32 `mapstructure:"JOB_BACKOFF_LIMIT" default:"0"`
+
 	LogLevel   string `mapstructure:"LOG_LEVEL" default:"INFO"`
 	DBLogLevel string `mapstructure:"DB_LOG_LEVEL" default:"INFO"`
 }

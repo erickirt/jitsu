@@ -115,6 +115,25 @@ func (t *TaskManager) CancelHandler(c *gin.Context) {
 }
 
 func (t *TaskManager) ReadHandler(c *gin.Context) {
+	syncID := c.Query("syncId")
+
+	// Admission gate: fail-fast if a Lease is currently held for this sync —
+	// either a cron-spawned Pod is running, or another manual run hasn't
+	// released its lease yet. Avoids spawning a second Pod that would
+	// promptly self-exit at the lease-acquire init container anyway.
+	if held, err := IsSyncLeaseHeld(t.jobRunner.clientset, t.config.KubernetesNamespace, syncID); err != nil {
+		// Fail open: don't block on a transient k8s API error. The Pod's
+		// own lease-acquire init still enforces the invariant.
+		t.Warnf("admission lease check failed for sync %s: %v (allowing run)", syncID, err)
+	} else if held {
+		c.JSON(http.StatusConflict, gin.H{
+			"ok":    false,
+			"error": "sync is already running (lease held)",
+			"syncId": syncID,
+		})
+		return
+	}
+
 	taskConfig := TaskConfiguration{}
 	err := jsonorder.NewDecoder(c.Request.Body).Decode(&taskConfig)
 	defer c.Request.Body.Close()
@@ -129,7 +148,7 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 		TaskType:        "read",
 		Package:         c.Query("package"),
 		PackageVersion:  c.Query("version"),
-		SyncID:          c.Query("syncId"),
+		SyncID:          syncID,
 		TaskID:          c.Query("taskId"),
 		Namespace:       c.Query("namespace"),
 		TableNamePrefix: c.Query("tableNamePrefix"),
