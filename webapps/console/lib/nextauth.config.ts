@@ -134,6 +134,35 @@ function generateSecret(base: (string | undefined)[]) {
   return secretKey;
 }
 
+const authCookieDomain = serverEnv.AUTH_COOKIE_DOMAIN;
+const useSecureCookies = !!serverEnv.NEXTAUTH_URL?.startsWith("https://");
+
+const sharedCookieOptions = authCookieDomain
+  ? {
+      cookies: {
+        sessionToken: {
+          name: useSecureCookies ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+          options: {
+            httpOnly: true,
+            sameSite: "lax" as const,
+            path: "/",
+            secure: useSecureCookies,
+            domain: authCookieDomain,
+          },
+        },
+        callbackUrl: {
+          name: useSecureCookies ? "__Secure-next-auth.callback-url" : "next-auth.callback-url",
+          options: { sameSite: "lax" as const, path: "/", secure: useSecureCookies, domain: authCookieDomain },
+        },
+        csrfToken: {
+          // CSRF cookie cannot use the __Host- prefix because that prefix forbids `domain`.
+          name: useSecureCookies ? "__Secure-next-auth.csrf-token" : "next-auth.csrf-token",
+          options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: useSecureCookies, domain: authCookieDomain },
+        },
+      },
+    }
+  : {};
+
 export const nextAuthConfig: NextAuthOptions = {
   // Configure one or more authentication providers
   providers: [githubProvider, oidcProvider, credentialsProvider].filter(provider => !!provider) as any,
@@ -141,6 +170,7 @@ export const nextAuthConfig: NextAuthOptions = {
     error: "/error/auth", // Error code passed in query string as ?error=
     signIn: "/signin", // Displays signin buttons
   },
+  ...sharedCookieOptions,
 
   secret:
     serverEnv.JWT_SECRET ||
