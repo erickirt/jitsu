@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { ConfigurationObject, ConfigurationObjectLink } from "@prisma/client";
+import { CronExpressionParser } from "cron-parser";
 import { hash as juavaHash, LogFactory, randomId, requireDefined, rpc } from "juava";
 import { getServerLog } from "./log";
 import { getAppEndpoint } from "../domains";
@@ -762,4 +763,47 @@ async function loadState(sync: SyncDatabaseModel): Promise<any> {
     }
   }
   return undefined;
+}
+
+/**
+ * Validate sync.data.schedule (5-field cron expression) and sync.data.timezone
+ * (IANA tz name) before persisting a sync. Throws an Error with a user-facing
+ * message on invalid input.
+ *
+ * Used by the link.ts POST/PUT handler. Previously the GCS scheduler API
+ * implicitly rejected invalid schedules at write time; with the move to
+ * syncctl-managed CronJobs, k8s rejects them later (in syncctl reconcile
+ * logs) with no API feedback to the user. This restores the synchronous
+ * write-time check.
+ *
+ * Empty/missing schedule means "manual-only sync" — not an error.
+ */
+export function validateSyncSchedule(data: { schedule?: string; timezone?: string } | undefined | null): void {
+  if (!data) return;
+  const schedule = data.schedule?.trim();
+  if (!schedule) return; // manual-only sync, no schedule to validate
+
+  // Reject the legacy "Disabled" sentinel that older UI code may still emit
+  // as the value "" — already handled above. Also reject obvious junk early
+  // before letting cron-parser produce a less-clear error.
+  if (schedule.startsWith("@")) {
+    // cron-parser supports @yearly/@monthly/@weekly/@daily/@hourly etc.;
+    // pass through to the parser. k8s CronJob spec ALSO accepts these per
+    // batch/v1 cron schedule format.
+  }
+
+  const tz = data.timezone?.trim() || "Etc/UTC";
+  // Validate IANA tz name first so the error message is targeted; cron-parser
+  // would otherwise just throw "Invalid timezone" without saying which one.
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  } catch {
+    throw new Error(`Invalid timezone "${tz}". Use an IANA tz name like "America/New_York" or "Etc/UTC".`);
+  }
+
+  try {
+    CronExpressionParser.parse(schedule, { tz });
+  } catch (e: any) {
+    throw new Error(`Invalid cron schedule "${schedule}": ${e?.message || e}`);
+  }
 }

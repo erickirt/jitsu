@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Api, inferUrl, nextJsApiHandler, verifyAccessWithRole } from "../../../../lib/api";
 import { db } from "../../../../lib/server/db";
 import { randomId } from "juava";
-import { scheduleSync } from "../../../../lib/server/sync";
+import { scheduleSync, validateSyncSchedule } from "../../../../lib/server/sync";
 import { ConfigurationObjectLinkDbModel } from "../../../../prisma/schema";
 import { SyncOptionsType } from "../../../../lib/schema";
 import { ApiError } from "../../../../lib/shared/errors";
@@ -34,6 +34,19 @@ const postAndPutCfg = {
     } = ctx;
     const { id, toId, fromId, data = undefined, type = "push" } = body;
     await verifyAccessWithRole(user, workspaceId, "editEntities");
+
+    // Always validate the cron schedule + timezone for sync links — k8s
+    // CronJob (managed by syncctl from the polled syncs export) will reject
+    // an invalid spec hours later with no feedback to the user, so catching
+    // it at write time is the only good signal. Manual-only syncs (no
+    // schedule set) pass through untouched.
+    if (type === "sync" && data) {
+      try {
+        validateSyncSchedule(data);
+      } catch (e: any) {
+        throw new ApiError(e.message, {}, { status: 400 });
+      }
+    }
 
     // Validate connection data if strict mode is enabled
     if (strict === "true" && data !== undefined) {
