@@ -239,14 +239,16 @@ func (c *CronJobController) deleteCronJob(syncID string) error {
 }
 
 // upsertSecret creates or updates the per-CronJob Secret holding the source
-// config.json + destination.json that the Pod's containers consume.
+// config.json + destinationConfig.json that the Pod's containers consume.
+// File names match what sync-sidecar's ReadSideCar.loadDestinationConfig
+// expects at /config/destinationConfig.json.
 func (c *CronJobController) upsertSecret(entry *SyncEntry) error {
 	name := fmt.Sprintf(cronSecretFmt, entry.ID)
 	data := map[string][]byte{
-		"config.json":      entry.Source.Config,
-		"destination.json": entry.Destination.Config,
+		"config.json":            entry.Source.Config,
+		"destinationConfig.json": entry.Destination.Config,
 	}
-	secret := &v1.Secret{
+	desired := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: c.config.KubernetesNamespace,
@@ -259,14 +261,23 @@ func (c *CronJobController) upsertSecret(entry *SyncEntry) error {
 		Type: v1.SecretTypeOpaque,
 		Data: data,
 	}
-	_, err := c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace).Create(context.Background(), secret, metav1.CreateOptions{})
+	secrets := c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace)
+
+	_, err := secrets.Create(context.Background(), desired, metav1.CreateOptions{})
 	if err == nil {
 		return nil
 	}
 	if !errors.IsAlreadyExists(err) {
 		return err
 	}
-	_, err = c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace).Update(context.Background(), secret, metav1.UpdateOptions{})
+	// Secret already exists — fetch its resourceVersion and Update with it.
+	// k8s.io rejects Update without a matching resourceVersion.
+	existing, getErr := secrets.Get(context.Background(), name, metav1.GetOptions{})
+	if getErr != nil {
+		return getErr
+	}
+	desired.ResourceVersion = existing.ResourceVersion
+	_, err = secrets.Update(context.Background(), desired, metav1.UpdateOptions{})
 	return err
 }
 
@@ -338,12 +349,25 @@ func (c *CronJobController) buildCronJob(entry *SyncEntry) *batchv1.CronJob {
 // (existing default mode + lease-renewal goroutine; SIGTERMs source via
 // shareProcessNamespace if it loses the lease).
 func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplateSpec {
+	// Run-time options pulled from sync.data — must match what
+	// ReadSideCar consumes via env in bulker/sync-sidecar/main.go.
 	var opts struct {
-		SchemaChanges string `json:"schemaChanges"`
-		VersionHash   string `json:"versionHash"`
+		SchemaChanges   string          `json:"schemaChanges"`
+		VersionHash     string          `json:"versionHash"`
+		Namespace       string          `json:"namespace"`
+		TableNamePrefix string          `json:"tableNamePrefix"`
+		ToSameCase      bool            `json:"toSameCase"`
+		AddMeta         bool            `json:"addMeta"`
+		Deduplicate     *bool           `json:"deduplicate"`
+		FunctionsEnv    json.RawMessage `json:"functionsEnv"`
 	}
 	_ = json.Unmarshal(entry.Options, &opts)
 	needsDiscover := opts.SchemaChanges == "fields" || opts.SchemaChanges == "streams"
+	// scheduleSync defaults deduplicate=true when missing.
+	deduplicate := true
+	if opts.Deduplicate != nil {
+		deduplicate = *opts.Deduplicate
+	}
 
 	sourceImage := fmt.Sprintf("%s:%s", entry.Source.Package, entry.Source.Version)
 	configSecretName := fmt.Sprintf(cronSecretFmt, entry.ID)
@@ -446,6 +470,20 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		v1.EnvVar{Name: "LOCAL_INGEST_ENDPOINT", Value: c.config.LocalIngestEndpoint},
 		v1.EnvVar{Name: "GLOBAL_INGEST_ENDPOINT", Value: c.config.GlobalIngestEndpoint},
 		v1.EnvVar{Name: "RENEW_LEASE", Value: "true"},
+		// Sync behavior options consumed by ReadSideCar from env (mirroring
+		// the legacy /read path which gets these via query string from
+		// scheduleSync). Without them, scheduled runs would silently fall
+		// back to defaults — different namespacing, dedupe, etc.
+		v1.EnvVar{Name: "NAMESPACE", Value: opts.Namespace},
+		v1.EnvVar{Name: "TABLE_NAME_PREFIX", Value: opts.TableNamePrefix},
+		v1.EnvVar{Name: "TO_SAME_CASE", Value: strconv.FormatBool(opts.ToSameCase)},
+		v1.EnvVar{Name: "ADD_META", Value: strconv.FormatBool(opts.AddMeta)},
+		v1.EnvVar{Name: "DEDUPLICATE", Value: strconv.FormatBool(deduplicate)},
+		v1.EnvVar{Name: "FUNCTIONS_ENV", Value: string(opts.FunctionsEnv)},
+		// One TASK_ID per Job run. Pod name is unique-per-run since k8s
+		// embeds the Job name + a random suffix; reusing it here gives the
+		// sidecar a stable correlation ID for logs / source_task / clickhouse.
+		v1.EnvVar{Name: "TASK_ID", ValueFrom: &v1.EnvVarSource{FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 	)
 
 	pod := v1.PodTemplateSpec{

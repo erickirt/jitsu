@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync/atomic"
 	"syscall"
@@ -263,6 +264,22 @@ func leaseIsStale(l *Lease) bool {
 	return time.Now().After(renewedAt.Add(dur))
 }
 
+// leaseHolderIdentity returns the identity this Pod uses on the Lease.
+// Pod-unique (POD_NAME via downward API) so Renew() can detect when another
+// Pod has taken over the same Lease object — both Pods of the same sync
+// would otherwise share the same identity and neither could detect takeover.
+// Falls back to the hostname (which kubelet sets equal to the pod name on
+// vanilla configurations) if POD_NAME isn't injected.
+func leaseHolderIdentity() string {
+	if name := os.Getenv("POD_NAME"); name != "" {
+		return name
+	}
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		return hostname
+	}
+	return "unknown"
+}
+
 // runLeaseAcquire is the lease-acquire init container entry point. Reads
 // SYNC_ID + KUBE_NAMESPACE from env, retries acquire briefly, exits 0 on
 // success or 1 on failure (fresh lease held by another pod).
@@ -273,17 +290,18 @@ func runLeaseAcquire() {
 		logging.Errorf("[lease-acquire] SYNC_ID and KUBE_NAMESPACE are required")
 		os.Exit(2)
 	}
+	identity := leaseHolderIdentity()
 	c, err := newLeaseClient(namespace)
 	if err != nil {
 		logging.Errorf("[lease-acquire] init: %v", err)
 		os.Exit(2)
 	}
 	for attempt := 1; attempt <= leaseAcquireMaxAttempts; attempt++ {
-		acquired, err := c.Acquire(syncID, syncID)
+		acquired, err := c.Acquire(syncID, identity)
 		if err != nil {
 			logging.Warnf("[lease-acquire] attempt %d: %v", attempt, err)
 		} else if acquired {
-			logging.Infof("[lease-acquire] acquired lease %q", syncID)
+			logging.Infof("[lease-acquire] acquired lease %q as %q", syncID, identity)
 			os.Exit(0)
 		} else {
 			logging.Infof("[lease-acquire] attempt %d: lease %q held by another holder", attempt, syncID)
@@ -296,12 +314,17 @@ func runLeaseAcquire() {
 
 // startLeaseRenewer launches a background goroutine that keeps the lease
 // alive while the main sidecar processes records. If the lease can't be
-// renewed (lost it), the goroutine SIGTERMs PID 1 to terminate the Pod and
-// stops the sync run mid-flight.
+// renewed (lost it — i.e. another pod with a different identity took it
+// over), the goroutine SIGTERMs PID 1 to terminate the Pod and stop the
+// sync mid-flight.
+//
+// Also installs a SIGTERM/SIGINT handler that releases the lease on clean
+// shutdown so the next scheduled or manual run isn't blocked waiting for
+// TTL expiry. (Without an explicit Release, the lease lingers up to
+// leaseDurationSeconds after the run exits, which can falsely 409 a
+// manual retry that comes in seconds after a successful sync.)
 //
 // Triggered when env RENEW_LEASE=true is set on the sidecar container.
-// Stop the renewal by Release()-ing or just letting the function return on
-// program exit (the goroutine ends with the process).
 func startLeaseRenewer() {
 	if os.Getenv("RENEW_LEASE") != "true" {
 		return
@@ -312,12 +335,34 @@ func startLeaseRenewer() {
 		logging.Warnf("[lease-renew] disabled: SYNC_ID and KUBE_NAMESPACE both required")
 		return
 	}
+	identity := leaseHolderIdentity()
 	client, err := newLeaseClient(namespace)
 	if err != nil {
 		logging.Errorf("[lease-renew] init: %v (sidecar will continue WITHOUT lease renewal)", err)
 		return
 	}
 	var lostLease atomic.Bool
+	var released atomic.Bool
+
+	tryRelease := func(reason string) {
+		if released.CompareAndSwap(false, true) {
+			logging.Infof("[lease-renew] releasing lease %q (%s)", syncID, reason)
+			client.Release(syncID)
+		}
+	}
+
+	// Cleanup on SIGTERM/SIGINT (graceful shutdown from kubelet on Pod
+	// completion, or from the user). Lost-lease path skips Release because
+	// another pod owns the Lease now.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigCh
+		if !lostLease.Load() {
+			tryRelease("signal received")
+		}
+	}()
+
 	go func() {
 		t := time.NewTicker(leaseRenewInterval)
 		defer t.Stop()
@@ -326,7 +371,7 @@ func startLeaseRenewer() {
 			if lostLease.Load() {
 				return
 			}
-			ok, err := client.Renew(syncID, syncID)
+			ok, err := client.Renew(syncID, identity)
 			if err != nil {
 				logging.Warnf("[lease-renew] %v (will retry)", err)
 				continue
@@ -339,14 +384,31 @@ func startLeaseRenewer() {
 				// kubelet will clean up siblings.
 				if err := syscall.Kill(1, syscall.SIGTERM); err != nil {
 					logging.Errorf("[lease-renew] SIGTERM PID 1 failed: %v", err)
-					// Last resort: just exit; the source connector will see
-					// EOF on its pipes shortly.
 					os.Exit(int(syscall.SIGTERM))
 				}
 				return
 			}
 		}
 	}()
+}
+
+// ReleaseSyncLease is callable from the main sidecar's normal-exit path
+// (e.g. defer at the end of ReadSideCar.Run). Idempotent and best-effort.
+func ReleaseSyncLease() {
+	if os.Getenv("RENEW_LEASE") != "true" {
+		return
+	}
+	syncID := os.Getenv("SYNC_ID")
+	namespace := os.Getenv("KUBE_NAMESPACE")
+	if syncID == "" || namespace == "" {
+		return
+	}
+	client, err := newLeaseClient(namespace)
+	if err != nil {
+		logging.Warnf("[lease-release] init: %v", err)
+		return
+	}
+	client.Release(syncID)
 }
 
 // Helper used by syncctl's /run admission gate (via HTTP, not in this binary).
