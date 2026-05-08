@@ -99,18 +99,25 @@ async function ensureFreshDatabase(dst: PgConn, cleanDst: boolean): Promise<void
 }
 
 /**
- * Strip top-level `SET <param> = ...;` statements from the dump. pg_dump
- * emits a handful (statement_timeout, transaction_timeout, etc.) and newer
- * pg_dump versions add params that older dst servers reject (e.g. `pg_dump
- * 17+` emits `transaction_timeout`, unknown to PG <17). Session defaults are
- * fine for a dev copy. Keeps `SELECT pg_catalog.set_config('search_path',…)`
- * so cross-schema references resolve.
+ * Strip top-level `SET <param> = ...;` statements that newer pg_dump versions
+ * emit but older dst servers reject. Targeted denylist — every other SET
+ * (`row_security`, `check_function_bodies`, `search_path`, `xmloption`, etc.)
+ * stays, since they matter for valid restores.
+ *
+ * Currently stripped:
+ *   - `transaction_timeout`: pg_dump 17+ emits it; PG <17 errors out.
+ *
+ * Add new entries here only if you've actually seen a restore fail because of
+ * the param.
  */
+const STRIPPED_SET_PARAMS = new Set(["transaction_timeout"]);
+
 function makeSetStripper(): Transform {
   let buf = "";
   function shouldDrop(line: string): boolean {
-    const t = line.trim();
-    return /^SET\s+[A-Za-z_]+\s*(=|TO)\s/i.test(t);
+    const m = /^\s*SET\s+([A-Za-z_]+)\s*(=|TO)\s/i.exec(line);
+    if (!m) return false;
+    return STRIPPED_SET_PARAMS.has(m[1].toLowerCase());
   }
   return new Transform({
     transform(chunk, _enc, cb) {
@@ -225,6 +232,10 @@ async function pgDumpToPsql(src: PgConn, dst: PgConn, structureOnly: string[]): 
   if (pCode !== 0) throw new Error(`psql exited with code ${pCode}`);
 }
 
+function isSameEndpoint(a: PgConn, b: PgConn): boolean {
+  return a.host === b.host && a.port === b.port && a.database === b.database;
+}
+
 export async function runCopyDb(args: string[]): Promise<void> {
   const opts = parseArgs(args);
   const src = parsePgUrl(expandEnvPlaceholders(opts.src));
@@ -232,6 +243,14 @@ export async function runCopyDb(args: string[]): Promise<void> {
 
   log.atInfo().log(`src: ${describe(src)}`);
   log.atInfo().log(`dst: ${describe(dst)}`);
+
+  // Refuse before anything destructive: dropping dst when src and dst point
+  // at the same place would destroy the only copy.
+  if (isSameEndpoint(src, dst)) {
+    throw new Error(
+      `src and dst point to the same endpoint (${describe(src)}). Refusing to continue — dropping dst would destroy src.`
+    );
+  }
 
   log.atInfo().log("Checking binaries on PATH...");
   checkBinary("pg_dump");
