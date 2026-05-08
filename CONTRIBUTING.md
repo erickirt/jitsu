@@ -24,6 +24,39 @@ Run
  * `docker compose -f ./docker/docker-compose.yml up --profile jitsu-services-dev --force-recreate` - to run dependencies + all Jitsu services
 in a hot reload mode, see `docker/README.md`
 
+# Environment variables
+
+Every node process spawned by a pnpm script auto-loads two layered `.env.local` files
+(later wins; existing `process.env` always wins over both, missing files skipped silently):
+
+1. `~/.jitsu/.env.local` — shared across all worktrees of all branches (Firebase, Stripe,
+   OIDC, GitHub OAuth — anything that doesn't change per branch).
+2. `<repo>/.env.local` — per-worktree (`DATABASE_URL`, `NEXTAUTH_URL`, `AUTH_COOKIE_DOMAIN`,
+   anything that should differ between two worktrees of two PRs).
+
+**No wrapper.** `node --inspect script.js` and your debugger attach to the script's own
+process directly — there's no `dotenv-cli` parent in the tree.
+
+`.env.example` documents the variables the apps expect. Runtime defaults belong in code
+(`process.env.FOO ?? "default"`), not in a tracked `.env`.
+
+## How it works
+
+The root [`.npmrc`](.npmrc) sets `node-options=--require=env-preload`,
+so pnpm exports `NODE_OPTIONS=--require=...` for every node process it spawns from a
+script. The preload ([`env-preload/preload-env.cjs`](env-preload/preload-env.cjs)) loads
+`~/.jitsu/.env.local`, then walks up from `process.cwd()` to find `pnpm-workspace.yaml`
+and load the repo-root `.env.local`. (Why a preload instead of `--env-file-if-exists`:
+Node disallows `--env-file*` in `NODE_OPTIONS` for security; `--require` is allowed.)
+
+## Adding to the shared layer
+
+```bash
+mkdir -p ~/.jitsu && chmod 700 ~/.jitsu
+touch ~/.jitsu/.env.local && chmod 600 ~/.jitsu/.env.local
+echo 'STRIPE_KEY=sk_live_xxx' >> ~/.jitsu/.env.local
+```
+
 # Development Workflow
 
 ## Development Branch

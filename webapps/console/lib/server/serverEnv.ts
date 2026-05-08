@@ -110,6 +110,17 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   // NextAuth callback URL (auto-detected in most cases)
   NEXTAUTH_URL: z.string().optional(),
 
+  // Cookie domain for the NextAuth session cookie.
+  //   - When set (e.g. `.jitsu.localhost`), `Set-Cookie` carries `Domain=...` and the
+  //     browser sends the cookie to every host that domain-matches the value — useful
+  //     for sharing the dev session across `console.jitsu.localhost`,
+  //     `ee.jitsu.localhost`, and `console-$BRANCH_NAME.jitsu.localhost`.
+  //   - When unset, `Set-Cookie` omits `Domain=`. Per RFC 6265 the browser then makes
+  //     the cookie host-only, scoped to whatever hostname served the response (taken
+  //     from the request's Host header — no code-side input needed). This is the right
+  //     behaviour in production (e.g. `use.jitsu.com`), so leave it unset there.
+  AUTH_COOKIE_DOMAIN: z.string().optional(),
+
   // Public URL of Jitsu console
   JITSU_PUBLIC_URL: z.string().optional(),
   JITSU_PUBLIC: z.string().optional(), // Alias for JITSU_PUBLIC_URL
