@@ -34,23 +34,27 @@ import (
 
 // File layout for the autonomous CronJob Pod template:
 //
-//   /config/                         (Secret mount, read-only)
-//     config.json                     ← persisted source config (raw)
-//     destinationConfig.json          ← persisted destination config
+//	/config/                         (Secret mount, read-only)
+//	  serviceConfig.json              ← Jitsu service config wrapper:
+//	                                    {package, version, authorized, credentials}
+//	  destinationConfig.json          ← persisted destination config
 //
-//   /shared/                         (emptyDir, read-write)
-//     config.json                     ← OAuth-refreshed source config (this init writes it)
-//     destinationConfig.json          ← copied from /config by this init
-//     catalog.json                    ← written by load-catalog-state init
-//     state.json                      ← written by load-catalog-state init
-//     discover.jsonl                  ← (optional) written by discover init
+//	/shared/                         (emptyDir, read-write)
+//	  config.json                     ← unwrapped airbyte config (this init writes it):
+//	                                    serviceConfig.credentials, with OAuth tokens
+//	                                    refreshed for OAuth-authorized services. This
+//	                                    is what the source connector reads via --config.
+//	  destinationConfig.json          ← copied from /config by this init
+//	  catalog.json                    ← written by load-catalog-state init
+//	  state.json                      ← written by load-catalog-state init
+//	  discover.jsonl                  ← (optional) written by discover init
 //
 // Downstream containers read everything from /shared (single CONFIGS_PATH
 // for the sidecar; source connector reads /shared/config.json directly).
 const (
 	configInDir   = "/config"
 	configOutDir  = "/shared"
-	configInPath  = configInDir + "/config.json"
+	configInPath  = configInDir + "/serviceConfig.json"
 	configOutPath = configOutDir + "/config.json"
 	destInPath    = configInDir + "/destinationConfig.json"
 	destOutPath   = configOutDir + "/destinationConfig.json"
@@ -90,7 +94,7 @@ func runOAuthRefresh() {
 		// Sources like airbyte/source-postgres expect host/port/etc. at the
 		// config root; if we wrote the whole serviceConfig we'd nest them
 		// under `credentials` and the source would fail to find them.
-		writeUnauthCredentials(cfg, in)
+		passCredentials(cfg, in)
 		return
 	}
 
@@ -100,14 +104,14 @@ func runOAuthRefresh() {
 	nangoKey := os.Getenv("NANGO_SECRET_KEY")
 	if nangoHost == "" || nangoKey == "" {
 		logging.Warnf("[oauth] OAuth-authorized sync but NANGO_API_HOST/NANGO_SECRET_KEY not set — using stale tokens from Secret")
-		writeUnauthCredentials(cfg, in)
+		passCredentials(cfg, in)
 		return
 	}
 
 	integrationID := nangoIntegrationID(pkg)
 	if integrationID == "" {
 		logging.Warnf("[oauth] no Nango integration mapping for package %q — using stale tokens", pkg)
-		writeUnauthCredentials(cfg, in)
+		passCredentials(cfg, in)
 		return
 	}
 
@@ -140,16 +144,7 @@ func runOAuthRefresh() {
 	logging.Infof("[oauth] refreshed credentials for %s (sync-source.%s)", pkg, sourceID)
 }
 
-// writeUnauthCredentials writes the wire-shape config the source connector
-// expects for non-OAuth sources (and OAuth sources we couldn't refresh —
-// pass-through with stale tokens). Mirrors the legacy scheduleSync return:
-// just service.credentials, NOT the wrapping serviceConfig.
-//
-// Sources that store config flat at root (no `credentials` wrapper —
-// historically rare in Jitsu but possible for older imports) fall back to
-// shipping the whole input. Sources ignore extra root fields like id /
-// package / version per airbyte's permissive jsonschema validation.
-func writeUnauthCredentials(cfg map[string]any, raw []byte) {
+func passCredentials(cfg map[string]any, raw []byte) {
 	if creds, ok := cfg["credentials"]; ok && creds != nil {
 		out, err := json.Marshal(creds)
 		if err != nil {
@@ -162,11 +157,8 @@ func writeUnauthCredentials(cfg map[string]any, raw []byte) {
 		}
 		return
 	}
-	// No credentials wrapper in the stored config — write whole input.
-	if err := os.WriteFile(configOutPath, raw, 0o644); err != nil {
-		logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
-		os.Exit(1)
-	}
+	logging.Errorf("[oauth] credentials not found in %s", configOutPath)
+	os.Exit(1)
 }
 
 // nangoIntegrationID mirrors the {packageId → nangoIntegrationId} mapping in
@@ -256,8 +248,11 @@ func manageStr(original any, provided string) string {
 // on each OauthDecorator in webapps/console/lib/server/oauth/services.ts.
 // Returns a copy of cfg with refreshed credentials substituted in place.
 func mergeOAuthCreds(pkg string, cfg map[string]any, integ *nangoIntegration, conn *nangoConnection) (map[string]any, error) {
-	out := deepCopyMap(cfg)
-
+	credentials, ok := cfg["credentials"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("no credentials found in %+v", cfg)
+	}
+	out := deepCopyMap(credentials)
 	switch pkg {
 	case "airbyte/source-github":
 		creds, _ := out["credentials"].(map[string]any)

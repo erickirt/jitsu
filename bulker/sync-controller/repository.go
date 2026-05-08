@@ -23,30 +23,24 @@ import (
 //     options.disabledStreams, and options.schemaChanges to apply the
 //     selectStreamsFromCatalog port.
 type SyncEntry struct {
-	ID            string             `json:"id"`
-	WorkspaceID   string             `json:"workspaceId"`
-	WorkspaceSlug string             `json:"workspaceSlug"`
-	FromID        string             `json:"fromId"`
-	ToID          string             `json:"toId"`
-	Source        SyncSourceConfig   `json:"source"`
-	Destination   SyncDestConfig     `json:"destination"`
-	Schedule      string             `json:"schedule,omitempty"` // empty → manual-only sync, no CronJob
-	Timezone      string             `json:"timezone"`
-	Options       json.RawMessage    `json:"options"`
-	UpdatedAt     time.Time          `json:"updatedAt"`
+	ID            string           `json:"id"`
+	WorkspaceID   string           `json:"workspaceId"`
+	WorkspaceSlug string           `json:"workspaceSlug"`
+	FromID        string           `json:"fromId"`
+	ToID          string           `json:"toId"`
+	Source        SyncSourceConfig `json:"source"`
+	Destination   json.RawMessage  `json:"destination"`
+	Schedule      string           `json:"schedule,omitempty"` // empty → manual-only sync, no CronJob
+	Timezone      string           `json:"timezone"`
+	Options       json.RawMessage  `json:"options"`
+	UpdatedAt     time.Time        `json:"updatedAt"`
 }
 
 type SyncSourceConfig struct {
-	Package    string          `json:"package"`
-	Version    string          `json:"version"`
-	Authorized bool            `json:"authorized"`
-	Config     json.RawMessage `json:"config"`
-}
-
-type SyncDestConfig struct {
-	Type       string          `json:"type"`
-	UsesBulker bool            `json:"usesBulker"`
-	Config     json.RawMessage `json:"config"`
+	Package     string          `json:"package"`
+	Version     string          `json:"version"`
+	Authorized  bool            `json:"authorized"`
+	Credentials json.RawMessage `json:"credentials"`
 }
 
 // SyncsData is the in-memory representation of the polled syncs export.

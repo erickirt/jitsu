@@ -878,13 +878,21 @@ async function exportSyncs(writer: Writer) {
     lastId = objects[objects.length - 1].id;
 
     const enriched = objects.map(({ data, from, id, to, updatedAt, workspace }) => {
-      const destinationType = to.config.destinationType;
+      let destinationConfig: any = { ...(to.config as any) };
+      const destinationType = destinationConfig.destinationType;
       const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
       if (!coreDestinationType) {
         getLog().atError().log(`Unknown destination type: ${destinationType} for sync ${id}`);
       }
+      if (!coreDestinationType?.usesBulker) {
+        getLog()
+          .atError()
+          .log(
+            `Sync ${id} has destination type ${destinationType} which does not use bulker - skipping export of this sync`
+          );
+      }
       const syncData = (data ?? {}) as Record<string, any>;
-      const serviceConfig: any = { ...(from.config as any), ...from };
+      let serviceConfig: any = { ...(from.config as any) };
 
       // versionHash MUST be derived from the raw persisted credentials —
       // matches the formula used by scheduleSync and sources/discover when
@@ -896,21 +904,20 @@ async function exportSyncs(writer: Writer) {
       // scheduleSync applies this default for these packages — apply it to
       // a separate `credentials` value used only in the runtime source.config
       // (so it doesn't leak into versionHash above).
-      let credentials: any = serviceConfig.credentials;
       if (
         serviceConfig.package === "airbyte/source-postgres" ||
         serviceConfig.package === "airbyte/source-mssql" ||
         serviceConfig.package === "airbyte/source-singlestore"
       ) {
-        if (credentials && typeof credentials === "object") {
-          credentials = { ...credentials, sync_checkpoint_records: 200000 };
-        }
+        serviceConfig = {
+          ...serviceConfig,
+          credentials: { ...serviceConfig.credentials, sync_checkpoint_records: 200000 },
+        };
       }
 
       // ClickHouse-without-provisioning override (mirrors scheduleSync).
-      const destinationConfig: any = { ...(to.config as any) };
-      if (destinationConfig.destinationType === "clickhouse" && !destinationConfig.provisioned) {
-        destinationConfig.loadAsJson = false;
+      if (destinationType === "clickhouse" && !destinationConfig.provisioned) {
+        destinationConfig = { ...destinationConfig, loadAsJson: false };
       }
 
       return {
@@ -919,17 +926,8 @@ async function exportSyncs(writer: Writer) {
         workspaceSlug: workspace.slug,
         fromId: from.id,
         toId: to.id,
-        source: {
-          package: serviceConfig.package,
-          version: serviceConfig.version,
-          authorized: !!serviceConfig.authorized,
-          config: { ...serviceConfig, credentials },
-        },
-        destination: {
-          type: destinationType,
-          usesBulker: !!coreDestinationType?.usesBulker,
-          config: destinationConfig,
-        },
+        source: serviceConfig,
+        destination: destinationConfig,
         schedule: syncData.schedule,
         timezone: syncData.timezone ?? "Etc/UTC",
         // Everything from sync.data minus the fields already promoted to

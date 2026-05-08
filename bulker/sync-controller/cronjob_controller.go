@@ -33,8 +33,8 @@ const (
 	labelAppName     = "app"
 	managedByValue   = "syncctl"
 	cronJobAppValue  = "sync-cron"
-	cronJobNameFmt   = "sync-%s"      // CronJob.metadata.name
-	cronSecretFmt    = "sync-%s-cfg"  // per-CronJob Secret holding source/destination configs
+	cronJobNameFmt   = "sync-%s"     // CronJob.metadata.name
+	cronSecretFmt    = "sync-%s-cfg" // per-CronJob Secret holding source/destination configs
 )
 
 // CronJobController watches a SyncsRepository and reconciles k8s CronJobs +
@@ -166,22 +166,20 @@ func (c *CronJobController) reconcile() {
 // produces a different hash → reconciler patches the CronJob + Secret.
 func configHash(entry *SyncEntry) string {
 	b, _ := json.Marshal(struct {
-		Schedule    string          `json:"s"`
-		Timezone    string          `json:"tz"`
-		SrcPkg      string          `json:"sp"`
-		SrcVer      string          `json:"sv"`
-		SrcCfg      json.RawMessage `json:"sc"`
-		DestType    string          `json:"dt"`
-		DestCfg     json.RawMessage `json:"dc"`
-		Options     json.RawMessage `json:"o"`
+		Schedule string          `json:"s"`
+		Timezone string          `json:"tz"`
+		SrcPkg   string          `json:"sp"`
+		SrcVer   string          `json:"sv"`
+		SrcCfg   json.RawMessage `json:"sc"`
+		DestCfg  json.RawMessage `json:"dc"`
+		Options  json.RawMessage `json:"o"`
 	}{
 		Schedule: entry.Schedule,
 		Timezone: entry.Timezone,
 		SrcPkg:   entry.Source.Package,
 		SrcVer:   entry.Source.Version,
-		SrcCfg:   entry.Source.Config,
-		DestType: entry.Destination.Type,
-		DestCfg:  entry.Destination.Config,
+		SrcCfg:   entry.Source.Credentials,
+		DestCfg:  entry.Destination,
 		Options:  entry.Options,
 	})
 	return utils.HashStringS(string(b))
@@ -244,9 +242,20 @@ func (c *CronJobController) deleteCronJob(syncID string) error {
 // expects at /config/destinationConfig.json.
 func (c *CronJobController) upsertSecret(entry *SyncEntry) error {
 	name := fmt.Sprintf(cronSecretFmt, entry.ID)
+	// /config/serviceConfig.json holds the Jitsu service config wrapper
+	// (package, version, authorized, credentials). oauth-refresh init reads
+	// cfg["authorized"] and cfg["credentials"] from it, then writes the
+	// unwrapped airbyte config to /shared/config.json — that's the file the
+	// source connector actually reads via --config. Different name here
+	// avoids the impression that this Secret-mounted file is what the source
+	// expects directly.
+	sourceJSON, err := json.Marshal(entry.Source)
+	if err != nil {
+		return fmt.Errorf("marshal source config: %w", err)
+	}
 	data := map[string][]byte{
-		"config.json":            entry.Source.Config,
-		"destinationConfig.json": entry.Destination.Config,
+		"serviceConfig.json":     sourceJSON,
+		"destinationConfig.json": entry.Destination,
 	}
 	desired := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -263,7 +272,7 @@ func (c *CronJobController) upsertSecret(entry *SyncEntry) error {
 	}
 	secrets := c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace)
 
-	_, err := secrets.Create(context.Background(), desired, metav1.CreateOptions{})
+	_, err = secrets.Create(context.Background(), desired, metav1.CreateOptions{})
 	if err == nil {
 		return nil
 	}
@@ -402,10 +411,11 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		},
 	}
 
-	// oauth-refresh: always runs. For non-OAuth services this is a fast
-	// pass-through copy from /config/config.json → /shared/config.json. For
-	// OAuth-authorized services it calls Nango to refresh access tokens at
-	// run time so the source connector doesn't fail with stale tokens.
+	// oauth-refresh: always runs. Reads /config/serviceConfig.json (the
+	// Jitsu wrapper), unwraps `credentials` and writes the airbyte config to
+	// /shared/config.json. For OAuth-authorized services it first calls
+	// Nango to refresh access tokens so the source connector doesn't fail
+	// with stale tokens.
 	oauthEnv := append([]v1.EnvVar{}, baseEnv...)
 	oauthEnv = append(oauthEnv,
 		v1.EnvVar{Name: "NANGO_API_HOST", Value: c.config.NangoAPIHost},
@@ -465,7 +475,6 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		v1.EnvVar{Name: "STDOUT_PIPE_FILE", Value: "/pipes/stdout"},
 		v1.EnvVar{Name: "STDERR_PIPE_FILE", Value: "/pipes/stderr"},
 		v1.EnvVar{Name: "COMMAND", Value: "read"},
-		v1.EnvVar{Name: "DESTINATION_TYPE", Value: entry.Destination.Type},
 		v1.EnvVar{Name: "TASK_TIMEOUT_HOURS", Value: strconv.Itoa(c.config.TaskTimeoutHours)},
 		v1.EnvVar{Name: "LOCAL_INGEST_ENDPOINT", Value: c.config.LocalIngestEndpoint},
 		v1.EnvVar{Name: "GLOBAL_INGEST_ENDPOINT", Value: c.config.GlobalIngestEndpoint},
