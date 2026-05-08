@@ -657,9 +657,23 @@ func (s *ReadSideCar) sendGoodStatus(status string, description, error string, l
 	}
 }
 
+// configsPath returns the directory that holds catalog.json, state.json
+// and destinationConfig.json for the current run.
+//
+//   - Default ("/config")   : Secret mount used by the legacy reactive flow.
+//   - CONFIGS_PATH overrides : CronJob-driven runs set it to "/shared",
+//     an emptyDir written by the oauth-refresh + load-catalog-state init
+//     containers (so all run-time inputs sit in one directory regardless
+//     of how they got there).
+func configsPath() string {
+	if p := os.Getenv("CONFIGS_PATH"); p != "" {
+		return strings.TrimRight(p, "/")
+	}
+	return "/config"
+}
+
 func (s *ReadSideCar) loadState() (string, bool) {
-	//load catalog from file /config/catalog.json and parse it
-	statePath := "/config/state.json"
+	statePath := configsPath() + "/state.json"
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
 		return "", false
 	}
@@ -668,7 +682,10 @@ func (s *ReadSideCar) loadState() (string, bool) {
 		return "", false
 	}
 	st := strings.TrimSpace(string(state))
-	if len(st) == 0 || st == "{}" {
+	// Treat empty / {} / [] as "no state". `[]` matters for the autonomous
+	// CronJob path where the load-catalog-state init writes a JSON document
+	// regardless of whether any source_state rows existed.
+	if len(st) == 0 || st == "{}" || st == "[]" {
 		return "", false
 	}
 	s.initialState = st
@@ -676,8 +693,7 @@ func (s *ReadSideCar) loadState() (string, bool) {
 }
 
 func (s *ReadSideCar) loadCatalog() error {
-	//load catalog from file /config/catalog.json and parse it
-	catalogPath := "/config/catalog.json"
+	catalogPath := configsPath() + "/catalog.json"
 	if _, err := os.Stat(catalogPath); os.IsNotExist(err) {
 		return fmt.Errorf("catalog file %s doesn't exist", catalogPath)
 	}
@@ -700,8 +716,7 @@ func (s *ReadSideCar) loadCatalog() error {
 }
 
 func (s *ReadSideCar) loadDestinationConfig() error {
-	//load catalog from file /config/catalog.json and parse it
-	destinationConfigPath := "/config/destinationConfig.json"
+	destinationConfigPath := configsPath() + "/destinationConfig.json"
 	if _, err := os.Stat(destinationConfigPath); os.IsNotExist(err) {
 		return fmt.Errorf("destination config file %s doesn't exist", destinationConfigPath)
 	}

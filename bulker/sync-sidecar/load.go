@@ -216,7 +216,13 @@ func loadSyncState(ctx context.Context, pool *pgxpool.Pool, syncID string, opts 
 	}
 
 	if len(all) == 0 {
-		return []any{}, nil
+		// Return {} — NOT [] — to match what scheduleSync passes for "no
+		// state". ReadSideCar.loadState treats {} as no-state but used to
+		// treat [] as state-present, which would flip incremental streams
+		// from first-run replace into batch mode. (read.go now also
+		// tolerates [], but we still emit {} to stay consistent with the
+		// legacy reactive flow's wire format.)
+		return map[string]any{}, nil
 	}
 	if len(all) == 1 && all[0].stream == legacyStateStream {
 		return all[0].state, nil

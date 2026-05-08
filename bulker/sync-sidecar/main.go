@@ -104,8 +104,13 @@ func main() {
 	}
 
 	// Renew the lease in the background while the main sidecar runs
-	// (no-op when RENEW_LEASE!=true, e.g. legacy reactive mode).
+	// (no-op when RENEW_LEASE!=true, e.g. legacy reactive mode). Defer a
+	// best-effort Release so the natural-exit path also clears the lease —
+	// the SIGTERM handler in startLeaseRenewer covers kubelet-initiated
+	// shutdown but doesn't fire when the sidecar finishes work and Run()
+	// returns on its own.
 	startLeaseRenewer()
+	defer ReleaseSyncLease()
 
 	command := os.Getenv("COMMAND")
 	var sidecar SideCar

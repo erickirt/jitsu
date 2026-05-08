@@ -470,6 +470,13 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		v1.EnvVar{Name: "LOCAL_INGEST_ENDPOINT", Value: c.config.LocalIngestEndpoint},
 		v1.EnvVar{Name: "GLOBAL_INGEST_ENDPOINT", Value: c.config.GlobalIngestEndpoint},
 		v1.EnvVar{Name: "RENEW_LEASE", Value: "true"},
+		// All sidecar inputs (catalog.json, state.json, destinationConfig.json)
+		// live in /shared in the autonomous flow:
+		//   - destinationConfig.json — copied from /config by oauth-refresh init
+		//   - catalog.json + state.json — written by load-catalog-state init
+		// Source connector reads /shared/config.json directly via --config.
+		// ReadSideCar.configsPath() resolves all three paths from this env.
+		v1.EnvVar{Name: "CONFIGS_PATH", Value: "/shared"},
 		// Sync behavior options consumed by ReadSideCar from env (mirroring
 		// the legacy /read path which gets these via query string from
 		// scheduleSync). Without them, scheduled runs would silently fall
@@ -520,8 +527,11 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 					Image:           c.config.SidecarImage,
 					ImagePullPolicy: v1.PullAlways,
 					Env:             sidecarEnv,
-					VolumeMounts:    []v1.VolumeMount{configMount, sharedMount, pipesMount},
-					Resources:       sidecarResources(),
+					// Sidecar reads everything (catalog, state, destinationConfig)
+					// from /shared via CONFIGS_PATH — no need for the /config
+					// Secret mount in autonomous mode.
+					VolumeMounts: []v1.VolumeMount{sharedMount, pipesMount},
+					Resources:    sidecarResources(),
 				},
 			},
 			Volumes: []v1.Volume{

@@ -138,12 +138,26 @@ func SelectStreamsFromCatalog(catalogObj map[string]any, opts *SyncOptions) (*Co
 	return out, nil
 }
 
-// initStreamDefault derives a minimal per-stream config when the user
-// selected a stream via "schemaChanges: streams" auto-discovery and didn't
-// provide explicit settings. Picks incremental iff the catalog stream
-// supports it AND incremental mode is in use elsewhere (the TS heuristic).
+// initStreamDefault is the Go port of initStream from
+// webapps/console/lib/sources.ts. Used when a stream was auto-included via
+// schemaChanges=streams without explicit user settings — derives the
+// sync_mode + cursor_field that the TS UI would have set.
+//
+// Decision tree (matches TS):
+//   1. If "incremental" not in supported_sync_modes → full_refresh.
+//   2. If outer mode hint is "full_refresh" (hasIncremental==false) → full_refresh.
+//   3. source_defined_cursor=true → incremental (no cursor_field).
+//   4. default_cursor_field set (non-empty) → incremental + that cursor_field.
+//   5. Heuristic on json_schema.properties:
+//        - first date-time field whose name starts with "updated"
+//        - else first date-time field whose name starts with "created"
+//        - else date-time field named "timestamp"
+//        - else integer field named "id"
+//      → incremental + that field as cursor_field.
+//   6. Otherwise: stays full_refresh (or incremental from #3 above).
 func initStreamDefault(streamMap map[string]any, hasIncremental bool) streamConfigFields {
 	cfg := streamConfigFields{SyncMode: "full_refresh"}
+
 	supportedRaw, _ := streamMap["supported_sync_modes"].([]any)
 	supportsIncremental := false
 	for _, m := range supportedRaw {
@@ -152,14 +166,103 @@ func initStreamDefault(streamMap map[string]any, hasIncremental bool) streamConf
 			break
 		}
 	}
-	if supportsIncremental && hasIncremental {
+	if !supportsIncremental || !hasIncremental {
+		return cfg
+	}
+
+	// source_defined_cursor → incremental, no explicit cursor_field.
+	// May be overridden by default_cursor_field or the heuristic below.
+	if v, _ := streamMap["source_defined_cursor"].(bool); v {
 		cfg.SyncMode = "incremental"
-		// If the catalog declares default cursor field(s), use them.
-		if dcf, ok := streamMap["default_cursor_field"].([]any); ok {
-			cfg.CursorField = dcf
+	}
+
+	// default_cursor_field wins if set.
+	if dcf, _ := streamMap["default_cursor_field"].([]any); len(dcf) > 0 {
+		cfg.SyncMode = "incremental"
+		cfg.CursorField = dcf
+		return cfg
+	}
+
+	// Date / id heuristic on json_schema.properties.
+	schema, _ := streamMap["json_schema"].(map[string]any)
+	if schema == nil {
+		return cfg
+	}
+	props, _ := schema["properties"].(map[string]any)
+	if props == nil {
+		return cfg
+	}
+
+	// Sort property names for deterministic selection (Go map iteration is
+	// random; the TS reference uses Object.entries which preserves insertion
+	// order — alphabetical isn't identical but it's stable across runs).
+	names := make([]string, 0, len(props))
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	dateNames := make([]string, 0)
+	for _, name := range names {
+		pdata, ok := props[name].(map[string]any)
+		if !ok {
+			continue
+		}
+		if format, _ := pdata["format"].(string); format == "date-time" {
+			dateNames = append(dateNames, name)
 		}
 	}
+
+	pick := ""
+	for _, n := range dateNames {
+		if strings.HasPrefix(n, "updated") {
+			pick = n
+			break
+		}
+	}
+	if pick == "" {
+		for _, n := range dateNames {
+			if strings.HasPrefix(n, "created") {
+				pick = n
+				break
+			}
+		}
+	}
+	if pick == "" {
+		for _, n := range dateNames {
+			if n == "timestamp" {
+				pick = n
+				break
+			}
+		}
+	}
+	if pick == "" {
+		// integer "id" — type may be a string ("integer") or an array
+		// like ["integer", "null"].
+		if idProp, ok := props["id"].(map[string]any); ok && isIntegerType(idProp["type"]) {
+			pick = "id"
+		}
+	}
+	if pick != "" {
+		cfg.SyncMode = "incremental"
+		cfg.CursorField = []any{pick}
+	}
+
 	return cfg
+}
+
+func isIntegerType(t any) bool {
+	switch v := t.(type) {
+	case string:
+		return v == "integer"
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok && s == "integer" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func joinStreamName(streamMap map[string]any) string {

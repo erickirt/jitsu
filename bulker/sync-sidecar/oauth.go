@@ -32,13 +32,43 @@ import (
 //   - Nango RPC failure                      → exit 1; CronJob fails this run
 //   - Per-package merge logic error          → exit 1
 
+// File layout for the autonomous CronJob Pod template:
+//
+//   /config/                         (Secret mount, read-only)
+//     config.json                     ← persisted source config (raw)
+//     destinationConfig.json          ← persisted destination config
+//
+//   /shared/                         (emptyDir, read-write)
+//     config.json                     ← OAuth-refreshed source config (this init writes it)
+//     destinationConfig.json          ← copied from /config by this init
+//     catalog.json                    ← written by load-catalog-state init
+//     state.json                      ← written by load-catalog-state init
+//     discover.jsonl                  ← (optional) written by discover init
+//
+// Downstream containers read everything from /shared (single CONFIGS_PATH
+// for the sidecar; source connector reads /shared/config.json directly).
 const (
-	configInPath  = "/config/config.json"
-	configOutPath = "/shared/config.json"
+	configInDir   = "/config"
+	configOutDir  = "/shared"
+	configInPath  = configInDir + "/config.json"
+	configOutPath = configOutDir + "/config.json"
+	destInPath    = configInDir + "/destinationConfig.json"
+	destOutPath   = configOutDir + "/destinationConfig.json"
 	jitsuManaged  = "JITSU_MANAGED"
 )
 
 func runOAuthRefresh() {
+	// Always shuttle destinationConfig.json from the Secret mount to /shared
+	// so the sidecar can read everything from a single CONFIGS_PATH directory.
+	// Best-effort — if it's not present (rare misconfiguration), the sidecar
+	// will surface a clearer "destination config file ... doesn't exist" error.
+	if dest, err := os.ReadFile(destInPath); err != nil {
+		logging.Warnf("[oauth] reading %s: %v (sidecar will fail later)", destInPath, err)
+	} else if err := os.WriteFile(destOutPath, dest, 0o644); err != nil {
+		logging.Errorf("[oauth] writing %s: %v", destOutPath, err)
+		os.Exit(1)
+	}
+
 	in, err := os.ReadFile(configInPath)
 	if err != nil {
 		logging.Errorf("[oauth] reading %s: %v", configInPath, err)
