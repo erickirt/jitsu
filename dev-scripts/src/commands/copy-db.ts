@@ -248,7 +248,9 @@ export async function runCopyDb(args: string[]): Promise<void> {
   // at the same place would destroy the only copy.
   if (isSameEndpoint(src, dst)) {
     throw new Error(
-      `src and dst point to the same endpoint (${describe(src)}). Refusing to continue — dropping dst would destroy src.`
+      `src and dst point to the same endpoint (${describe(
+        src
+      )}). Refusing to continue — dropping dst would destroy src.`
     );
   }
 
