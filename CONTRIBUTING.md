@@ -42,9 +42,9 @@ process directly — there's no `dotenv-cli` parent in the tree.
 
 ## How it works
 
-The root [`.npmrc`](.npmrc) sets `node-options=--require=@jitsu-internal/dev-scripts/preload-env.cjs`,
+The root [`.npmrc`](.npmrc) sets `node-options=--require=env-preload`,
 so pnpm exports `NODE_OPTIONS=--require=...` for every node process it spawns from a
-script. The preload ([`dev-scripts/preload-env.cjs`](dev-scripts/preload-env.cjs)) loads
+script. The preload ([`env-preload/preload-env.cjs`](env-preload/preload-env.cjs)) loads
 `~/.jitsu/.env.local`, then walks up from `process.cwd()` to find `pnpm-workspace.yaml`
 and load the repo-root `.env.local`. (Why a preload instead of `--env-file-if-exists`:
 Node disallows `--env-file*` in `NODE_OPTIONS` for security; `--require` is allowed.)
