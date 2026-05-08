@@ -15,6 +15,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+// Snapshot keys the shell already set BEFORE we touch anything. Used by
+// loadEnvFile to decide what's untouchable (shell wins) vs what a later
+// file is allowed to override (an earlier file's value).
+const shellEnvKeys = new Set(Object.keys(process.env));
+
 function findRepoRoot(start) {
   let dir = path.resolve(start);
   while (true) {
@@ -39,7 +44,10 @@ function loadEnvFile(filePath) {
     const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
     if (!m) continue;
     const key = m[1];
-    if (process.env[key] !== undefined) continue;
+    // Only the shell's original env is untouchable. A key set by an earlier
+    // file (e.g. ~/.jitsu/.env.local) gets overwritten here, which is the
+    // documented "later wins" precedence.
+    if (shellEnvKeys.has(key)) continue;
     let value = m[2];
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
