@@ -46,7 +46,9 @@ function parseArgs(args: string[]): Options {
 function checkBinary(name: string): void {
   const r = spawnSync(name, ["--version"], { stdio: "ignore" });
   if (r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") {
-    throw new Error(`${name} not found on PATH. Install postgres client tools (e.g. \`brew install libpq && brew link --force libpq\`).`);
+    throw new Error(
+      `${name} not found on PATH. Install postgres client tools (e.g. \`brew install libpq && brew link --force libpq\`).`
+    );
   }
 }
 
@@ -96,7 +98,6 @@ async function ensureFreshDatabase(dst: PgConn, cleanDst: boolean): Promise<void
   }
 }
 
-
 /**
  * Strip top-level `SET <param> = ...;` statements from the dump. pg_dump
  * emits a handful (statement_timeout, transaction_timeout, etc.) and newer
@@ -129,7 +130,6 @@ function makeSetStripper(): Transform {
     },
   });
 }
-
 
 function fmtBytes(n: number): string {
   const mib = n / (1024 * 1024);

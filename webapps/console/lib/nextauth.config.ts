@@ -157,7 +157,13 @@ const sharedCookieOptions = authCookieDomain
         csrfToken: {
           // CSRF cookie cannot use the __Host- prefix because that prefix forbids `domain`.
           name: useSecureCookies ? "__Secure-next-auth.csrf-token" : "next-auth.csrf-token",
-          options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: useSecureCookies, domain: authCookieDomain },
+          options: {
+            httpOnly: true,
+            sameSite: "lax" as const,
+            path: "/",
+            secure: useSecureCookies,
+            domain: authCookieDomain,
+          },
         },
       },
     }
