@@ -3,7 +3,7 @@ import prompts from "prompts";
 import { getLog } from "juava";
 import { spawn, spawnSync } from "node:child_process";
 import { Transform } from "node:stream";
-import { expandEnvPlaceholders, loadDotenv } from "../utils/env.ts";
+import { expandEnvPlaceholders } from "../utils/env.ts";
 import { clientConfig, describe, envFor, parsePgUrl, type PgConn } from "../utils/pg-url.ts";
 
 const log = getLog("copy-db");
@@ -226,7 +226,6 @@ async function pgDumpToPsql(src: PgConn, dst: PgConn, structureOnly: string[]): 
 }
 
 export async function runCopyDb(args: string[]): Promise<void> {
-  loadDotenv();
   const opts = parseArgs(args);
   const src = parsePgUrl(expandEnvPlaceholders(opts.src));
   const dst = parsePgUrl(expandEnvPlaceholders(opts.dst));

@@ -7,11 +7,13 @@
  *   tsx run-app.ts console next dev
  *
  * Responsibilities:
- *   1. Load `.env` and `.env.local` from the repo root into process.env.
- *   2. Pick a slug — `<app>` plain on the repo's default branch, `<app>-<branch>`
+ *   1. Pick a slug — `<app>` plain on the repo's default branch, `<app>-<branch>`
  *      otherwise. Default branch comes from `git rev-parse origin/HEAD`.
- *   3. Pass `--no-branch` to suppress the suffix.
- *   4. Spawn portless via the SHIM_DIR trick (see SHIM_DIR comment below).
+ *   2. Pass `--no-branch` to suppress the suffix.
+ *   3. Spawn portless via the SHIM_DIR trick (see SHIM_DIR comment below).
+ *
+ * .env loading is handled by Node's `--env-file-if-exists` flag, set via
+ * `node-options` in the root .npmrc — see CONTRIBUTING.md.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -20,7 +22,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../../..");
 
 /**
  * Scratch dir we run portless from. Why:
@@ -47,19 +48,6 @@ const repoRoot = path.resolve(__dirname, "../../..");
  *   - Forking portless: too heavy for one-line behaviour.
  */
 const SHIM_DIR = path.join(os.tmpdir(), "jitsu-portless-shim");
-
-function loadRepoEnv(): void {
-  for (const f of [".env", ".env.local"]) {
-    const p = path.join(repoRoot, f);
-    try {
-      // process.loadEnvFile is built-in (Node ≥21.7). Doesn't overwrite existing vars.
-      // Cast: @types/node in the workspace catalog is v18 and lacks the type.
-      (process as unknown as { loadEnvFile(path: string): void }).loadEnvFile(p);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    }
-  }
-}
 
 function gitOutput(args: string[]): string | null {
   const r = spawnSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
@@ -99,8 +87,6 @@ function main(): void {
     console.error("Usage: run-app <app> [--no-branch] <cmd...>");
     process.exit(2);
   }
-
-  loadRepoEnv();
 
   let branch = "";
   let branchSource = "";

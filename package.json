@@ -24,9 +24,9 @@
     "ci:no-test": "pnpm format:check:all && pnpm lint && pnpm build",
     "ci:all": "pnpm ci:no-test && pnpm test",
     "jitsu-cli": "pnpm --filter jitsu-cli run build && node --enable-source-maps cli/jitsu-cli/dist/main.js",
-    "console:start": "dotenv -e .env.local -- turbo run console:start",
-    "console:db-prepare": "dotenv -e .env.local -- pnpm run --filter=console db:update-schema",
-    "console:db-prepare-force": "dotenv -e .env.local -- pnpm run --filter=console db:update-schema-force",
+    "console:start": "turbo run console:start",
+    "console:db-prepare": "pnpm run --filter=console db:update-schema",
+    "console:db-prepare-force": "pnpm run --filter=console db:update-schema-force",
     "dev": "pnpm --filter @jitsu-internal/dev-scripts run --silent exec --",
     "test": "pnpm -r run test",
     "test:playwright": "pnpm -r run test:playwright",
@@ -36,8 +36,8 @@
     "lint": "pnpm -r run lint"
   },
   "devDependencies": {
+    "@jitsu-internal/dev-scripts": "workspace:*",
     "@playwright/test": "1.58.2",
-    "dotenv-cli": "^6.0.0",
     "husky": "^8.0.3",
     "portless": "^0.12.0",
     "prettier": "^2.8.7",

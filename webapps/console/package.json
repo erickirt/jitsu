@@ -17,14 +17,14 @@
     "email:dev": "email dev -p 3901",
     "build": "prisma generate && next build && pnpm build:manage",
     "build:manage": "esbuild scripts/manage.ts --bundle --platform=node --outfile=build/manage.js --external:@prisma/client --external:pg-native",
-    "manage": "tsx --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local scripts/manage.ts",
+    "manage": "tsx scripts/manage.ts",
     "clean": "rm -rf ./.next ./.turbo ./build",
     "typecheck": "tsc --noEmit",
-    "tool:hash": "tsx --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local scripts/manage.ts password-hash",
+    "tool:hash": "tsx scripts/manage.ts password-hash",
     "db:code-gen": "prisma generate",
-    "db:update-schema": "dotenv -e ../../.env.local -- prisma db push",
-    "db:format-schema": "dotenv -e ../../.env.local -- prisma format",
-    "db:update-schema-force": "dotenv -e ../../.env.local -- prisma db push --accept-data-loss"
+    "db:update-schema": "prisma db push",
+    "db:format-schema": "prisma format",
+    "db:update-schema-force": "prisma db push --accept-data-loss"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^1.21.1",
@@ -121,7 +121,6 @@
     "ansi-to-html": "^0.7.2",
     "antd": "^6.2.1",
     "autoprefixer": "^10.4.20",
-    "dotenv-cli": "^6.0.0",
     "esbuild": "catalog:",
     "eslint": "catalog:",
     "eslint-config-next": "^16.2.6",

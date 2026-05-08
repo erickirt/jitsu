@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
-const require = createRequire(import.meta.url);
 
 const argv = process.argv.slice(2).filter((a, i, arr) => !(i === 0 && a === "--"));
 const [subcommand, ...rest] = argv;
@@ -16,12 +14,8 @@ async function main() {
     case undefined:
     case "start":
     case "up": {
-      const dotenvCli = require.resolve("dotenv-cli/cli.js", { paths: [repoRoot] });
-      const child = spawn(
-        process.execPath,
-        [dotenvCli, "-e", path.join(repoRoot, ".env.local"), "--", "pnpm", "exec", "turbo", "run", "dev"],
-        { stdio: "inherit", cwd: repoRoot }
-      );
+      // Env loading is handled by NODE_OPTIONS in the root .npmrc; just run turbo.
+      const child = spawn("pnpm", ["exec", "turbo", "run", "dev"], { stdio: "inherit", cwd: repoRoot });
       child.on("exit", code => process.exit(code ?? 0));
       return;
     }

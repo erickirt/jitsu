@@ -7,7 +7,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dotenv": "^16.3.1",
     "juava": "workspace:*",
     "pg": "^8.18.0",
     "prompts": "^2.4.2"
