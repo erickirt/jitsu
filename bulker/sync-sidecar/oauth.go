@@ -83,12 +83,14 @@ func runOAuthRefresh() {
 
 	authorized, _ := cfg["authorized"].(bool)
 	if !authorized {
-		// Non-OAuth source — just shuttle the config to /shared so the
-		// source/discover containers have one consistent path to read from.
-		if err := os.WriteFile(configOutPath, in, 0o644); err != nil {
-			logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
-			os.Exit(1)
-		}
+		// Non-OAuth source — write what scheduleSync's tryManageOauthCreds
+		// would return: just service.credentials (the airbyte source's
+		// expected wire-shape config).
+		//
+		// Sources like airbyte/source-postgres expect host/port/etc. at the
+		// config root; if we wrote the whole serviceConfig we'd nest them
+		// under `credentials` and the source would fail to find them.
+		writeUnauthCredentials(cfg, in)
 		return
 	}
 
@@ -98,20 +100,14 @@ func runOAuthRefresh() {
 	nangoKey := os.Getenv("NANGO_SECRET_KEY")
 	if nangoHost == "" || nangoKey == "" {
 		logging.Warnf("[oauth] OAuth-authorized sync but NANGO_API_HOST/NANGO_SECRET_KEY not set — using stale tokens from Secret")
-		if err := os.WriteFile(configOutPath, in, 0o644); err != nil {
-			logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
-			os.Exit(1)
-		}
+		writeUnauthCredentials(cfg, in)
 		return
 	}
 
 	integrationID := nangoIntegrationID(pkg)
 	if integrationID == "" {
 		logging.Warnf("[oauth] no Nango integration mapping for package %q — using stale tokens", pkg)
-		if err := os.WriteFile(configOutPath, in, 0o644); err != nil {
-			logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
-			os.Exit(1)
-		}
+		writeUnauthCredentials(cfg, in)
 		return
 	}
 
@@ -142,6 +138,35 @@ func runOAuthRefresh() {
 		os.Exit(1)
 	}
 	logging.Infof("[oauth] refreshed credentials for %s (sync-source.%s)", pkg, sourceID)
+}
+
+// writeUnauthCredentials writes the wire-shape config the source connector
+// expects for non-OAuth sources (and OAuth sources we couldn't refresh —
+// pass-through with stale tokens). Mirrors the legacy scheduleSync return:
+// just service.credentials, NOT the wrapping serviceConfig.
+//
+// Sources that store config flat at root (no `credentials` wrapper —
+// historically rare in Jitsu but possible for older imports) fall back to
+// shipping the whole input. Sources ignore extra root fields like id /
+// package / version per airbyte's permissive jsonschema validation.
+func writeUnauthCredentials(cfg map[string]any, raw []byte) {
+	if creds, ok := cfg["credentials"]; ok && creds != nil {
+		out, err := json.Marshal(creds)
+		if err != nil {
+			logging.Errorf("[oauth] marshalling credentials: %v", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(configOutPath, out, 0o644); err != nil {
+			logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
+			os.Exit(1)
+		}
+		return
+	}
+	// No credentials wrapper in the stored config — write whole input.
+	if err := os.WriteFile(configOutPath, raw, 0o644); err != nil {
+		logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
+		os.Exit(1)
+	}
 }
 
 // nangoIntegrationID mirrors the {packageId → nangoIntegrationId} mapping in
