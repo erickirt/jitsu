@@ -3,7 +3,7 @@ import { NextApiHandler, NextApiRequest, NextApiResponse } from "next";
 import { assertDefined, checkHash, checkRawToken, getErrorMessage, requireDefined, tryJson } from "juava";
 import { getServerSession, Session } from "next-auth";
 import { nextAuthConfig } from "./nextauth.config";
-import { SessionUser } from "./schema";
+import { inferTokenTypeFromId, SessionUser } from "./schema";
 import { db } from "./server/db";
 import { prepareZodObjectForDeserialization, safeParseWithDate } from "./zod";
 import { ApiError } from "./shared/errors";
@@ -277,6 +277,9 @@ export async function getUser(
       if (!checkHash(token.hash, secret)) {
         throw new ApiError(`Invalid API key secret for ${keyId}`, { keyId }, { status: 401 });
       }
+      if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
+        throw new ApiError(`API key ${keyId} has expired`, { keyId }, { status: 401 });
+      }
       const user = requireDefined(
         await db.prisma().userProfile.findUnique({ where: { id: token.userId } }),
         `Can't find user ${token.userId} for API key ${keyId}`
@@ -290,6 +293,8 @@ export async function getUser(
         email: user.email,
         name: user.name,
         authType: "bearer",
+        tokenId: token.id,
+        tokenType: token.type ?? inferTokenTypeFromId(token.id),
       };
     }
   }

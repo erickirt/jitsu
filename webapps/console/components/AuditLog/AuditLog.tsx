@@ -7,6 +7,7 @@ import { rpc } from "juava";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { AuditLogDiff } from "../AuditLogDiff/AuditLogDiff";
+import { inferTokenTypeFromId } from "../../lib/schema";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -30,6 +31,8 @@ export type AuditLogItem = {
   userId?: string | null;
   objectId?: string | null;
   authType?: string | null;
+  tokenId?: string | null;
+  token?: { id: string; type?: string | null; name?: string | null } | null;
   changes?: any;
   diff?: DiffEntry[];
   actor?: { id: string; email?: string | null; name?: string | null } | null;
@@ -61,6 +64,41 @@ function severityTag(s?: string | null) {
   if (!s) return null;
   const color = s === "security" ? "red" : s === "warning" ? "orange" : "default";
   return <Tag color={color}>{s}</Tag>;
+}
+
+/**
+ * authType values written by the auth/audit code:
+ *   "next-auth", "oidc", "firebase", "credentials" → user-driven UI session
+ *   "bearer" → API token (cli, api, …)
+ * Older rows may have other values; treat unknowns as UI to avoid claiming a
+ * change came over the API when we don't know.
+ */
+const UI_AUTH_TYPES = new Set(["next-auth", "oidc", "firebase", "credentials"]);
+
+function originTag(item: AuditLogItem) {
+  if (!item.authType) {
+    return <span className="text-text-light">—</span>;
+  }
+  if (item.authType !== "bearer") {
+    return (
+      <Tooltip title={`Auth: ${item.authType}`}>
+        <Tag color={UI_AUTH_TYPES.has(item.authType) ? "blue" : "default"}>UI</Tag>
+      </Tooltip>
+    );
+  }
+  // Bearer auth — derive token type from token row (preferred) or id prefix.
+  const inferredType = item.token?.type || (item.tokenId ? inferTokenTypeFromId(item.tokenId) : "api");
+  const label = `API: ${inferredType}`;
+  const tooltip = item.token?.name
+    ? `${item.token.name} (${item.tokenId})`
+    : item.tokenId
+    ? item.tokenId
+    : "Bearer token";
+  return (
+    <Tooltip title={tooltip}>
+      <Tag color="purple">{label}</Tag>
+    </Tooltip>
+  );
 }
 
 function entityHref(objectType: string | undefined, objectId?: string | null): string | null {
@@ -261,6 +299,11 @@ export const AuditLog: React.FC<AuditLogProps> = ({ workspaceId, workspaceSlug, 
         title: "Actor",
         key: "actor",
         render: (_: any, item: AuditLogItem) => item.actor?.email || item.actor?.name || "—",
+      },
+      {
+        title: "Origin",
+        key: "origin",
+        render: (_: any, item: AuditLogItem) => originTag(item),
       },
       {
         title: "Event",

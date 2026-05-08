@@ -231,6 +231,15 @@ const ItemSchema = z.object({
   userId: z.string().nullable().optional(),
   objectId: z.string().nullable().optional(),
   authType: z.string().nullable().optional(),
+  tokenId: z.string().nullable().optional(),
+  token: z
+    .object({
+      id: z.string(),
+      type: z.string().nullable().optional(),
+      name: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   changes: z.any().nullable().optional(),
   diff: z
     .array(
@@ -374,6 +383,16 @@ export default createRoute()
       : [];
     const workspaceById = new Map(workspaces.map(w => [w.id, w]));
 
+    // Bulk-fetch token metadata for rows that were authored via bearer auth.
+    const tokenIds = Array.from(new Set(page.map(r => r.tokenId).filter((v): v is string => !!v)));
+    const tokens = tokenIds.length
+      ? await db.prisma().userApiToken.findMany({
+          where: { id: { in: tokenIds } },
+          select: { id: true, type: true, name: true },
+        })
+      : [];
+    const tokenById = new Map(tokens.map(t => [t.id, t]));
+
     // Enrich link (connection) display names: a link has no `name` of its own,
     // so we synthesize "<from.name> → <to.name>" from the related entities.
     const linkIds = Array.from(
@@ -453,6 +472,8 @@ export default createRoute()
 
         const ws = r.workspaceId ? workspaceById.get(r.workspaceId) : undefined;
 
+        const token = r.tokenId ? tokenById.get(r.tokenId) ?? null : null;
+
         return {
           id: r.id,
           timestamp: r.timestamp.toISOString(),
@@ -463,6 +484,8 @@ export default createRoute()
           userId: r.userId ?? null,
           objectId: r.objectId ?? null,
           authType: r.authType ?? null,
+          tokenId: r.tokenId ?? null,
+          token,
           changes: finalChanges,
           diff,
           actor: r.userId ? actorById.get(r.userId) ?? null : null,

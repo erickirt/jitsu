@@ -202,6 +202,7 @@ export async function configObjectAuditLog(
         objectId: id,
         userId: user.internalId,
         authType: user.authType,
+        tokenId: user.tokenId ?? null,
         changes: {
           _redacted: true,
           objectType: type,
@@ -256,7 +257,7 @@ const membershipEventToType: Record<MembershipOp, AccountAlertEventType> = {
 };
 
 export async function membershipAuditLog(
-  actor: Pick<SessionUser, "internalId" | "email" | "name" | "authType"> | null,
+  actor: Pick<SessionUser, "internalId" | "email" | "name" | "authType" | "tokenId"> | null,
   workspaceId: string,
   op: MembershipOp,
   target: { userId?: string; email?: string },
@@ -276,6 +277,7 @@ export async function membershipAuditLog(
         userId: actor?.internalId ?? null,
         objectId: target.userId ?? null,
         authType: actor?.authType ?? null,
+        tokenId: actor?.tokenId ?? null,
         timestamp: occurredAt,
         changes: {
           actorEmail: actor?.email,
@@ -308,7 +310,7 @@ export async function membershipAuditLog(
 }
 
 export async function workspaceAuditLog(
-  actor: Pick<SessionUser, "internalId" | "email" | "name" | "authType">,
+  actor: Pick<SessionUser, "internalId" | "email" | "name" | "authType" | "tokenId">,
   workspaceId: string,
   op: "updated" | "deleted",
   changes?: { prevVersion?: any; newVersion?: any; workspaceName?: string }
@@ -327,6 +329,7 @@ export async function workspaceAuditLog(
         workspaceId,
         userId: actor.internalId,
         authType: actor.authType,
+        tokenId: actor.tokenId ?? null,
         timestamp: occurredAt,
         changes: {
           actorEmail: actor.email,
