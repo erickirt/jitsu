@@ -1,5 +1,5 @@
 import { FaArrowLeft } from "react-icons/fa";
-import { Button, Form, Input, Modal, Radio, Table, Tag, Tooltip } from "antd";
+import { Button, Form, Input, InputNumber, Modal, Radio, Table, Tag, Tooltip } from "antd";
 import { useRouter } from "next/router";
 import { useUser } from "../lib/context";
 import { get, useApi } from "../lib/useApi";
@@ -9,21 +9,38 @@ import { copyTextToClipboard, feedbackError, feedbackSuccess, confirmOp } from "
 import { QueryResponse } from "../components/QueryResponse/QueryResponse";
 import { JitsuButton } from "../components/JitsuButton/JitsuButton";
 import { ChangePassword } from "../components/ChangePassword/ChangePassword";
-import { FaCopy, FaPlus, FaTrash, FaTerminal } from "react-icons/fa";
+import { FaCopy, FaPlus, FaTrash, FaTerminal, FaPencilAlt } from "react-icons/fa";
 import { FaCloudArrowUp } from "react-icons/fa6";
 
-const expirationOptions: { label: string; days: number | null }[] = [
-  { label: "30 days", days: 30 },
-  { label: "60 days", days: 60 },
-  { label: "90 days", days: 90 },
-  { label: "Never", days: null },
-];
+/**
+ * Expiration picker state. The "keep" kind only makes sense in edit mode and
+ * means: don't send `expiresAt` to the server at all (column stays as-is).
+ */
+type ExpirationChoice =
+  | { kind: "30" | "60" | "90" }
+  | { kind: "never" }
+  | { kind: "custom"; days: number }
+  | { kind: "keep" };
 
-function expirationToDate(days: number | null): Date | null {
-  if (days === null) return null;
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d;
+function choiceToExpiresAt(c: ExpirationChoice): { include: boolean; value: Date | null } {
+  switch (c.kind) {
+    case "keep":
+      return { include: false, value: null };
+    case "never":
+      return { include: true, value: null };
+    case "30":
+    case "60":
+    case "90": {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(c.kind));
+      return { include: true, value: d };
+    }
+    case "custom": {
+      const d = new Date();
+      d.setDate(d.getDate() + c.days);
+      return { include: true, value: d };
+    }
+  }
 }
 
 const dateFmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
@@ -111,47 +128,112 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-const NewKeyModal: React.FC<{
-  generated: { id: string; plaintext: string } | null;
-  onCreate: (vals: { name?: string; expiresAt: Date | null }) => Promise<void>;
-  onClose: () => void;
-}> = ({ generated, onCreate, onClose }) => {
-  const [form] = Form.useForm<{ name?: string; expirationDays: number | null }>();
+const ExpirationField: React.FC<{
+  value: ExpirationChoice;
+  onChange: (next: ExpirationChoice) => void;
+  showKeep?: boolean;
+}> = ({ value, onChange, showKeep }) => {
+  const customDays = value.kind === "custom" ? value.days : 30;
+  const presetOptions: { label: string; kind: ExpirationChoice["kind"] }[] = [
+    ...(showKeep ? [{ label: "Keep", kind: "keep" as const }] : []),
+    { label: "30 days", kind: "30" },
+    { label: "60 days", kind: "60" },
+    { label: "90 days", kind: "90" },
+    { label: "Custom", kind: "custom" },
+    { label: "Never", kind: "never" },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <Radio.Group
+        value={value.kind}
+        onChange={e => {
+          const kind = e.target.value as ExpirationChoice["kind"];
+          if (kind === "custom") onChange({ kind: "custom", days: customDays });
+          else if (kind === "keep") onChange({ kind: "keep" });
+          else if (kind === "never") onChange({ kind: "never" });
+          else onChange({ kind: kind as "30" | "60" | "90" });
+        }}
+        options={presetOptions.map(o => ({ label: o.label, value: o.kind }))}
+        optionType="button"
+      />
+      {value.kind === "custom" && (
+        <div className="flex items-center gap-2">
+          <InputNumber
+            min={1}
+            max={3650}
+            value={value.days}
+            onChange={v => onChange({ kind: "custom", days: typeof v === "number" ? v : 30 })}
+            addonAfter="days"
+          />
+          <span className="text-text-light text-sm">
+            expires {new Date(Date.now() + value.days * 86_400_000).toLocaleDateString()}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+type KeyModalProps =
+  | {
+      mode: "create";
+      generated: { id: string; plaintext: string } | null;
+      onSubmit: (vals: { name?: string; expiresAt: Date | null }) => Promise<void>;
+      onClose: () => void;
+    }
+  | {
+      mode: "edit";
+      target: ApiKey;
+      onSubmit: (vals: { name?: string | null; expiresAt?: Date | null }) => Promise<void>;
+      onClose: () => void;
+    };
+
+const KeyModal: React.FC<KeyModalProps> = props => {
+  const isCreate = props.mode === "create";
+  const initialName = isCreate ? "" : props.target.name ?? "";
+  const [name, setName] = useState(initialName);
+  const [expiration, setExpiration] = useState<ExpirationChoice>(isCreate ? { kind: "90" } : { kind: "keep" });
   const [loading, setLoading] = useState(false);
-  const [expirationDays, setExpirationDays] = useState<number | null>(90);
+  const generated = isCreate ? props.generated : null;
+
+  const title = isCreate ? (generated ? "Save your secret key" : "Create new API key") : "Edit API key";
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      if (isCreate) {
+        const exp = choiceToExpiresAt(expiration);
+        await props.onSubmit({ name: name.trim() || undefined, expiresAt: exp.value });
+      } else {
+        const exp = choiceToExpiresAt(expiration);
+        const vals: { name?: string | null; expiresAt?: Date | null } = {
+          name: name.trim() || null,
+        };
+        if (exp.include) vals.expiresAt = exp.value;
+        await props.onSubmit(vals);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Modal
       open={true}
-      title={generated ? "Save your secret key" : "Create new API key"}
+      title={title}
       maskClosable={!generated}
       closable={true}
-      onCancel={onClose}
+      onCancel={props.onClose}
       footer={
         generated ? (
-          <Button type="primary" onClick={onClose}>
+          <Button type="primary" onClick={props.onClose}>
             Done
           </Button>
         ) : (
           <div className="flex justify-end gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <Button
-              type="primary"
-              loading={loading}
-              onClick={async () => {
-                const values = await form.validateFields();
-                setLoading(true);
-                try {
-                  await onCreate({
-                    name: values.name?.trim() || undefined,
-                    expiresAt: expirationToDate(expirationDays),
-                  });
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
-              Create key
+            <Button onClick={props.onClose}>Cancel</Button>
+            <Button type="primary" loading={loading} onClick={submit}>
+              {isCreate ? "Create key" : "Save"}
             </Button>
           </div>
         )
@@ -170,17 +252,22 @@ const NewKeyModal: React.FC<{
           </div>
         </div>
       ) : (
-        <Form form={form} layout="vertical" initialValues={{ expirationDays: 90 }}>
-          <Form.Item label="Name (optional)" name="name" help="A human-readable label. Leave blank to use the key id.">
-            <Input placeholder="e.g. local dev / CI bot" autoFocus />
-          </Form.Item>
-          <Form.Item label="Expiration" name="expirationDays">
-            <Radio.Group
-              value={expirationDays}
-              onChange={e => setExpirationDays(e.target.value)}
-              options={expirationOptions.map(o => ({ label: o.label, value: o.days }))}
-              optionType="button"
+        <Form layout="vertical">
+          <Form.Item label="Name (optional)" help="A human-readable label. Leave blank to use the key id.">
+            <Input
+              placeholder="e.g. local dev / CI bot"
+              value={name}
+              autoFocus
+              onChange={e => setName(e.target.value)}
             />
+          </Form.Item>
+          <Form.Item label="Expiration">
+            <ExpirationField value={expiration} onChange={setExpiration} showKeep={!isCreate} />
+            {!isCreate && expiration.kind === "keep" && (
+              <div className="text-text-light text-xs mt-1">
+                Current: {props.target.expiresAt ? fmtFullDate(props.target.expiresAt) : "Never"}
+              </div>
+            )}
           </Form.Item>
         </Form>
       )}
@@ -188,9 +275,11 @@ const NewKeyModal: React.FC<{
   );
 };
 
+type ModalState = { kind: "closed" } | { kind: "create" } | { kind: "edit"; target: ApiKey };
+
 function ApiKeys() {
   const apiRes = useApi<ApiKey[]>("/api/user/keys");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modal, setModal] = useState<ModalState>({ kind: "closed" });
   const [generated, setGenerated] = useState<{ id: string; plaintext: string } | null>(null);
 
   return (
@@ -280,34 +369,47 @@ function ApiKeys() {
             title: "",
             key: "actions",
             className: "text-right",
-            width: 48,
+            width: 96,
             render: (k: ApiKey) => (
-              <Button
-                type="text"
-                size="small"
-                onClick={async () => {
-                  if (await confirmOp(`Delete key ${k.name || k.id}? This cannot be undone.`)) {
-                    try {
-                      await get(`/api/user/keys?id=${encodeURIComponent(k.id)}`, { method: "DELETE" });
-                      await apiRes.reload();
-                      feedbackSuccess("Key deleted");
-                    } catch (e) {
-                      feedbackError("Failed to delete key");
-                    }
-                  }
-                }}
-              >
-                <FaTrash />
-              </Button>
+              <div className="inline-flex gap-1">
+                <Tooltip title="Edit">
+                  <Button type="text" size="small" onClick={() => setModal({ kind: "edit", target: k })}>
+                    <FaPencilAlt />
+                  </Button>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={async () => {
+                      if (await confirmOp(`Delete key ${k.name || k.id}? This cannot be undone.`)) {
+                        try {
+                          await get(`/api/user/keys?id=${encodeURIComponent(k.id)}`, { method: "DELETE" });
+                          await apiRes.reload();
+                          feedbackSuccess("Key deleted");
+                        } catch (e) {
+                          feedbackError("Failed to delete key");
+                        }
+                      }
+                    }}
+                  >
+                    <FaTrash />
+                  </Button>
+                </Tooltip>
+              </div>
             ),
           },
         ];
 
+        const closeModal = () => {
+          setModal({ kind: "closed" });
+          setGenerated(null);
+        };
         return (
           <>
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold m-0">API Keys</h2>
-              <Button type="primary" icon={<FaPlus />} onClick={() => setModalOpen(true)}>
+              <Button type="primary" icon={<FaPlus />} onClick={() => setModal({ kind: "create" })}>
                 Create the key
               </Button>
             </div>
@@ -320,10 +422,11 @@ function ApiKeys() {
                 <Table size="middle" columns={columns} dataSource={keys} pagination={false} rowKey={k => k.id} />
               )}
             </div>
-            {modalOpen && (
-              <NewKeyModal
+            {modal.kind === "create" && (
+              <KeyModal
+                mode="create"
                 generated={generated}
-                onCreate={async vals => {
+                onSubmit={async vals => {
                   try {
                     const created = await get("/api/user/keys", {
                       method: "POST",
@@ -336,10 +439,27 @@ function ApiKeys() {
                     feedbackError("Failed to create key");
                   }
                 }}
-                onClose={() => {
-                  setModalOpen(false);
-                  setGenerated(null);
+                onClose={closeModal}
+              />
+            )}
+            {modal.kind === "edit" && (
+              <KeyModal
+                mode="edit"
+                target={modal.target}
+                onSubmit={async vals => {
+                  try {
+                    await get(`/api/user/keys?id=${encodeURIComponent(modal.target.id)}`, {
+                      method: "PATCH",
+                      body: vals,
+                    });
+                    await apiRes.reload();
+                    feedbackSuccess("API key updated");
+                    closeModal();
+                  } catch (e) {
+                    feedbackError("Failed to update key");
+                  }
                 }}
+                onClose={closeModal}
               />
             )}
           </>

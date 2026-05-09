@@ -68,6 +68,39 @@ const api: Api = {
       };
     },
   },
+  PATCH: {
+    auth: true,
+    types: {
+      query: z.object({ id: z.string() }),
+      body: z.object({
+        name: z.string().nullish(),
+        // ISO date, null, or omitted. Null = clear (never expires); omitted = leave alone.
+        expiresAt: z.coerce.date().nullish(),
+      }),
+      result: ApiKey,
+    },
+    handle: async ({ user, query, body }) => {
+      const existing = await db.prisma().userApiToken.findUnique({ where: { id: query.id } });
+      if (!existing || existing.userId !== user.internalId) {
+        throw new ApiError(`Key not found`, {}, { status: 404 });
+      }
+      // `expiresAt` is tri-state on the wire: present-as-Date sets, present-as-null
+      // clears, missing leaves the column alone. Same for `name`.
+      const data: { name?: string | null; expiresAt?: Date | null } = {};
+      if (Object.prototype.hasOwnProperty.call(body, "name")) data.name = body.name ?? null;
+      if (Object.prototype.hasOwnProperty.call(body, "expiresAt")) data.expiresAt = body.expiresAt ?? null;
+      const updated = await db.prisma().userApiToken.update({ where: { id: query.id }, data });
+      return {
+        id: updated.id,
+        hint: updated.hint,
+        createdAt: updated.createdAt,
+        lastUsed: updated.lastUsed,
+        type: updated.type,
+        name: updated.name,
+        expiresAt: updated.expiresAt,
+      };
+    },
+  },
   DELETE: {
     auth: true,
     types: {
