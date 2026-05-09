@@ -1,5 +1,6 @@
 import { FaArrowLeft } from "react-icons/fa";
-import { Button, Form, Input, InputNumber, Modal, Radio, Table, Tag, Tooltip } from "antd";
+import { Button, DatePicker, Form, Input, Modal, Radio, Table, Tag, Tooltip } from "antd";
+import dayjs, { Dayjs } from "dayjs";
 import { useRouter } from "next/router";
 import { useUser } from "../lib/context";
 import { get, useApi } from "../lib/useApi";
@@ -13,33 +14,24 @@ import { FaCopy, FaPlus, FaTrash, FaTerminal, FaPencilAlt } from "react-icons/fa
 import { FaCloudArrowUp } from "react-icons/fa6";
 
 /**
- * Expiration picker state. The "keep" kind only makes sense in edit mode and
- * means: don't send `expiresAt` to the server at all (column stays as-is).
+ * Expiration picker state for the create modal. Edit mode uses a plain
+ * DatePicker instead and skips this enum.
  */
-type ExpirationChoice =
-  | { kind: "30" | "60" | "90" }
-  | { kind: "never" }
-  | { kind: "custom"; days: number }
-  | { kind: "keep" };
+type ExpirationChoice = { kind: "30" | "60" | "90" } | { kind: "never" } | { kind: "custom"; date: Dayjs | null };
 
-function choiceToExpiresAt(c: ExpirationChoice): { include: boolean; value: Date | null } {
+function choiceToDate(c: ExpirationChoice): Date | null {
   switch (c.kind) {
-    case "keep":
-      return { include: false, value: null };
     case "never":
-      return { include: true, value: null };
+      return null;
     case "30":
     case "60":
     case "90": {
       const d = new Date();
       d.setDate(d.getDate() + Number(c.kind));
-      return { include: true, value: d };
+      return d;
     }
-    case "custom": {
-      const d = new Date();
-      d.setDate(d.getDate() + c.days);
-      return { include: true, value: d };
-    }
+    case "custom":
+      return c.date ? c.date.toDate() : null;
   }
 }
 
@@ -131,44 +123,37 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 const ExpirationField: React.FC<{
   value: ExpirationChoice;
   onChange: (next: ExpirationChoice) => void;
-  showKeep?: boolean;
-}> = ({ value, onChange, showKeep }) => {
-  const customDays = value.kind === "custom" ? value.days : 30;
+}> = ({ value, onChange }) => {
   const presetOptions: { label: string; kind: ExpirationChoice["kind"] }[] = [
-    ...(showKeep ? [{ label: "Keep", kind: "keep" as const }] : []),
     { label: "30 days", kind: "30" },
     { label: "60 days", kind: "60" },
     { label: "90 days", kind: "90" },
     { label: "Custom", kind: "custom" },
     { label: "Never", kind: "never" },
   ];
+  const today = dayjs().startOf("day");
   return (
     <div className="flex flex-col gap-2">
       <Radio.Group
         value={value.kind}
         onChange={e => {
           const kind = e.target.value as ExpirationChoice["kind"];
-          if (kind === "custom") onChange({ kind: "custom", days: customDays });
-          else if (kind === "keep") onChange({ kind: "keep" });
-          else if (kind === "never") onChange({ kind: "never" });
+          if (kind === "custom") {
+            const seed = value.kind === "custom" ? value.date : dayjs().add(30, "day");
+            onChange({ kind: "custom", date: seed });
+          } else if (kind === "never") onChange({ kind: "never" });
           else onChange({ kind: kind as "30" | "60" | "90" });
         }}
         options={presetOptions.map(o => ({ label: o.label, value: o.kind }))}
         optionType="button"
       />
       {value.kind === "custom" && (
-        <div className="flex items-center gap-2">
-          <InputNumber
-            min={1}
-            max={3650}
-            value={value.days}
-            onChange={v => onChange({ kind: "custom", days: typeof v === "number" ? v : 30 })}
-            addonAfter="days"
-          />
-          <span className="text-text-light text-sm">
-            expires {new Date(Date.now() + value.days * 86_400_000).toLocaleDateString()}
-          </span>
-        </div>
+        <DatePicker
+          value={value.date}
+          onChange={d => onChange({ kind: "custom", date: d })}
+          disabledDate={d => !!d && d.isBefore(today)}
+          allowClear={false}
+        />
       )}
     </div>
   );
@@ -192,7 +177,11 @@ const KeyModal: React.FC<KeyModalProps> = props => {
   const isCreate = props.mode === "create";
   const initialName = isCreate ? "" : props.target.name ?? "";
   const [name, setName] = useState(initialName);
-  const [expiration, setExpiration] = useState<ExpirationChoice>(isCreate ? { kind: "90" } : { kind: "keep" });
+  const [expiration, setExpiration] = useState<ExpirationChoice>({ kind: "90" });
+  // Edit mode renders a plain DatePicker rather than the preset row. State is
+  // a Dayjs (specific date) or null (never expires).
+  const initialEditDate = !isCreate && props.target.expiresAt ? dayjs(props.target.expiresAt) : null;
+  const [editDate, setEditDate] = useState<Dayjs | null>(initialEditDate);
   const [loading, setLoading] = useState(false);
   const generated = isCreate ? props.generated : null;
 
@@ -202,15 +191,12 @@ const KeyModal: React.FC<KeyModalProps> = props => {
     setLoading(true);
     try {
       if (isCreate) {
-        const exp = choiceToExpiresAt(expiration);
-        await props.onSubmit({ name: name.trim() || undefined, expiresAt: exp.value });
+        await props.onSubmit({ name: name.trim() || undefined, expiresAt: choiceToDate(expiration) });
       } else {
-        const exp = choiceToExpiresAt(expiration);
-        const vals: { name?: string | null; expiresAt?: Date | null } = {
+        await props.onSubmit({
           name: name.trim() || null,
-        };
-        if (exp.include) vals.expiresAt = exp.value;
-        await props.onSubmit(vals);
+          expiresAt: editDate ? editDate.toDate() : null,
+        });
       }
     } finally {
       setLoading(false);
@@ -261,12 +247,22 @@ const KeyModal: React.FC<KeyModalProps> = props => {
               onChange={e => setName(e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="Expiration">
-            <ExpirationField value={expiration} onChange={setExpiration} showKeep={!isCreate} />
-            {!isCreate && expiration.kind === "keep" && (
-              <div className="text-text-light text-xs mt-1">
-                Current: {props.target.expiresAt ? fmtFullDate(props.target.expiresAt) : "Never"}
-              </div>
+          <Form.Item
+            label="Expiration"
+            help={
+              !isCreate ? (editDate ? "Leave blank to remove the expiration." : "Cleared — key will never expire.") : ""
+            }
+          >
+            {isCreate ? (
+              <ExpirationField value={expiration} onChange={setExpiration} />
+            ) : (
+              <DatePicker
+                value={editDate}
+                onChange={setEditDate}
+                disabledDate={d => !!d && d.isBefore(dayjs().startOf("day"))}
+                placeholder="Never"
+                allowClear
+              />
             )}
           </Form.Item>
         </Form>
