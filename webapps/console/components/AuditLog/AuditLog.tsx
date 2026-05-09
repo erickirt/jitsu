@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { AuditLogDiff } from "../AuditLogDiff/AuditLogDiff";
 import { inferTokenTypeFromId } from "../../lib/schema";
+import { FaTerminal } from "react-icons/fa";
+import { FaCloudArrowUp, FaWindowMaximize } from "react-icons/fa6";
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -68,35 +70,42 @@ function severityTag(s?: string | null) {
 
 /**
  * authType values written by the auth/audit code:
- *   "next-auth", "oidc", "firebase", "credentials" → user-driven UI session
- *   "bearer" → API token (cli, api, …)
- * Older rows may have other values; treat unknowns as UI to avoid claiming a
- * change came over the API when we don't know.
+ *   "next-auth", "oidc", "firebase", "credentials" → UI session
+ *   "bearer" → API token; the row also carries a tokenType ("api" | "cli" | …)
+ * Origin renders as one of three flat labels: UI / API / CLI. Other token
+ * types fall through to their raw label so we don't quietly silo them.
  */
-const UI_AUTH_TYPES = new Set(["next-auth", "oidc", "firebase", "credentials"]);
+type Origin = { label: string; color: string; icon: React.ReactNode };
+
+const ORIGIN_UI: Origin = { label: "UI", color: "geekblue", icon: <FaWindowMaximize /> };
+const ORIGIN_API: Origin = { label: "API", color: "purple", icon: <FaCloudArrowUp /> };
+const ORIGIN_CLI: Origin = { label: "CLI", color: "blue", icon: <FaTerminal /> };
+
+function resolveOrigin(item: AuditLogItem): Origin | null {
+  if (!item.authType) return null;
+  if (item.authType !== "bearer") return ORIGIN_UI;
+  const tokenType = item.token?.type || (item.tokenId ? inferTokenTypeFromId(item.tokenId) : "api");
+  if (tokenType === "cli") return ORIGIN_CLI;
+  if (tokenType === "api") return ORIGIN_API;
+  // Unknown bearer subtype — surface it verbatim rather than collapsing to API.
+  return { label: tokenType.toUpperCase(), color: "default", icon: <FaCloudArrowUp /> };
+}
 
 function originTag(item: AuditLogItem) {
-  if (!item.authType) {
-    return <span className="text-text-light">—</span>;
-  }
-  if (item.authType !== "bearer") {
-    return (
-      <Tooltip title={`Auth: ${item.authType}`}>
-        <Tag color={UI_AUTH_TYPES.has(item.authType) ? "blue" : "default"}>UI</Tag>
-      </Tooltip>
-    );
-  }
-  // Bearer auth — derive token type from token row (preferred) or id prefix.
-  const inferredType = item.token?.type || (item.tokenId ? inferTokenTypeFromId(item.tokenId) : "api");
-  const label = `API: ${inferredType}`;
-  const tooltip = item.token?.name
-    ? `${item.token.name} (${item.tokenId})`
-    : item.tokenId
-    ? item.tokenId
-    : "Bearer token";
+  const origin = resolveOrigin(item);
+  if (!origin) return <span className="text-text-light">—</span>;
+  const tooltip =
+    item.authType === "bearer"
+      ? item.token?.name
+        ? `${item.token.name} (${item.tokenId})`
+        : item.tokenId || "Bearer token"
+      : `Auth: ${item.authType}`;
   return (
     <Tooltip title={tooltip}>
-      <Tag color="purple">{label}</Tag>
+      <Tag color={origin.color} className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center">{origin.icon}</span>
+        <span>{origin.label}</span>
+      </Tag>
     </Tooltip>
   );
 }
