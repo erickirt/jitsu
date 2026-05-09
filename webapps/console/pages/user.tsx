@@ -31,7 +31,11 @@ function choiceToDate(c: ExpirationChoice): Date | null {
       return d;
     }
     case "custom":
-      return c.date ? c.date.toDate() : null;
+      // The DatePicker emits a date-only Dayjs (midnight local). Snapping to
+      // end-of-day means picking "today" yields an expiry ~24h out — without
+      // it the token would be considered expired the instant it's saved
+      // (getUser rejects when expiresAt < Date.now()).
+      return c.date ? c.date.endOf("day").toDate() : null;
   }
 }
 
@@ -193,9 +197,12 @@ const KeyModal: React.FC<KeyModalProps> = props => {
       if (isCreate) {
         await props.onSubmit({ name: name.trim() || undefined, expiresAt: choiceToDate(expiration) });
       } else {
+        // Edit mode: same end-of-day snap as create. The DatePicker is
+        // date-only; without this, choosing "today" would mark the key
+        // expired immediately.
         await props.onSubmit({
           name: name.trim() || null,
-          expiresAt: editDate ? editDate.toDate() : null,
+          expiresAt: editDate ? editDate.endOf("day").toDate() : null,
         });
       }
     } finally {
