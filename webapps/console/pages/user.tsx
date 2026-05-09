@@ -9,7 +9,8 @@ import { copyTextToClipboard, feedbackError, feedbackSuccess, confirmOp } from "
 import { QueryResponse } from "../components/QueryResponse/QueryResponse";
 import { JitsuButton } from "../components/JitsuButton/JitsuButton";
 import { ChangePassword } from "../components/ChangePassword/ChangePassword";
-import { FaCopy, FaPlus, FaTrash } from "react-icons/fa";
+import { FaCopy, FaPlus, FaTrash, FaTerminal } from "react-icons/fa";
+import { FaCloudArrowUp } from "react-icons/fa6";
 
 const expirationOptions: { label: string; days: number | null }[] = [
   { label: "30 days", days: 30 },
@@ -25,10 +26,24 @@ function expirationToDate(days: number | null): Date | null {
   return d;
 }
 
-function fmtDate(value: Date | string | null | undefined): string {
+const dateFmt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+
+function fmtShortDate(value: Date | string | null | undefined): string {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;
+  return d.toLocaleDateString(undefined, dateFmt);
+}
+
+function fmtFullDate(value: Date | string | null | undefined): string {
+  if (!value) return "";
+  const d = typeof value === "string" ? new Date(value) : value;
   return d.toLocaleString();
+}
+
+function dateValue(value: Date | string | null | undefined): number {
+  if (!value) return 0;
+  const d = typeof value === "string" ? new Date(value) : value;
+  return d.getTime();
 }
 
 function effectiveType(key: ApiKey): string {
@@ -36,25 +51,63 @@ function effectiveType(key: ApiKey): string {
   return inferTokenTypeFromId(key.id);
 }
 
-const KeyCell: React.FC<{ value: string }> = ({ value }) => {
+const typeStyles: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+  cli: { color: "blue", icon: <FaTerminal />, label: "cli" },
+  api: { color: "purple", icon: <FaCloudArrowUp />, label: "api" },
+};
+
+function TypeTag({ type }: { type: string }) {
+  const s = typeStyles[type] ?? { color: "default", icon: null, label: type };
+  return (
+    <Tag color={s.color} className="inline-flex items-center gap-1">
+      {s.icon ? <span className="inline-flex items-center">{s.icon}</span> : null}
+      <span>{s.label}</span>
+    </Tag>
+  );
+}
+
+/**
+ * Middle-truncate `value` to at most `max` chars, preserving both ends. The
+ * full string belongs in a tooltip beside the rendered span. Used for names —
+ * common case is a long auto-generated id like `jitsu-cli-Tr78cBn6EHHorI0...`
+ * where the prefix is informative but so is the trailing entropy.
+ */
+function middleTruncate(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+/**
+ * `hint` from juava is `XXX*YYY` (3+1+3). Render as `XXX**********YYY` so the
+ * masked secret looks like a sk- style preview without being so long it pushes
+ * the table out.
+ */
+function renderSecretHint(hint: string | null | undefined): string {
+  if (!hint) return "";
+  const parts = hint.split("*");
+  if (parts.length !== 2) return hint;
+  return `${parts[0]}${"*".repeat(10)}${parts[1]}`;
+}
+
+const CopyButton: React.FC<{ text: string }> = ({ text }) => {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center font-mono text-xs">
-      <code className="break-all">{value}</code>
-      <Tooltip title={copied ? "Copied!" : "Copy to clipboard"}>
-        <Button
-          type="text"
-          size="small"
-          onClick={() => {
-            copyTextToClipboard(value);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          <FaCopy />
-        </Button>
-      </Tooltip>
-    </div>
+    <Tooltip title={copied ? "Copied!" : "Copy to clipboard"}>
+      <Button
+        type="text"
+        size="small"
+        onClick={() => {
+          copyTextToClipboard(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        <FaCopy />
+      </Button>
+    </Tooltip>
   );
 };
 
@@ -109,7 +162,12 @@ const NewKeyModal: React.FC<{
           <p>
             Copy and store this key in a safe place. <strong>You will not be able to see it again.</strong>
           </p>
-          <KeyCell value={`${generated.id}:${generated.plaintext}`} />
+          <div className="flex items-center font-mono text-xs bg-neutral-100 rounded px-2 py-1">
+            <code className="break-all">
+              {generated.id}:{generated.plaintext}
+            </code>
+            <CopyButton text={`${generated.id}:${generated.plaintext}`} />
+          </div>
         </div>
       ) : (
         <Form form={form} layout="vertical" initialValues={{ expirationDays: 90 }}>
@@ -144,52 +202,89 @@ function ApiKeys() {
           {
             title: "Name",
             key: "name",
-            render: (k: ApiKey) => (
-              <div className="flex flex-col">
-                <span className="font-medium">{k.name || k.id}</span>
-                <Tooltip title={k.id}>
-                  <code className="text-xs text-textLight">
-                    {k.id}:{k.hint?.replace("*", "*".repeat(32 - 6))}
-                  </code>
+            render: (k: ApiKey) => {
+              const full = k.name || k.id;
+              const display = middleTruncate(full, 32);
+              return (
+                <Tooltip title={full}>
+                  <span className="font-medium">{display}</span>
                 </Tooltip>
-              </div>
-            ),
+              );
+            },
           },
           {
             title: "Type",
             key: "type",
-            render: (k: ApiKey) => <Tag>{effectiveType(k)}</Tag>,
+            render: (k: ApiKey) => <TypeTag type={effectiveType(k)} />,
           },
           {
-            title: <div className="whitespace-nowrap">Created</div>,
+            title: "Key ID",
+            key: "keyId",
+            render: (k: ApiKey) => (
+              <Tooltip title={k.id}>
+                <code className="font-mono text-xs text-text-light">{middleTruncate(k.id, 22)}</code>
+              </Tooltip>
+            ),
+          },
+          {
+            title: "Secret key",
+            key: "secret",
+            render: (k: ApiKey) => (
+              <code className="font-mono text-xs text-text-light">{renderSecretHint(k.hint)}</code>
+            ),
+          },
+          {
+            title: <span className="whitespace-nowrap">Created</span>,
             dataIndex: "createdAt",
-            className: "text-xs whitespace-nowrap",
-            render: (v: any) => fmtDate(v),
+            className: "whitespace-nowrap",
+            defaultSortOrder: "descend" as const,
+            sorter: (a: ApiKey, b: ApiKey) => dateValue(a.createdAt) - dateValue(b.createdAt),
+            render: (v: any) => (
+              <Tooltip title={fmtFullDate(v)}>
+                <span className="text-sm">{fmtShortDate(v)}</span>
+              </Tooltip>
+            ),
           },
           {
-            title: <div className="whitespace-nowrap">Last used</div>,
+            title: <span className="whitespace-nowrap">Last used</span>,
             dataIndex: "lastUsed",
-            className: "text-xs whitespace-nowrap",
-            render: (v: any) => (v ? fmtDate(v) : "Never"),
+            className: "whitespace-nowrap",
+            // Sort never-used keys last in descending mode (default 0 → bottom).
+            sorter: (a: ApiKey, b: ApiKey) => dateValue(a.lastUsed) - dateValue(b.lastUsed),
+            render: (v: any) =>
+              v ? (
+                <Tooltip title={fmtFullDate(v)}>
+                  <span className="text-sm">{fmtShortDate(v)}</span>
+                </Tooltip>
+              ) : (
+                <span className="text-text-light text-sm">Never</span>
+              ),
           },
           {
-            title: <div className="whitespace-nowrap">Expires</div>,
+            title: <span className="whitespace-nowrap">Expires</span>,
             dataIndex: "expiresAt",
-            className: "text-xs whitespace-nowrap",
+            className: "whitespace-nowrap",
+            sorter: (a: ApiKey, b: ApiKey) => dateValue(a.expiresAt) - dateValue(b.expiresAt),
             render: (v: any) => {
-              if (!v) return <span className="text-textLight">Never</span>;
+              if (!v) return <span className="text-text-light text-sm">Never</span>;
               const d = new Date(v);
               const expired = d.getTime() < Date.now();
-              return <span className={expired ? "text-error" : ""}>{fmtDate(d)}</span>;
+              return (
+                <Tooltip title={fmtFullDate(d)}>
+                  <span className={`text-sm ${expired ? "text-error" : ""}`}>{fmtShortDate(d)}</span>
+                </Tooltip>
+              );
             },
           },
           {
             title: "",
             key: "actions",
             className: "text-right",
+            width: 48,
             render: (k: ApiKey) => (
               <Button
                 type="text"
+                size="small"
                 onClick={async () => {
                   if (await confirmOp(`Delete key ${k.name || k.id}? This cannot be undone.`)) {
                     try {
@@ -211,18 +306,18 @@ function ApiKeys() {
         return (
           <>
             <div className="flex items-center justify-between">
-              <p className="text-lg font-bold m-0">API Keys</p>
+              <h2 className="text-xl font-semibold m-0">API Keys</h2>
               <Button type="primary" icon={<FaPlus />} onClick={() => setModalOpen(true)}>
                 Create the key
               </Button>
             </div>
-            <div className="pt-3">
+            <div className="pt-4">
               {keys.length === 0 ? (
                 <div className="flex text-textDisabled justify-center py-6">
                   No API keys yet. Click "Create the key" to make one.
                 </div>
               ) : (
-                <Table size="small" columns={columns} dataSource={keys} pagination={false} rowKey={k => k.id} />
+                <Table size="middle" columns={columns} dataSource={keys} pagination={false} rowKey={k => k.id} />
               )}
             </div>
             {modalOpen && (
@@ -259,7 +354,7 @@ const UserPage = (props: any) => {
   const user = useUser();
   return (
     <div className="flex justify-center">
-      <div className="px-4 py-6 flex flex-col items-center w-full" style={{ maxWidth: "1000px", minWidth: "300px" }}>
+      <div className="px-4 py-6 flex flex-col items-center w-full" style={{ maxWidth: "1440px", minWidth: "300px" }}>
         <JitsuButton icon={<FaArrowLeft />} size="large" type="primary" onClick={() => router.back()}>
           Go back
         </JitsuButton>
