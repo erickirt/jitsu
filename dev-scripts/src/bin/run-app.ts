@@ -17,11 +17,13 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const requireFromHere = createRequire(import.meta.url);
 
 /**
  * Scratch dir we run portless from. Why:
@@ -78,6 +80,46 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
+/**
+ * Rewrite bare `--require=NAME` / `-r NAME` entries in NODE_OPTIONS to absolute
+ * paths. Bare names break in spawned children whose cwd is outside any
+ * `node_modules` chain (here: SHIM_DIR for portless). Unresolvable names are
+ * left alone — Node will surface the original error in context.
+ */
+function absolutizeRequires(nodeOptions: string | undefined, resolver: NodeRequire): string | undefined {
+  if (!nodeOptions) return nodeOptions;
+  // Tokenize on whitespace; NODE_OPTIONS values don't support shell quoting.
+  const tokens = nodeOptions.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const eqMatch = t.match(/^(--require|-r)=(.+)$/);
+    if (eqMatch) {
+      out.push(`${eqMatch[1]}=${tryResolve(eqMatch[2], resolver)}`);
+      continue;
+    }
+    if (t === "--require" || t === "-r") {
+      const next = tokens[i + 1];
+      if (next) {
+        out.push(t, tryResolve(next, resolver));
+        i++;
+        continue;
+      }
+    }
+    out.push(t);
+  }
+  return out.join(" ");
+}
+
+function tryResolve(spec: string, resolver: NodeRequire): string {
+  if (path.isAbsolute(spec) || spec.startsWith("./") || spec.startsWith("../")) return spec;
+  try {
+    return resolver.resolve(spec);
+  } catch {
+    return spec;
+  }
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   const noBranch = argv.includes("--no-branch");
@@ -118,9 +160,16 @@ function main(): void {
     })`
   );
 
+  // Resolve `--require=env-preload` (set globally via root .npmrc) to an
+  // absolute path so it survives the cwd switch into SHIM_DIR. Without this,
+  // portless starts from SHIM_DIR (no node_modules → no `env-preload`) and
+  // dies in `loadPreloadModules` before bash ever runs the inner command.
+  const resolvedNodeOptions = absolutizeRequires(process.env.NODE_OPTIONS, requireFromHere);
+
   const child = spawn("portless", ["--name", slug, "bash", "-c", innerCmd], {
     cwd: SHIM_DIR,
     stdio: "inherit",
+    env: { ...process.env, NODE_OPTIONS: resolvedNodeOptions },
   });
   child.on("error", err => {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
