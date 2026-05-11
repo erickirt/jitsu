@@ -34,6 +34,11 @@ on:
         required: false
         type: boolean
         default: false
+      slack_thread_ts:
+        description: "If set, the release Slack notification is posted into this thread (parent's ts). Used by cross-repo callers that already opened a parent message."
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       channel:
@@ -60,6 +65,11 @@ on:
         required: false
         type: boolean
         default: false
+      slack_thread_ts:
+        description: "If set, the release Slack notification is posted into this thread (parent's ts)."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   # One services build per ref at a time.
@@ -355,6 +365,10 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      # Surfaced to the downstream notify_slack job, which can't reach into
+      # this job's step outputs directly.
+      deploy_run_url: ${{ steps.notify.outputs.deploy_run_url }}
 
     steps:
       - name: 📥 Checkout code
@@ -409,34 +423,42 @@ jobs:
 
           echo "deploy_run_url=${DEPLOY_RUN_URL}" >> $GITHUB_OUTPUT
 
-      - name: 💬 Send notification to Slack
-        if: always()
-        uses: ./.github/actions/slack-notify
-        with:
-          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
-          blocks: |
-            - title: Branch
-              value: ${{ github.ref_name }}
-            - title: Version
-              value: ${{ needs.version.outputs.version || 'N/A' }}
-            - title: Tag
-              value: ${{ needs.version.outputs.tag || 'N/A' }}
-            - title: NPM Tag
-              value: ${{ needs.npm_publish.result == 'success' && (needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel) || 'Not published' }}
-            - title: Commit
-              value: ${{ needs.version.outputs.short_sha }}
-              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-            - title: Commit message
-              value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || '' }}
-              is_code: true
-            - title: Workflow run
-              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
-              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            - title: ${{ job.status == 'success' && 'Deploy lifecycle' || 'Triggered by' }}
-              value: ${{ job.status == 'success' && 'View deployment run' || github.actor }}
-              url: ${{ job.status == 'success' && steps.notify.outputs.deploy_run_url || '' }}
+  notify_slack:
+    # Posts the release notification via the shared reusable workflow. Split
+    # out of finalize_release so we can use the reusable workflow (which only
+    # works at job level). When invoked from a cross-repo caller (e.g.
+    # jitsu-cloud-infra's deploy.yaml) the `slack_thread_ts` input threads
+    # this message under the caller's parent.
+    needs: [version, nodejs_build, build_bulker, npm_publish, finalize_release]
+    if: ${{ !inputs.dont_publish && needs.version.outputs.channel != 'canary' && !cancelled() && needs.finalize_release.result == 'success' }}
+    uses: jitsucom/github-workflows/.github/workflows/slack-notify.yml@main
+    secrets: inherit
+    with:
+      channel: "#dev"
+      thread_ts: ${{ inputs.slack_thread_ts }}
+      color: "#36a64f"
+      header: "✅ 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release SUCCEEDED"
+      blocks: |
+        - title: Branch
+          value: ${{ github.ref_name }}
+        - title: Version
+          value: ${{ needs.version.outputs.version || 'N/A' }}
+        - title: Tag
+          value: ${{ needs.version.outputs.tag || 'N/A' }}
+        - title: NPM Tag
+          value: ${{ needs.npm_publish.result == 'success' && (needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel) || 'Not published' }}
+        - title: Commit
+          value: ${{ needs.version.outputs.short_sha }}
+          url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        - title: Commit message
+          value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || '' }}
+          is_code: true
+        - title: Workflow run
+          value: View workflow run
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        - title: Deploy lifecycle
+          value: View deployment run
+          url: ${{ needs.finalize_release.outputs.deploy_run_url }}
 
   npm_publish:
     needs: [version]
