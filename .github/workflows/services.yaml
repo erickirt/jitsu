@@ -429,15 +429,19 @@ jobs:
     # works at job level). When invoked from a cross-repo caller (e.g.
     # jitsu-cloud-infra's deploy.yaml) the `slack_thread_ts` input threads
     # this message under the caller's parent.
-    needs: [version, nodejs_build, build_bulker, npm_publish, finalize_release]
-    if: ${{ !inputs.dont_publish && needs.version.outputs.channel != 'canary' && !cancelled() && needs.finalize_release.result == 'success' }}
-    uses: jitsucom/github-workflows/.github/workflows/slack-notify.yml@main
+    #
+    # Fires on success AND failure: `!cancelled()` overrides the default
+    # "skip if any need failed" so the failure branch reports via Slack.
+    # Canary and dont_publish runs stay quiet (no release happened).
+    needs: [version, nodejs_build, build_bulker, npm_publish, tag_release, finalize_release]
+    if: ${{ !cancelled() && !inputs.dont_publish && needs.version.outputs.channel != 'canary' }}
+    uses: jitsucom/github-workflows/.github/workflows/slack-notify.yml@1.19.20260511
     secrets: inherit
     with:
       channel: "#dev"
       thread_ts: ${{ inputs.slack_thread_ts }}
-      color: "#36a64f"
-      header: "✅ 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release SUCCEEDED"
+      color: ${{ needs.finalize_release.result == 'success' && '#36a64f' || '#ff0000' }}
+      header: "${{ needs.finalize_release.result == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ needs.finalize_release.result == 'success' && 'SUCCEEDED' || 'FAILED' }}"
       blocks: |
         - title: Branch
           value: ${{ github.ref_name }}
@@ -454,10 +458,10 @@ jobs:
           value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || '' }}
           is_code: true
         - title: Workflow run
-          value: View workflow run
+          value: ${{ needs.finalize_release.result == 'success' && 'View workflow run' || 'View failed run' }}
           url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         - title: Deploy lifecycle
-          value: View deployment run
+          value: ${{ needs.finalize_release.outputs.deploy_run_url && 'View deployment run' || 'N/A (release did not finalize)' }}
           url: ${{ needs.finalize_release.outputs.deploy_run_url }}
 
   npm_publish:
