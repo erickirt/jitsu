@@ -91,6 +91,22 @@ jobs:
         id: short-sha
         run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
+      - name: 📝 Write version file for cross-repo callers
+        # Cross-repo callers (e.g. jitsu-cloud-infra's deploy workflow) need
+        # the resolved Docker tag back. workflow_dispatch doesn't expose
+        # outputs across repos, so we ship it as an artifact instead.
+        env:
+          VERSION: ${{ steps.manual.outputs.version || steps.generated.outputs.version }}
+        run: printf '%s' "$VERSION" > /tmp/version.txt
+
+      - name: 📤 Upload version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: /tmp/version.txt
+          if-no-files-found: error
+          retention-days: 7
+
   nodejs_build:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'nodejs' }}
