@@ -29,6 +29,11 @@ on:
         required: false
         type: boolean
         default: false
+      fast_fail:
+        description: "Cancel the whole run as soon as any critical job fails (used by cross-repo callers that wait on this workflow)"
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       channel:
@@ -47,6 +52,11 @@ on:
         default: all
       dont_publish:
         description: "Build only, no registry pushes or tag creation"
+        required: false
+        type: boolean
+        default: false
+      fast_fail:
+        description: "Cancel the whole run as soon as any critical job fails"
         required: false
         type: boolean
         default: false
@@ -203,6 +213,12 @@ jobs:
               .
           done
 
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+
   build_bulker:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'bulker' }}
@@ -288,6 +304,11 @@ jobs:
               ./bulker
           done
 
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
 
   tag_release:
     needs: [version, nodejs_build, build_bulker, npm_publish]
@@ -533,3 +554,9 @@ jobs:
       - name: 🧹 Cleanup container
         if: always()
         run: docker stop builder && docker rm builder
+
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
