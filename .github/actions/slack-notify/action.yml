@@ -40,7 +40,8 @@ runs:
         BLOCKS_JSON: ${{ steps.convert.outputs.blocks_json }}
       with:
         script: |
-          const blocks = JSON.parse(process.env.BLOCKS_JSON);
+          const blocks = JSON.parse(process.env.BLOCKS_JSON)
+            .filter(b => b.value !== '' && b.value != null);
 
           // Build single text with all blocks as bullet points
           const lines = blocks.map(block => {
