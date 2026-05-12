@@ -36,12 +36,12 @@ import (
 //     the sidecar SIGTERMs PID 1 to terminate the entire Pod.
 
 const (
-	leaseAPIPath           = "/apis/coordination.k8s.io/v1/namespaces/%s/leases"
-	leaseSAPath            = "/var/run/secrets/kubernetes.io/serviceaccount"
-	leaseDurationSeconds   = 60
+	leaseAPIPath            = "/apis/coordination.k8s.io/v1/namespaces/%s/leases"
+	leaseSAPath             = "/var/run/secrets/kubernetes.io/serviceaccount"
+	leaseDurationSeconds    = 60
 	leaseAcquireMaxAttempts = 10
-	leaseAcquireBackoff    = 500 * time.Millisecond
-	leaseRenewInterval     = 20 * time.Second
+	leaseAcquireBackoff     = 500 * time.Millisecond
+	leaseRenewInterval      = 20 * time.Second
 )
 
 type Lease struct {
@@ -69,6 +69,30 @@ type leaseClient struct {
 	apiServer string
 	token     string
 	namespace string
+}
+
+// Package-level lease state. Both the lease-renewer goroutine's signal
+// handler AND the main sidecar's natural-exit defer (main.go:113) need to
+// read these — without that, the deferred ReleaseSyncLease() would delete
+// a lease that another pod has since taken over (lost-lease path), allowing
+// duplicate concurrent runs.
+//   - leaseLost: set by startLeaseRenewer when Renew() returns ok=false.
+//     ReleaseSyncLease() short-circuits when this is true.
+//   - leaseReleased: ensures the actual DELETE call happens at most once
+//     across signal-driven and defer-driven paths.
+var (
+	leaseLost     atomic.Bool
+	leaseReleased atomic.Bool
+)
+
+// releaseLeaseOnce performs a best-effort lease delete at most once. Both
+// release paths (renewer SIGTERM handler, ReleaseSyncLease() natural-exit
+// defer) funnel through it.
+func releaseLeaseOnce(c *leaseClient, syncID, reason string) {
+	if leaseReleased.CompareAndSwap(false, true) {
+		logging.Infof("[lease] releasing lease %q (%s)", syncID, reason)
+		c.Release(syncID)
+	}
 }
 
 func newLeaseClient(namespace string) (*leaseClient, error) {
@@ -341,15 +365,6 @@ func startLeaseRenewer() {
 		logging.Errorf("[lease-renew] init: %v (sidecar will continue WITHOUT lease renewal)", err)
 		return
 	}
-	var lostLease atomic.Bool
-	var released atomic.Bool
-
-	tryRelease := func(reason string) {
-		if released.CompareAndSwap(false, true) {
-			logging.Infof("[lease-renew] releasing lease %q (%s)", syncID, reason)
-			client.Release(syncID)
-		}
-	}
 
 	// Cleanup on SIGTERM/SIGINT (graceful shutdown from kubelet on Pod
 	// completion, or from the user). Lost-lease path skips Release because
@@ -358,8 +373,8 @@ func startLeaseRenewer() {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sigCh
-		if !lostLease.Load() {
-			tryRelease("signal received")
+		if !leaseLost.Load() {
+			releaseLeaseOnce(client, syncID, "signal received")
 		}
 	}()
 
@@ -368,7 +383,7 @@ func startLeaseRenewer() {
 		defer t.Stop()
 		for {
 			<-t.C
-			if lostLease.Load() {
+			if leaseLost.Load() {
 				return
 			}
 			ok, err := client.Renew(syncID, identity)
@@ -377,7 +392,7 @@ func startLeaseRenewer() {
 				continue
 			}
 			if !ok {
-				lostLease.Store(true)
+				leaseLost.Store(true)
 				logging.Errorf("[lease-renew] lease %q lost — terminating Pod", syncID)
 				// shareProcessNamespace=true means the source connector's
 				// process is reachable. SIGTERM PID 1 (the pause container);
@@ -393,9 +408,20 @@ func startLeaseRenewer() {
 }
 
 // ReleaseSyncLease is callable from the main sidecar's normal-exit path
-// (e.g. defer at the end of ReadSideCar.Run). Idempotent and best-effort.
+// (the defer in main.go). Idempotent and best-effort. Critically, this
+// short-circuits when the renewer has already detected lease-loss — at
+// that point another Pod owns the Lease object and deleting it would
+// reopen the gate for duplicate concurrent runs of the same sync.
 func ReleaseSyncLease() {
 	if os.Getenv("RENEW_LEASE") != "true" {
+		return
+	}
+	if leaseLost.Load() {
+		// Another Pod now holds this lease — don't delete its claim.
+		return
+	}
+	if leaseReleased.Load() {
+		// Already released by the renewer's signal handler.
 		return
 	}
 	syncID := os.Getenv("SYNC_ID")
@@ -408,7 +434,7 @@ func ReleaseSyncLease() {
 		logging.Warnf("[lease-release] init: %v", err)
 		return
 	}
-	client.Release(syncID)
+	releaseLeaseOnce(client, syncID, "natural exit")
 }
 
 // Helper used by syncctl's /run admission gate (via HTTP, not in this binary).

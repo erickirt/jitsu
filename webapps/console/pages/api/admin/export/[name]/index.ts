@@ -877,19 +877,29 @@ async function exportSyncs(writer: Writer) {
     getLog().atDebug().log(`Got batch of ${objects.length} syncs for export`);
     lastId = objects[objects.length - 1].id;
 
-    const enriched = objects.map(({ data, from, id, to, updatedAt, workspace }) => {
+    const enriched = objects.flatMap(({ data, from, id, to, updatedAt, workspace }) => {
       let destinationConfig: any = { ...(to.config as any) };
       const destinationType = destinationConfig.destinationType;
       const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);
       if (!coreDestinationType) {
-        getLog().atError().log(`Unknown destination type: ${destinationType} for sync ${id}`);
+        getLog()
+          .atError()
+          .log(`Unknown destination type: ${destinationType} for sync ${id} - skipping export of this sync`);
+        return [];
       }
-      if (!coreDestinationType?.usesBulker) {
+      if (!coreDestinationType.usesBulker) {
+        // Non-bulker destinations (e.g. mixpanel-with-syncs) used to run
+        // synchronously inside the console process via scheduleSync's
+        // runSynchronously branch — they were never scheduled by GCS, and
+        // the autonomous CronJob path doesn't support them either. Skip
+        // them out of the export so syncctl doesn't try to reconcile a
+        // CronJob whose Pod template can't actually run them.
         getLog()
           .atError()
           .log(
             `Sync ${id} has destination type ${destinationType} which does not use bulker - skipping export of this sync`
           );
+        return [];
       }
       const syncData = (data ?? {}) as Record<string, any>;
       let serviceConfig: any = { ...(from.config as any) };
@@ -920,24 +930,26 @@ async function exportSyncs(writer: Writer) {
         destinationConfig = { ...destinationConfig, loadAsJson: false };
       }
 
-      return {
-        id,
-        workspaceId: workspace.id,
-        workspaceSlug: workspace.slug,
-        fromId: from.id,
-        toId: to.id,
-        source: serviceConfig,
-        destination: destinationConfig,
-        schedule: syncData.schedule,
-        timezone: syncData.timezone ?? "Etc/UTC",
-        // Everything from sync.data minus the fields already promoted to
-        // top-level (schedule, timezone), plus the computed versionHash.
-        options: {
-          ...omit(syncData, "schedule", "timezone"),
-          versionHash,
+      return [
+        {
+          id,
+          workspaceId: workspace.id,
+          workspaceSlug: workspace.slug,
+          fromId: from.id,
+          toId: to.id,
+          source: serviceConfig,
+          destination: destinationConfig,
+          schedule: syncData.schedule,
+          timezone: syncData.timezone ?? "Etc/UTC",
+          // Everything from sync.data minus the fields already promoted to
+          // top-level (schedule, timezone), plus the computed versionHash.
+          options: {
+            ...omit(syncData, "schedule", "timezone"),
+            versionHash,
+          },
+          updatedAt: dateMax(updatedAt, to.updatedAt),
         },
-        updatedAt: dateMax(updatedAt, to.updatedAt),
-      };
+      ];
     });
 
     for (const item of enriched) {
