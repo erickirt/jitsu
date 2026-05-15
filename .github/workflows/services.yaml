@@ -29,6 +29,16 @@ on:
         required: false
         type: boolean
         default: false
+      fast_fail:
+        description: "Cancel the whole run as soon as any critical job fails (used by cross-repo callers that wait on this workflow)"
+        required: false
+        type: boolean
+        default: false
+      slack_thread_ts:
+        description: "If set, the release Slack notification is posted into this thread (parent's ts). Used by cross-repo callers that already opened a parent message."
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       channel:
@@ -50,6 +60,16 @@ on:
         required: false
         type: boolean
         default: false
+      fast_fail:
+        description: "Cancel the whole run as soon as any critical job fails"
+        required: false
+        type: boolean
+        default: false
+      slack_thread_ts:
+        description: "If set, the release Slack notification is posted into this thread (parent's ts)."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   # One services build per ref at a time.
@@ -91,6 +111,22 @@ jobs:
         id: short-sha
         run: echo "sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
+      - name: 📝 Write version file for cross-repo callers
+        # Cross-repo callers (e.g. jitsu-cloud-infra's deploy workflow) need
+        # the resolved Docker tag back. workflow_dispatch doesn't expose
+        # outputs across repos, so we ship it as an artifact instead.
+        env:
+          VERSION: ${{ steps.manual.outputs.version || steps.generated.outputs.version }}
+        run: printf '%s' "$VERSION" > /tmp/version.txt
+
+      - name: 📤 Upload version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: /tmp/version.txt
+          if-no-files-found: error
+          retention-days: 7
+
   nodejs_build:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'nodejs' }}
@@ -102,6 +138,7 @@ jobs:
       issues: write
       pull-requests: write
       packages: write
+      actions: write
 
     steps:
       - name: 📥 Checkout code
@@ -187,6 +224,12 @@ jobs:
               .
           done
 
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+
   build_bulker:
     needs: [version]
     if: ${{ inputs.scope == 'all' || inputs.scope == 'bulker' }}
@@ -198,6 +241,7 @@ jobs:
       issues: write
       pull-requests: write
       packages: write
+      actions: write
 
     steps:
       - name: 📥 Checkout code
@@ -272,6 +316,11 @@ jobs:
               ./bulker
           done
 
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
 
   tag_release:
     needs: [version, nodejs_build, build_bulker, npm_publish]
@@ -316,6 +365,10 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      # Surfaced to the downstream notify_slack job, which can't reach into
+      # this job's step outputs directly.
+      deploy_run_url: ${{ steps.notify.outputs.deploy_run_url }}
 
     steps:
       - name: 📥 Checkout code
@@ -370,34 +423,46 @@ jobs:
 
           echo "deploy_run_url=${DEPLOY_RUN_URL}" >> $GITHUB_OUTPUT
 
-      - name: 💬 Send notification to Slack
-        if: always()
-        uses: ./.github/actions/slack-notify
-        with:
-          slack_webhook_url: ${{ secrets.CI_SLACK_WEBHOOK }}
-          color: ${{ job.status == 'success' && '#36a64f' || '#ff0000' }}
-          header: "${{ job.status == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ job.status == 'success' && 'SUCCEEDED' || 'FAILED' }}"
-          blocks: |
-            - title: Branch
-              value: ${{ github.ref_name }}
-            - title: Version
-              value: ${{ needs.version.outputs.version || 'N/A' }}
-            - title: Tag
-              value: ${{ needs.version.outputs.tag || 'N/A' }}
-            - title: NPM Tag
-              value: ${{ needs.npm_publish.result == 'success' && (needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel) || 'Not published' }}
-            - title: Commit
-              value: ${{ needs.version.outputs.short_sha }}
-              url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-            - title: Commit message
-              value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || 'N/A' }}
-              is_code: true
-            - title: Workflow run
-              value: ${{ job.status == 'success' && 'View workflow run' || 'View failed run' }}
-              url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            - title: ${{ job.status == 'success' && 'Deploy lifecycle' || 'Triggered by' }}
-              value: ${{ job.status == 'success' && 'View deployment run' || github.actor }}
-              url: ${{ job.status == 'success' && steps.notify.outputs.deploy_run_url || '' }}
+  notify_slack:
+    # Posts the release notification via the shared reusable workflow. Split
+    # out of finalize_release so we can use the reusable workflow (which only
+    # works at job level). When invoked from a cross-repo caller (e.g.
+    # jitsu-cloud-infra's deploy.yaml) the `slack_thread_ts` input threads
+    # this message under the caller's parent.
+    #
+    # Fires on success AND failure: `!cancelled()` overrides the default
+    # "skip if any need failed" so the failure branch reports via Slack.
+    # Canary and dont_publish runs stay quiet (no release happened).
+    needs: [version, nodejs_build, build_bulker, npm_publish, tag_release, finalize_release]
+    if: ${{ !cancelled() && !inputs.dont_publish && needs.version.outputs.channel != 'canary' }}
+    uses: jitsucom/github-workflows/.github/workflows/slack-notify.yml@1.19.20260511
+    secrets: inherit
+    with:
+      channel: "#dev"
+      thread_ts: ${{ inputs.slack_thread_ts }}
+      color: ${{ needs.finalize_release.result == 'success' && '#36a64f' || '#ff0000' }}
+      header: "${{ needs.finalize_release.result == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ needs.finalize_release.result == 'success' && 'SUCCEEDED' || 'FAILED' }}"
+      blocks: |
+        - title: Branch
+          value: ${{ github.ref_name }}
+        - title: Version
+          value: ${{ needs.version.outputs.version || 'N/A' }}
+        - title: Tag
+          value: ${{ needs.version.outputs.tag || 'N/A' }}
+        - title: NPM Tag
+          value: ${{ needs.npm_publish.result == 'success' && (needs.version.outputs.channel == 'stable' && 'latest' || needs.version.outputs.channel) || 'Not published' }}
+        - title: Commit
+          value: ${{ needs.version.outputs.short_sha }}
+          url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        - title: Commit message
+          value: ${{ github.event.head_commit.message && toJSON(github.event.head_commit.message) || '' }}
+          is_code: true
+        - title: Workflow run
+          value: ${{ needs.finalize_release.result == 'success' && 'View workflow run' || 'View failed run' }}
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        - title: Deploy lifecycle
+          value: ${{ needs.finalize_release.outputs.deploy_run_url && 'View deployment run' || 'N/A (release did not finalize)' }}
+          url: ${{ needs.finalize_release.outputs.deploy_run_url }}
 
   npm_publish:
     needs: [version]
@@ -409,6 +474,7 @@ jobs:
       contents: read
       packages: read
       id-token: write
+      actions: write
 
     steps:
       - name: 📥 Checkout code
@@ -517,3 +583,9 @@ jobs:
       - name: 🧹 Cleanup container
         if: always()
         run: docker stop builder && docker rm builder
+
+      - name: 🛑 Cancel run on failure (fast_fail)
+        if: ${{ failure() && inputs.fast_fail }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
