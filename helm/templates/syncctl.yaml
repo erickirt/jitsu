@@ -153,6 +153,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  # JobRunner.getPodResUsage (bulker/sync-controller/job_runner.go) execs
+  # `cat /sys/fs/cgroup/...` inside the running source container to sample
+  # CPU/memory usage. Requires create on pods/exec.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

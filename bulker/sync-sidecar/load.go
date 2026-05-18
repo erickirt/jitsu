@@ -35,12 +35,13 @@ import (
 // OPTIONS_JSON (the sync's options blob, used for stream selection).
 
 const (
-	sharedDir         = "/shared"
-	discoverOutPath   = sharedDir + "/discover.jsonl"
-	catalogOutPath    = sharedDir + "/catalog.json"
-	stateOutPath      = sharedDir + "/state.json"
-	legacyStateStream = "_LEGACY_STATE"
-	globalStateStream = "_GLOBAL_STATE"
+	sharedDir          = "/shared"
+	discoverOutPath    = sharedDir + "/discover.jsonl"
+	discoverStderrPath = sharedDir + "/discover.stderr"
+	catalogOutPath     = sharedDir + "/catalog.json"
+	stateOutPath       = sharedDir + "/state.json"
+	legacyStateStream  = "_LEGACY_STATE"
+	globalStateStream  = "_GLOBAL_STATE"
 )
 
 func runLoadCatalogState() {

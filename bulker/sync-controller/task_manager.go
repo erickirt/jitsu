@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jitsucom/bulker/jitsubase/appbase"
@@ -9,8 +12,6 @@ import (
 	"github.com/jitsucom/bulker/jitsubase/safego"
 	"github.com/jitsucom/bulker/jitsubase/utils"
 	"github.com/jitsucom/bulker/sync-sidecar/db"
-	"strings"
-	"time"
 
 	"net/http"
 )
@@ -127,8 +128,8 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 		t.Warnf("admission lease check failed for sync %s: %v (allowing run)", syncID, err)
 	} else if held {
 		c.JSON(http.StatusConflict, gin.H{
-			"ok":    false,
-			"error": "sync is already running (lease held)",
+			"ok":     false,
+			"error":  "sync is already running (lease held)",
 			"syncId": syncID,
 		})
 		return
@@ -273,7 +274,7 @@ func (t *TaskManager) listenTaskStatus() {
 					err = db.UpsertRunningTask(t.dbpool, st.SyncID, st.TaskID, st.Package, st.PackageVersion, st.StartedAtTime(), "FAILED", strings.Join([]string{string(st.Status), st.Error}, ": "), st.StartedBy)
 				case StatusCreated:
 					err = db.UpsertRunningTask(t.dbpool, st.SyncID, st.TaskID, st.Package, st.PackageVersion, st.StartedAtTime(), "RUNNING", "", st.StartedBy)
-				case StatusRunning:
+				case StatusRunning, StatusPending:
 					if len(st.Metrics) > 0 {
 						err = db.UpdateRunningTaskMetrics(t.dbpool, st.TaskID, st.Metrics)
 					} else {
