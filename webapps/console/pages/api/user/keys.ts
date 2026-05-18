@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "../../../lib/server/db";
 import { hint, randomId } from "juava";
 import { createHash } from "juava";
+import { mcpServer } from "../../../lib/server/mcp-server";
 
 const CreateKeyBody = z.object({
   name: z.string().optional(),
@@ -21,7 +22,7 @@ const api: Api = {
       result: z.array(ApiKey),
     },
     handle: async ({ user }) => {
-      return await db.prisma().userApiToken.findMany({
+      const rows = await db.prisma().userApiToken.findMany({
         where: { userId: user.internalId },
         select: {
           id: true,
@@ -31,9 +32,15 @@ const api: Api = {
           type: true,
           name: true,
           expiresAt: true,
+          oauthClient: { select: { name: true } },
         },
         orderBy: { createdAt: "desc" },
       });
+      // Flatten the relation into a single field so the wire shape stays flat.
+      return rows.map(({ oauthClient, ...rest }) => ({
+        ...rest,
+        mcpClientName: oauthClient?.name ?? null,
+      }));
     },
   },
   POST: {
@@ -112,7 +119,10 @@ const api: Api = {
       if (!existing || existing.userId !== user.internalId) {
         throw new ApiError(`Key not found`, {}, { status: 404 });
       }
-      await db.prisma().userApiToken.delete({ where: { id: query.id } });
+      // MCP-aware delete: if the row has oauthClientId set, also nukes its
+      // OAuthAccessToken rows and the OAuthClient itself. For non-MCP keys
+      // this is a plain delete. Single transaction either way.
+      await mcpServer.deleteUserApiTokenWithMcpCascade(query.id);
       return { ok: true };
     },
   },

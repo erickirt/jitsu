@@ -45,6 +45,7 @@
     "@jitsu/js": "workspace:*",
     "@jitsu/protocols": "workspace:*",
     "@loadable/component": "^5.15.3",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@monaco-editor/react": "^4.6.0",
     "@nangohq/frontend": "^0.21.11",
     "@prisma/client": "^6.5.0",
