@@ -4,24 +4,17 @@ import type { OAuthClient, Prisma, PrismaClient } from "@prisma/client";
 import { checkHash, createHash, randomId } from "juava";
 import { z } from "zod";
 import { getServerLog } from "../log";
+import { getPublicOrigin } from "../origin";
+import { getUser } from "../../api";
 import type { KvStore } from "../kv";
 import { OAuthClientsRepo } from "./clients";
 import { OAuthCodesRepo } from "./codes";
 
 const log = getServerLog("oauth");
 
-// Caller-supplied session resolver. Keeps OAuthHandlers from importing
-// getUser() / next-auth directly — preserves DI.
-export type GetCurrentUser = (
-  req: NextApiRequest,
-  res: NextApiResponse
-) => Promise<{ id: string; email: string; name: string } | undefined>;
-
 export interface OAuthHandlersDeps {
   prisma: PrismaClient;
   kv: KvStore;
-  baseUrl: string;
-  getCurrentUser: GetCurrentUser;
   accessTokenTtlSec: number;
   refreshTokenTtlDays: number;
 }
@@ -104,7 +97,7 @@ export class OAuthHandlers {
 
   // ─── Discovery: RFC 8414 ────────────────────────────────────────────────
   authServerMetadata = async (_req: NextApiRequest, res: NextApiResponse) => {
-    const base = this.deps.baseUrl;
+    const base = getPublicOrigin();
     res.status(200).json({
       issuer: base,
       authorization_endpoint: `${base}/oauth/authorize`,
@@ -120,7 +113,7 @@ export class OAuthHandlers {
 
   // ─── Discovery: RFC 9728 (MCP-required) ─────────────────────────────────
   protectedResourceMetadata = async (_req: NextApiRequest, res: NextApiResponse) => {
-    const base = this.deps.baseUrl;
+    const base = getPublicOrigin();
     res.status(200).json({
       resource: base,
       authorization_servers: [base],
@@ -168,8 +161,8 @@ export class OAuthHandlers {
   // page wants to render a brief "Redirecting..." state.
   approve = async (req: NextApiRequest, res: NextApiResponse) => {
     if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
-    const user = await this.deps.getCurrentUser(req, res);
-    if (!user) return jsonError(res, 401, "unauthenticated");
+    const sessionUser = await getUser(res, req);
+    if (!sessionUser) return jsonError(res, 401, "unauthenticated");
     const parsed = ApproveBody.safeParse(readBody(req));
     if (!parsed.success) {
       return jsonError(res, 400, "invalid_request", parsed.error.message);
@@ -179,7 +172,7 @@ export class OAuthHandlers {
     if ("error" in target) return jsonError(res, 400, target.error, target.description);
     const code = await this.codes.issueCode({
       clientId: target.client.id,
-      userId: user.id,
+      userId: sessionUser.internalId,
       redirectUri: target.redirectUri,
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,

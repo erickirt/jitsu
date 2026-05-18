@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { checkHash } from "juava";
 import { getServerLog } from "../log";
+import { getPublicOrigin } from "../origin";
 
 const log = getServerLog("mcp-auth");
 
@@ -16,29 +17,27 @@ function bearer(req: NextApiRequest): string | undefined {
 // Mints a 401 response that points the client at our OAuth metadata
 // (per MCP / RFC 9728). Without this header, MCP clients won't know how
 // to start the OAuth flow.
-function send401(res: NextApiResponse, baseUrl: string, error: string) {
+function send401(res: NextApiResponse, error: string) {
+  const base = getPublicOrigin();
   res.setHeader(
     "WWW-Authenticate",
-    `Bearer realm="jitsu-mcp", error="${error}", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`
+    `Bearer realm="jitsu-mcp", error="${error}", resource_metadata="${base}/.well-known/oauth-protected-resource"`
   );
   res.status(401).json({ error });
 }
 
 export class AuthChecker {
-  constructor(
-    private readonly prisma: PrismaClient,
-    private readonly baseUrl: string
-  ) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   async requireAccessToken(req: NextApiRequest, res: NextApiResponse): Promise<AuthInfo | undefined> {
     const raw = bearer(req);
     if (!raw) {
-      send401(res, this.baseUrl, "missing_token");
+      send401(res, "missing_token");
       return undefined;
     }
     const [tokenId, secret] = raw.split(":");
     if (!tokenId || !secret) {
-      send401(res, this.baseUrl, "invalid_token");
+      send401(res, "invalid_token");
       return undefined;
     }
     const at = await this.prisma.oAuthAccessToken.findUnique({
@@ -46,15 +45,15 @@ export class AuthChecker {
       include: { refreshToken: { include: { user: true, oauthClient: true } } },
     });
     if (!at) {
-      send401(res, this.baseUrl, "invalid_token");
+      send401(res, "invalid_token");
       return undefined;
     }
     if (!checkHash(at.hash, secret)) {
-      send401(res, this.baseUrl, "invalid_token");
+      send401(res, "invalid_token");
       return undefined;
     }
     if (at.expiresAt.getTime() < Date.now()) {
-      send401(res, this.baseUrl, "expired_token");
+      send401(res, "expired_token");
       return undefined;
     }
     // Fire-and-forget lastUsed bump — don't block the request on this write.
