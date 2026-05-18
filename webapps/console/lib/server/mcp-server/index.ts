@@ -7,7 +7,7 @@ import { db } from "../db";
 import { consoleKv, type KvStore } from "../kv";
 import { getUser } from "../../api";
 import { getServerLog } from "../log";
-import { getServerEnv } from "../serverEnv";
+import { getPublicOrigin } from "../origin";
 import { AuthChecker } from "./auth";
 import { KvEventStore } from "./event-store";
 import { OAuthHandlers, type GetCurrentUser } from "./oauth";
@@ -90,10 +90,7 @@ export class McpServer {
 export const mcpServer = new McpServer({
   prisma: db.prisma(),
   kv: consoleKv(),
-  baseUrl: (() => {
-    const env = getServerEnv();
-    return env.JITSU_PUBLIC_URL ?? env.JITSU_PUBLIC ?? env.NEXTAUTH_URL ?? "http://localhost:3000";
-  })(),
+  baseUrl: getPublicOrigin(),
   // Adapt the existing getUser() (which returns SessionUser) into the
   // GetCurrentUser shape OAuthHandlers expects.
   getCurrentUser: async (req, res) => {
