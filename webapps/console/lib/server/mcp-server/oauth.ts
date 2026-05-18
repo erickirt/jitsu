@@ -4,7 +4,7 @@ import type { OAuthClient, Prisma, PrismaClient } from "@prisma/client";
 import { checkHash, createHash, randomId } from "juava";
 import { z } from "zod";
 import { getServerLog } from "../log";
-import type { KeyValueStore } from "../kv";
+import type { KvStore } from "../kv";
 import { OAuthClientsRepo } from "./clients";
 import { OAuthCodesRepo } from "./codes";
 
@@ -19,7 +19,7 @@ export type GetCurrentUser = (
 
 export interface OAuthHandlersDeps {
   prisma: PrismaClient;
-  kv: KeyValueStore;
+  kv: KvStore;
   baseUrl: string;
   getCurrentUser: GetCurrentUser;
   accessTokenTtlSec: number;
@@ -38,6 +38,27 @@ const ApproveBody = z.object({
   code_challenge_method: z.literal("S256"),
   state: z.string().optional(),
 });
+
+const DenyBody = z.object({
+  client_id: z.string(),
+  redirect_uri: z.string().url(),
+  state: z.string().optional(),
+});
+
+// Redirect URIs must be http/https. Anything else (javascript:, data:,
+// file:, ...) is a phishing vector and we never want to issue a 3xx to one.
+// Loopback redirect URIs MAY use http per RFC 8252; non-loopback should be
+// https in production but we accept http for dev-localhost convenience.
+const ALLOWED_REDIRECT_SCHEMES = new Set(["http:", "https:"]);
+
+function isSafeRedirectUri(uri: string): boolean {
+  try {
+    const u = new URL(uri);
+    return ALLOWED_REDIRECT_SCHEMES.has(u.protocol);
+  } catch {
+    return false;
+  }
+}
 
 const TokenBodyAuthCode = z.object({
   grant_type: z.literal("authorization_code"),
@@ -78,7 +99,7 @@ export class OAuthHandlers {
 
   constructor(private readonly deps: OAuthHandlersDeps) {
     this.clients = new OAuthClientsRepo(deps.prisma);
-    this.codes = new OAuthCodesRepo(deps.kv.getTable("oauth_codes"));
+    this.codes = new OAuthCodesRepo(deps.kv);
   }
 
   // ─── Discovery: RFC 8414 ────────────────────────────────────────────────
@@ -114,6 +135,14 @@ export class OAuthHandlers {
     if (!parsed.success) {
       return jsonError(res, 400, "invalid_client_metadata", parsed.error.message);
     }
+    // Reject dangerous schemes at registration time so they never enter the
+    // whitelist in the first place. Defense in depth — approve/deny also
+    // re-check the scheme.
+    for (const uri of parsed.data.redirect_uris) {
+      if (!isSafeRedirectUri(uri)) {
+        return jsonError(res, 400, "invalid_redirect_uri", `unsupported scheme: ${uri}`);
+      }
+    }
     try {
       const c = await this.clients.register(parsed.data.client_name, parsed.data.redirect_uris);
       // RFC 7591 response shape.
@@ -146,23 +175,60 @@ export class OAuthHandlers {
       return jsonError(res, 400, "invalid_request", parsed.error.message);
     }
     const { client_id, redirect_uri, code_challenge, code_challenge_method, state } = parsed.data;
-    const client = await this.clients.findById(client_id);
-    if (!client) return jsonError(res, 400, "invalid_client");
-    if (!client.redirectUris.includes(redirect_uri)) {
-      return jsonError(res, 400, "invalid_request", "redirect_uri not registered for this client");
-    }
+    const target = await this.resolveRedirectTarget(client_id, redirect_uri);
+    if ("error" in target) return jsonError(res, 400, target.error, target.description);
     const code = await this.codes.issueCode({
-      clientId: client.id,
+      clientId: target.client.id,
       userId: user.id,
-      redirectUri: redirect_uri,
+      redirectUri: target.redirectUri,
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,
     });
-    const url = new URL(redirect_uri);
+    const url = new URL(target.redirectUri);
     url.searchParams.set("code", code);
     if (state) url.searchParams.set("state", state);
     res.status(200).json({ redirect_to: url.toString() });
   };
+
+  // Symmetric to approve: same server-side validation, no code issued. The
+  // browser used to build this redirect itself from query params — that was
+  // an open redirect because nothing checked the redirect_uri was registered
+  // for the client. Always route deny through the server.
+  deny = async (req: NextApiRequest, res: NextApiResponse) => {
+    if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
+    const parsed = DenyBody.safeParse(readBody(req));
+    if (!parsed.success) {
+      return jsonError(res, 400, "invalid_request", parsed.error.message);
+    }
+    const { client_id, redirect_uri, state } = parsed.data;
+    const target = await this.resolveRedirectTarget(client_id, redirect_uri);
+    if ("error" in target) return jsonError(res, 400, target.error, target.description);
+    const url = new URL(target.redirectUri);
+    url.searchParams.set("error", "access_denied");
+    if (state) url.searchParams.set("state", state);
+    res.status(200).json({ redirect_to: url.toString() });
+  };
+
+  // Shared validation: client must exist, redirect_uri must be in its
+  // registered whitelist, and the scheme must be http/https. Either side
+  // (approve, deny) calls this before bouncing the browser anywhere.
+  private async resolveRedirectTarget(
+    clientId: string,
+    redirectUri: string
+  ): Promise<
+    | { client: { id: string; redirectUris: string[] }; redirectUri: string }
+    | { error: string; description: string }
+  > {
+    if (!isSafeRedirectUri(redirectUri)) {
+      return { error: "invalid_request", description: "unsafe redirect_uri scheme" };
+    }
+    const client = await this.clients.findById(clientId);
+    if (!client) return { error: "invalid_client", description: "unknown client_id" };
+    if (!client.redirectUris.includes(redirectUri)) {
+      return { error: "invalid_request", description: "redirect_uri not registered for this client" };
+    }
+    return { client, redirectUri };
+  }
 
   // ─── Token endpoint: handles both grants ────────────────────────────────
   token = async (req: NextApiRequest, res: NextApiResponse) => {

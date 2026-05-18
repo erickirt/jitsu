@@ -1,7 +1,9 @@
 import { randomId } from "juava";
-import type { KeyValueTable } from "../kv";
+import type { KvStore } from "../kv";
 
-// Payload stored under each one-shot authorization code, keyed by the code string.
+const PREFIX = "oauth:code:";
+const TTL_MS = 60 * 1000;
+
 export type CodePayload = {
   clientId: string;
   userId: string;
@@ -11,27 +13,21 @@ export type CodePayload = {
   createdAt: number;
 };
 
-const TTL_MS = 60 * 1000;
-
-// Thin wrapper around the KV "oauth_codes" namespace. Codes are single-use:
-// consumeCode atomically reads and deletes. DI: takes the KeyValueTable.
+// One-shot OAuth authorization codes. The KV's atomic `getDel` is what makes
+// consumption safe: two concurrent /oauth/token requests for the same code
+// will see at most one row, so a code can never be exchanged twice.
 export class OAuthCodesRepo {
-  constructor(private readonly table: KeyValueTable) {}
+  constructor(private readonly kv: KvStore) {}
 
   async issueCode(payload: Omit<CodePayload, "createdAt">): Promise<string> {
     const code = randomId(48);
-    await this.table.put(code, { ...payload, createdAt: Date.now() } satisfies CodePayload, { ttlMs: TTL_MS });
+    await this.kv.set(PREFIX + code, { ...payload, createdAt: Date.now() } satisfies CodePayload, {
+      ttlMs: TTL_MS,
+    });
     return code;
   }
 
-  // Atomic-ish: get then del. The window between is short enough that a
-  // replay attack via parallel exchange would still fail validation later
-  // (PKCE verifier, client secret), but in practice no real client races
-  // itself on a single auth code.
   async consumeCode(code: string): Promise<CodePayload | undefined> {
-    const payload = (await this.table.get(code)) as CodePayload | undefined;
-    if (!payload) return undefined;
-    await this.table.del(code);
-    return payload;
+    return this.kv.getDel<CodePayload>(PREFIX + code);
   }
 }

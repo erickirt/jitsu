@@ -78,12 +78,30 @@ const Authorize = () => {
     }
   };
 
-  const deny = () => {
-    if (!redirectUri) return;
-    const url = new URL(redirectUri);
-    url.searchParams.set("error", "access_denied");
-    if (state) url.searchParams.set("state", state);
-    window.location.href = url.toString();
+  // Deny goes through the server so the redirect URI is validated against the
+  // OAuthClient's registered whitelist (and scheme-checked). Building the URL
+  // client-side from query params would be an open-redirect — anything in
+  // ?redirect_uri= would be navigated to.
+  const deny = async () => {
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const res = await fetch("/api/mcp/oauth/deny", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, redirect_uri: redirectUri, state }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error_description ?? body.error ?? "Failed to cancel");
+        setSubmitting(false);
+        return;
+      }
+      window.location.href = body.redirect_to;
+    } catch (e: any) {
+      setError(e.message ?? "Network error");
+      setSubmitting(false);
+    }
   };
 
   return (

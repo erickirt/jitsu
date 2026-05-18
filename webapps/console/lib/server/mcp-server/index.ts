@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { McpServer as SdkMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { db } from "../db";
-import { consoleKv, type KeyValueStore } from "../kv";
+import { consoleKv, type KvStore } from "../kv";
 import { getUser } from "../../api";
 import { getServerLog } from "../log";
 import { getServerEnv } from "../serverEnv";
@@ -17,7 +17,7 @@ const log = getServerLog("mcp-server");
 
 export interface McpServerDeps {
   prisma: PrismaClient;
-  kv: KeyValueStore;
+  kv: KvStore;
   baseUrl: string; // e.g. "https://console.jitsu.com" — for issuer / metadata
   getCurrentUser: GetCurrentUser; // resolves the logged-in user from req cookies
   accessTokenTtlSec?: number;
@@ -46,12 +46,13 @@ export class McpServer {
       refreshTokenTtlDays: deps.refreshTokenTtlDays ?? 90,
     });
     this.auth = new AuthChecker(deps.prisma, deps.baseUrl);
-    this.eventStore = new KvEventStore(deps.kv.getTable("mcp_events"));
+    this.eventStore = new KvEventStore(deps.kv);
   }
 
   // ─── OAuth endpoints ────────────────────────────────────────────────────
   handleRegister = (req: NextApiRequest, res: NextApiResponse) => this.oauth.register(req, res);
   handleApprove = (req: NextApiRequest, res: NextApiResponse) => this.oauth.approve(req, res);
+  handleDeny = (req: NextApiRequest, res: NextApiResponse) => this.oauth.deny(req, res);
   handleToken = (req: NextApiRequest, res: NextApiResponse) => this.oauth.token(req, res);
 
   // ─── Discovery ──────────────────────────────────────────────────────────
