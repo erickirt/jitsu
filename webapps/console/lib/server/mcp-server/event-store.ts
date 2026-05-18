@@ -8,7 +8,8 @@ const TTL_MS = 60 * 60 * 1000;
 // 13 digits covers ms timestamps up to year ~5138. Pad so lex sort == time sort.
 const TIME_DIGITS = 13;
 
-// Event ID layout: `<streamId>:<13-digit ms>-<uuid>`.
+// Event ID layout: `<streamId>:<13-digit ms>:<uuid>`. Colon-separated like
+// the rest of our KV keys (Redis convention).
 //   - Embedding streamId means getStreamIdForEventId is a plain split (no DB hit).
 //   - The 13-digit time prefix gives lex-sortable ordering within a stream.
 //   - The UUID tail breaks ties when two events land in the same millisecond
@@ -21,10 +22,12 @@ const TIME_DIGITS = 13;
 
 function makeEventId(streamId: StreamId): EventId {
   const t = Date.now().toString().padStart(TIME_DIGITS, "0");
-  return `${streamId}:${t}-${randomUUID()}`;
+  return `${streamId}:${t}:${randomUUID()}`;
 }
 
 function streamIdFromEventId(eventId: EventId): StreamId | undefined {
+  // streamId is everything before the first colon — by construction, it
+  // can't itself contain a colon (we'd need to revisit if it ever can).
   const idx = eventId.indexOf(":");
   return idx > 0 ? eventId.slice(0, idx) : undefined;
 }
