@@ -184,12 +184,16 @@ model OAuthClient {
 // that wants ephemeral or atomic key/value semantics). Single flat
 // namespace; callers separate concerns via key prefix conventions
 // (`oauth:code:...`, `mcp:event:...`). See lib/server/kv/.
-model Kv {
+model KvStoreEntry {
   key       String    @id
   value     Json
   expiresAt DateTime? @map("expires_at") /// @zod.custom(z.coerce.date())
 
   @@index([expiresAt])
+  // Prefix scans (`segment1:segment2:*`) need text_pattern_ops to use the
+  // index — the default text ops only help equality and ordering. With this
+  // ops class, `WHERE key LIKE 'prefix%'` becomes an index range scan.
+  @@index([key(ops: raw("text_pattern_ops"))], map: "kv_key_pattern_idx")
   @@map("kv")
 }
 
