@@ -7,6 +7,8 @@ import { getServerLog } from "../../../../lib/server/log";
 import { cleanupTasksLogs, scheduleSync } from "../../../../lib/server/sync";
 import { isTruish, stopwatch } from "juava";
 import { getServerEnv } from "../../../../lib/server/serverEnv";
+import { db } from "../../../../lib/server/db";
+import { cronjobsEnabledForWorkspace } from "../../../../lib/server/sync-cronjobs";
 
 const log = getServerLog("sync-run");
 const serverEnv = getServerEnv();
@@ -66,6 +68,25 @@ export const route = createRoute()
           throw new ApiError("Authorization Required", {}, { status: 401 });
         }
         await verifyAccess(user, workspaceId);
+      }
+      // Scheduled triggers (Cloud Scheduler → SYNCCTL_AUTH_KEY bearer) are
+      // ignored for workspaces opted into the autonomous K8s CronJob path —
+      // those runs are driven by syncctl-managed CronJobs instead, and letting
+      // both fire would double-schedule (the per-sync Lease blocks concurrent
+      // runs but not back-to-back ones).
+      if (trigger === "scheduled") {
+        const ws = await db.prisma().workspace.findUnique({
+          where: { id: workspaceId },
+          select: { featuresEnabled: true },
+        });
+        if (ws && cronjobsEnabledForWorkspace(ws.featuresEnabled)) {
+          log
+            .atInfo()
+            .log(
+              `Ignoring scheduled run for sync ${query.syncId} in workspace ${workspaceId}: cronjobs feature is enabled, autonomous CronJob handles scheduling.`
+            );
+          return { ok: true };
+        }
       }
       return await scheduleSync({
         req,

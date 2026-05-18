@@ -33,9 +33,38 @@ const (
 	labelAppName     = "app"
 	managedByValue   = "syncctl"
 	cronJobAppValue  = "sync-cron"
-	cronJobNameFmt   = "sync-%s"     // CronJob.metadata.name
-	cronSecretFmt    = "sync-%s-cfg" // per-CronJob Secret holding source/destination configs
+
+	// Bump when the pod-template structure changes in a way `SidecarImage`
+	// + `PodsServiceAccount` won't capture (init-container command paths,
+	// volume layout, env scaffolding). Forces a one-shot re-patch of every
+	// reconciled CronJob on the next reconcile after upgrade.
+	cronTemplateRevision = 2
 )
+
+// k8sName converts a sync ID into an RFC 1123 subdomain segment safe for use
+// as a CronJob/Secret metadata.name. Console-side IDs come from juava's
+// randomId() (alphabet `0-9a-zA-Z`) and may contain uppercase letters, which
+// K8s rejects. We lowercase and replace any other rune with `-`. Original ID
+// is preserved on the `jitsu.com/sync-id` label, which is the source of truth
+// for reconcile lookups.
+func k8sName(syncID string) string {
+	var b strings.Builder
+	b.Grow(len(syncID))
+	for _, r := range syncID {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r + ('a' - 'A'))
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func cronJobName(syncID string) string    { return "sync-" + k8sName(syncID) }
+func cronSecretName(syncID string) string { return "sync-" + k8sName(syncID) + "-cfg" }
 
 // CronJobController watches a SyncsRepository and reconciles k8s CronJobs +
 // per-CronJob Secrets in syncctl's namespace.
@@ -162,9 +191,14 @@ func (c *CronJobController) reconcile() {
 }
 
 // configHash is recorded in an annotation on each CronJob so we can detect
-// drift without diffing the whole spec. A change in the polled SyncEntry
-// produces a different hash → reconciler patches the CronJob + Secret.
-func configHash(entry *SyncEntry) string {
+// drift without diffing the whole spec. A change in either the polled
+// SyncEntry OR syncctl's own pod-template inputs (sidecar image, pods SA,
+// template revision) produces a different hash → reconciler patches the
+// CronJob + Secret. The runtime-config bits matter because a chart upgrade
+// (new image / new SA / new init-container layout) otherwise leaves existing
+// CronJobs pointing at the pre-upgrade template until the next SyncEntry
+// edit happens to flip the hash.
+func (c *CronJobController) configHash(entry *SyncEntry) string {
 	b, _ := json.Marshal(struct {
 		Schedule string          `json:"s"`
 		Timezone string          `json:"tz"`
@@ -173,6 +207,9 @@ func configHash(entry *SyncEntry) string {
 		SrcCfg   json.RawMessage `json:"sc"`
 		DestCfg  json.RawMessage `json:"dc"`
 		Options  json.RawMessage `json:"o"`
+		Image    string          `json:"img"`
+		PodSA    string          `json:"sa"`
+		TmplRev  int             `json:"tr"`
 	}{
 		Schedule: entry.Schedule,
 		Timezone: entry.Timezone,
@@ -181,6 +218,9 @@ func configHash(entry *SyncEntry) string {
 		SrcCfg:   entry.Source.Credentials,
 		DestCfg:  entry.Destination,
 		Options:  entry.Options,
+		Image:    c.config.SidecarImage,
+		PodSA:    c.config.PodsServiceAccount,
+		TmplRev:  cronTemplateRevision,
 	})
 	return utils.HashStringS(string(b))
 }
@@ -200,12 +240,12 @@ func (c *CronJobController) createCronJob(entry *SyncEntry) error {
 		}
 		return err
 	}
-	c.Infof("created CronJob sync-%s (schedule=%q)", entry.ID, entry.Schedule)
+	c.Infof("created CronJob %s (sync %s, schedule=%q)", cronJobName(entry.ID), entry.ID, entry.Schedule)
 	return nil
 }
 
 func (c *CronJobController) updateCronJobIfDrifted(existing *batchv1.CronJob, entry *SyncEntry) (bool, error) {
-	desiredHash := configHash(entry)
+	desiredHash := c.configHash(entry)
 	if existing.Annotations[annotationConfigHash] == desiredHash {
 		return false, nil
 	}
@@ -218,21 +258,20 @@ func (c *CronJobController) updateCronJobIfDrifted(existing *batchv1.CronJob, en
 	if err != nil {
 		return false, err
 	}
-	c.Infof("updated CronJob sync-%s (schedule=%q)", entry.ID, entry.Schedule)
+	c.Infof("updated CronJob %s (sync %s, schedule=%q)", cronJobName(entry.ID), entry.ID, entry.Schedule)
 	return true, nil
 }
 
 func (c *CronJobController) deleteCronJob(syncID string) error {
-	name := fmt.Sprintf(cronJobNameFmt, syncID)
+	name := cronJobName(syncID)
 	policy := metav1.DeletePropagationBackground
 	err := c.clientset.BatchV1().CronJobs(c.config.KubernetesNamespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &policy})
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 	// Best-effort delete of the per-CronJob Secret. Ignore NotFound.
-	secretName := fmt.Sprintf(cronSecretFmt, syncID)
-	_ = c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace).Delete(context.Background(), secretName, metav1.DeleteOptions{})
-	c.Infof("deleted CronJob sync-%s", syncID)
+	_ = c.clientset.CoreV1().Secrets(c.config.KubernetesNamespace).Delete(context.Background(), cronSecretName(syncID), metav1.DeleteOptions{})
+	c.Infof("deleted CronJob %s (sync %s)", name, syncID)
 	return nil
 }
 
@@ -241,7 +280,7 @@ func (c *CronJobController) deleteCronJob(syncID string) error {
 // File names match what sync-sidecar's ReadSideCar.loadDestinationConfig
 // expects at /config/destinationConfig.json.
 func (c *CronJobController) upsertSecret(entry *SyncEntry) error {
-	name := fmt.Sprintf(cronSecretFmt, entry.ID)
+	name := cronSecretName(entry.ID)
 	// /config/serviceConfig.json holds the Jitsu service config wrapper
 	// (package, version, authorized, credentials). oauth-refresh init reads
 	// cfg["authorized"] and cfg["credentials"] from it, then writes the
@@ -306,7 +345,7 @@ func (c *CronJobController) buildCronJob(entry *SyncEntry) *batchv1.CronJob {
 	return &batchv1.CronJob{
 		TypeMeta: metav1.TypeMeta{Kind: "CronJob", APIVersion: "batch/v1"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf(cronJobNameFmt, entry.ID),
+			Name:      cronJobName(entry.ID),
 			Namespace: c.config.KubernetesNamespace,
 			Labels: map[string]string{
 				labelManagedBy:   managedByValue,
@@ -315,7 +354,7 @@ func (c *CronJobController) buildCronJob(entry *SyncEntry) *batchv1.CronJob {
 				labelWorkspaceID: entry.WorkspaceID,
 			},
 			Annotations: map[string]string{
-				annotationConfigHash: configHash(entry),
+				annotationConfigHash: c.configHash(entry),
 			},
 		},
 		Spec: batchv1.CronJobSpec{
@@ -379,7 +418,7 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 	}
 
 	sourceImage := fmt.Sprintf("%s:%s", entry.Source.Package, entry.Source.Version)
-	configSecretName := fmt.Sprintf(cronSecretFmt, entry.ID)
+	configSecretName := cronSecretName(entry.ID)
 	databaseURL := utils.NvlString(c.config.SidecarDatabaseURL, c.config.DatabaseURL)
 
 	configMount := v1.VolumeMount{Name: "config", MountPath: "/config"}
@@ -405,7 +444,7 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		{
 			Name:      "lease-acquire",
 			Image:     c.config.SidecarImage,
-			Command:   []string{"/sync-sidecar", "lease-acquire"},
+			Command:   []string{"/app/sidecar", "lease-acquire"},
 			Env:       baseEnv,
 			Resources: smallResources(),
 		},
@@ -425,7 +464,7 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 	initContainers = append(initContainers, v1.Container{
 		Name:         "oauth-refresh",
 		Image:        c.config.SidecarImage,
-		Command:      []string{"/sync-sidecar", "oauth-refresh"},
+		Command:      []string{"/app/sidecar", "oauth-refresh"},
 		Env:          oauthEnv,
 		VolumeMounts: []v1.VolumeMount{configMount, sharedMount},
 		Resources:    smallResources(),
@@ -456,7 +495,7 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 	initContainers = append(initContainers, v1.Container{
 		Name:         "load-catalog-state",
 		Image:        c.config.SidecarImage,
-		Command:      []string{"/sync-sidecar", "load-catalog-state"},
+		Command:      []string{"/app/sidecar", "load-catalog-state"},
 		Env:          loadEnv,
 		VolumeMounts: []v1.VolumeMount{configMount, sharedMount},
 		Resources:    smallResources(),
@@ -502,14 +541,38 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		v1.EnvVar{Name: "TASK_ID", ValueFrom: &v1.EnvVarSource{FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 	)
 
+	// TaskDescriptor annotations let job_runner.watchPodStatuses observe cron
+	// pod failures the same way it observes ad-hoc Job pods. taskId/startedAt
+	// are intentionally empty here — they're per-fire, derived from pod name
+	// / pod.Status.StartTime by the watcher. The `creator` label is what the
+	// watcher's selector matches; without it, an init container failure
+	// (e.g. discover blowing up on a bad config) would be invisible to
+	// task_manager and no source_task FAILED row would be written.
+	cronTaskDescriptor := TaskDescriptor{
+		TaskType:        "read",
+		WorkspaceId:     entry.WorkspaceID,
+		SyncID:          entry.ID,
+		StorageKey:      opts.VersionHash,
+		Package:         entry.Source.Package,
+		PackageVersion:  entry.Source.Version,
+		Namespace:       opts.Namespace,
+		TableNamePrefix: opts.TableNamePrefix,
+		ToSameCase:      strconv.FormatBool(opts.ToSameCase),
+		AddMeta:         strconv.FormatBool(opts.AddMeta),
+		Deduplicate:     strconv.FormatBool(deduplicate),
+		StartedBy:       `{"type":"scheduled"}`,
+	}
+
 	pod := v1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
+				k8sCreatorLabel:  k8sCreatorLabelValue,
 				labelManagedBy:   managedByValue,
 				labelAppName:     cronJobAppValue,
 				labelSyncID:      entry.ID,
 				labelWorkspaceID: entry.WorkspaceID,
 			},
+			Annotations: cronTaskDescriptor.ExtractAnnotations(),
 		},
 		Spec: v1.PodSpec{
 			RestartPolicy:                 v1.RestartPolicyNever,

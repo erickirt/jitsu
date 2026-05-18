@@ -11,6 +11,7 @@ import { default as stableHash } from "stable-hash";
 import { WorkspaceDbModel, FunctionsServerDbModel } from "../../../../../prisma/schema";
 import { ProfileBuilder } from "@jitsu/destination-functions";
 import { getServerEnv } from "../../../../../lib/server/serverEnv";
+import { cronjobsEnabledForWorkspace } from "../../../../../lib/server/sync-cronjobs";
 
 const serverEnv = getServerEnv();
 const defaultFunctionsClass = serverEnv.DEFAULT_FUNCTIONS_CLASS;
@@ -878,6 +879,13 @@ async function exportSyncs(writer: Writer) {
     lastId = objects[objects.length - 1].id;
 
     const enriched = objects.flatMap(({ data, from, id, to, updatedAt, workspace }) => {
+      // Only emit syncs for workspaces opted into the autonomous CronJob path.
+      // Without this filter, syncctl would create a K8s CronJob for every sync
+      // — including ones still scheduled by Cloud Scheduler — and we'd get
+      // double execution.
+      if (!cronjobsEnabledForWorkspace(workspace.featuresEnabled)) {
+        return [];
+      }
       let destinationConfig: any = { ...(to.config as any) };
       const destinationType = destinationConfig.destinationType;
       const coreDestinationType = getCoreDestinationTypeNonStrict(destinationType);

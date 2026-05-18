@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -42,6 +43,12 @@ const (
 	leaseAcquireMaxAttempts = 10
 	leaseAcquireBackoff     = 500 * time.Millisecond
 	leaseRenewInterval      = 20 * time.Second
+
+	// coordination.k8s.io/v1 LeaseSpec.acquireTime / renewTime are MicroTime,
+	// which k8s.io/apimachinery parses with this exact layout (always 6
+	// fractional digits) and does NOT fall back to RFC3339. Sending plain
+	// RFC3339 (no fractional seconds) is rejected with a 400.
+	leaseMicroTimeFormat = "2006-01-02T15:04:05.000000Z07:00"
 )
 
 type Lease struct {
@@ -90,8 +97,9 @@ var (
 // defer) funnel through it.
 func releaseLeaseOnce(c *leaseClient, syncID, reason string) {
 	if leaseReleased.CompareAndSwap(false, true) {
-		logging.Infof("[lease] releasing lease %q (%s)", syncID, reason)
-		c.Release(syncID)
+		name := LeaseNameForSync(syncID)
+		logging.Infof("[lease] releasing lease %q (sync %s, %s)", name, syncID, reason)
+		c.Release(name)
 	}
 }
 
@@ -190,7 +198,7 @@ func (c *leaseClient) Get(name string) (*Lease, error) {
 // Acquire returns true if we successfully claim the lease for `identity`.
 // Returns false (no error) when the lease is currently held by a fresh holder.
 func (c *leaseClient) Acquire(name, identity string) (bool, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(leaseMicroTimeFormat)
 	existing, err := c.Get(name)
 	if err != nil {
 		return false, err
@@ -251,7 +259,7 @@ func (c *leaseClient) Renew(name, identity string) (bool, error) {
 	if existing == nil || existing.Spec.HolderIdentity != identity {
 		return false, nil
 	}
-	existing.Spec.RenewTime = time.Now().UTC().Format(time.RFC3339)
+	existing.Spec.RenewTime = time.Now().UTC().Format(leaseMicroTimeFormat)
 	_, status, err := c.do("PUT", name, existing)
 	if err != nil {
 		if status == http.StatusConflict || status == http.StatusNotFound {
@@ -276,7 +284,7 @@ func leaseIsStale(l *Lease) bool {
 	if l.Spec.RenewTime == "" {
 		return true
 	}
-	renewedAt, err := time.Parse(time.RFC3339, l.Spec.RenewTime)
+	renewedAt, err := time.Parse(leaseMicroTimeFormat, l.Spec.RenewTime)
 	if err != nil {
 		// If we can't parse, treat as stale so we can take over.
 		return true
@@ -320,19 +328,20 @@ func runLeaseAcquire() {
 		logging.Errorf("[lease-acquire] init: %v", err)
 		os.Exit(2)
 	}
+	leaseName := LeaseNameForSync(syncID)
 	for attempt := 1; attempt <= leaseAcquireMaxAttempts; attempt++ {
-		acquired, err := c.Acquire(syncID, identity)
+		acquired, err := c.Acquire(leaseName, identity)
 		if err != nil {
 			logging.Warnf("[lease-acquire] attempt %d: %v", attempt, err)
 		} else if acquired {
-			logging.Infof("[lease-acquire] acquired lease %q as %q", syncID, identity)
+			logging.Infof("[lease-acquire] acquired lease %q (sync %s) as %q", leaseName, syncID, identity)
 			os.Exit(0)
 		} else {
-			logging.Infof("[lease-acquire] attempt %d: lease %q held by another holder", attempt, syncID)
+			logging.Infof("[lease-acquire] attempt %d: lease %q (sync %s) held by another holder", attempt, leaseName, syncID)
 		}
 		time.Sleep(leaseAcquireBackoff)
 	}
-	logging.Errorf("[lease-acquire] giving up after %d attempts; lease %q is held", leaseAcquireMaxAttempts, syncID)
+	logging.Errorf("[lease-acquire] giving up after %d attempts; lease %q (sync %s) is held", leaseAcquireMaxAttempts, leaseName, syncID)
 	os.Exit(1)
 }
 
@@ -386,14 +395,14 @@ func startLeaseRenewer() {
 			if leaseLost.Load() {
 				return
 			}
-			ok, err := client.Renew(syncID, identity)
+			ok, err := client.Renew(LeaseNameForSync(syncID), identity)
 			if err != nil {
 				logging.Warnf("[lease-renew] %v (will retry)", err)
 				continue
 			}
 			if !ok {
 				leaseLost.Store(true)
-				logging.Errorf("[lease-renew] lease %q lost — terminating Pod", syncID)
+				logging.Errorf("[lease-renew] lease %q (sync %s) lost — terminating Pod", LeaseNameForSync(syncID), syncID)
 				// shareProcessNamespace=true means the source connector's
 				// process is reachable. SIGTERM PID 1 (the pause container);
 				// kubelet will clean up siblings.
@@ -439,8 +448,25 @@ func ReleaseSyncLease() {
 
 // Helper used by syncctl's /run admission gate (via HTTP, not in this binary).
 // Kept here so the lease key naming convention has one definition.
+//
+// Lease.metadata.name is an RFC 1123 subdomain (lowercase + `-` only), but
+// sync IDs come from juava's randomId() with alphabet `0-9a-zA-Z`. Sanitize
+// here so every lease verb (acquire/renew/release) and every external caller
+// produces the same name for a given syncID.
 func LeaseNameForSync(syncID string) string {
-	return syncID
+	var b strings.Builder
+	b.Grow(len(syncID))
+	for _, r := range syncID {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r + ('a' - 'A'))
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 // Used by load-catalog-state to compute deadlines.

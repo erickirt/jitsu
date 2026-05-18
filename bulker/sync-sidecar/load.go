@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jitsucom/bulker/jitsubase/logging"
+	"github.com/jitsucom/bulker/jitsubase/pg"
 	"github.com/jitsucom/bulker/sync-sidecar/db"
 )
 
@@ -34,12 +35,12 @@ import (
 // OPTIONS_JSON (the sync's options blob, used for stream selection).
 
 const (
-	sharedDir          = "/shared"
-	discoverOutPath    = sharedDir + "/discover.jsonl"
-	catalogOutPath     = sharedDir + "/catalog.json"
-	stateOutPath       = sharedDir + "/state.json"
-	legacyStateStream  = "_LEGACY_STATE"
-	globalStateStream  = "_GLOBAL_STATE"
+	sharedDir         = "/shared"
+	discoverOutPath   = sharedDir + "/discover.jsonl"
+	catalogOutPath    = sharedDir + "/catalog.json"
+	stateOutPath      = sharedDir + "/state.json"
+	legacyStateStream = "_LEGACY_STATE"
+	globalStateStream = "_GLOBAL_STATE"
 )
 
 func runLoadCatalogState() {
@@ -59,7 +60,12 @@ func runLoadCatalogState() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, dbURL)
+	// MUST go through pg.NewPGPool (not pgxpool.New directly) so the `?schema=`
+	// query param in DATABASE_URL is extracted and applied via per-conn
+	// `SET search_path`. Otherwise the unqualified SQL in db/db.go (e.g.
+	// `INSERT INTO source_catalog ...` used by UpsertCatalogSuccess below)
+	// resolves against `public` and fails with 42P01.
+	pool, err := pg.NewPGPool(dbURL)
 	if err != nil {
 		logging.Errorf("[load] db connect: %v", err)
 		os.Exit(2)

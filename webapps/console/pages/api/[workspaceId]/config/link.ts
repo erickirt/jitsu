@@ -34,34 +34,34 @@ const upsertHandler = async (ctx: any) => {
   const { id, toId, fromId, data = undefined, type = "push" } = body;
   await verifyAccessWithRole(user, workspaceId, "editEntities");
 
-    // Always validate the cron schedule + timezone for sync links — k8s
-    // CronJob (managed by syncctl from the polled syncs export) will reject
-    // an invalid spec hours later with no feedback to the user, so catching
-    // it at write time is the only good signal. Manual-only syncs (no
-    // schedule set) pass through untouched.
-    if (type === "sync" && data) {
-      try {
-        validateSyncSchedule(data);
-      } catch (e: any) {
-        throw new ApiError(e.message, {}, { status: 400 });
-      }
+  // Always validate the cron schedule + timezone for sync links — k8s
+  // CronJob (managed by syncctl from the polled syncs export) will reject
+  // an invalid spec hours later with no feedback to the user, so catching
+  // it at write time is the only good signal. Manual-only syncs (no
+  // schedule set) pass through untouched.
+  if (type === "sync" && data) {
+    try {
+      validateSyncSchedule(data);
+    } catch (e: any) {
+      throw new ApiError(e.message, {}, { status: 400 });
     }
+  }
 
-    // Validate connection data if strict mode is enabled
-    if (strict === "true" && data !== undefined) {
-      if (type === "sync") {
-        const parseResult = SyncOptionsType.safeParse(data);
-        if (!parseResult.success) {
-          throw new ApiError(
-            `Invalid sync options: ${parseResult.error.message}`,
-            { zodError: parseResult.error },
-            { status: 400 }
-          );
-        }
-      } else {
-        const destination = await db.prisma().configurationObject.findFirst({
-          where: { workspaceId, id: toId, type: "destination", deleted: false },
-        });
+  // Validate connection data if strict mode is enabled
+  if (strict === "true" && data !== undefined) {
+    if (type === "sync") {
+      const parseResult = SyncOptionsType.safeParse(data);
+      if (!parseResult.success) {
+        throw new ApiError(
+          `Invalid sync options: ${parseResult.error.message}`,
+          { zodError: parseResult.error },
+          { status: 400 }
+        );
+      }
+    } else {
+      const destination = await db.prisma().configurationObject.findFirst({
+        where: { workspaceId, id: toId, type: "destination", deleted: false },
+      });
 
       if (destination) {
         const destinationType = getCoreDestinationTypeNonStrict(destination.config?.["destinationType"]);
