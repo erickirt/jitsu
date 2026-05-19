@@ -896,7 +896,7 @@ async function exportSyncs(writer: Writer) {
           .log(`Unknown destination type: ${destinationType} for sync ${id} - skipping export of this sync`);
         return [];
       }
-      if (!coreDestinationType.usesBulker) {
+      if (!coreDestinationType.usesBulker && coreDestinationType.id !== "webhook") {
         // Non-bulker destinations (e.g. mixpanel-with-syncs) used to run
         // synchronously inside the console process via scheduleSync's
         // runSynchronously branch — they were never scheduled by GCS, and
