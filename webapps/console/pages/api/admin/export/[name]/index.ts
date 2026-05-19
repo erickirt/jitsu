@@ -956,7 +956,7 @@ async function exportSyncs(writer: Writer) {
             ...omit(syncData, "schedule", "timezone"),
             versionHash,
           },
-          updatedAt: dateMax(updatedAt, to.updatedAt),
+          updatedAt: dateMax(updatedAt, from.updatedAt, to.updatedAt),
         },
       ];
     });

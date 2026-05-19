@@ -198,29 +198,38 @@ func (c *CronJobController) reconcile() {
 // (new image / new SA / new init-container layout) otherwise leaves existing
 // CronJobs pointing at the pre-upgrade template until the next SyncEntry
 // edit happens to flip the hash.
+//
+// UpdatedAt is included as the authoritative drift marker — any edit on the
+// console side (including ones that don't touch the fields below, e.g.
+// stream selection inside Options) bumps it, and that alone is enough to
+// trigger a re-patch. The other fields stay in the hash so changes from
+// syncctl-internal upgrades (image / SA / template) still propagate even
+// when UpdatedAt hasn't changed.
 func (c *CronJobController) configHash(entry *SyncEntry) string {
 	b, _ := json.Marshal(struct {
-		Schedule string          `json:"s"`
-		Timezone string          `json:"tz"`
-		SrcPkg   string          `json:"sp"`
-		SrcVer   string          `json:"sv"`
-		SrcCfg   json.RawMessage `json:"sc"`
-		DestCfg  json.RawMessage `json:"dc"`
-		Options  json.RawMessage `json:"o"`
-		Image    string          `json:"img"`
-		PodSA    string          `json:"sa"`
-		TmplRev  int             `json:"tr"`
+		UpdatedAt string          `json:"u"`
+		Schedule  string          `json:"s"`
+		Timezone  string          `json:"tz"`
+		SrcPkg    string          `json:"sp"`
+		SrcVer    string          `json:"sv"`
+		SrcCfg    json.RawMessage `json:"sc"`
+		DestCfg   json.RawMessage `json:"dc"`
+		Options   json.RawMessage `json:"o"`
+		Image     string          `json:"img"`
+		PodSA     string          `json:"sa"`
+		TmplRev   int             `json:"tr"`
 	}{
-		Schedule: entry.Schedule,
-		Timezone: entry.Timezone,
-		SrcPkg:   entry.Source.Package,
-		SrcVer:   entry.Source.Version,
-		SrcCfg:   entry.Source.Credentials,
-		DestCfg:  entry.Destination,
-		Options:  entry.Options,
-		Image:    c.config.SidecarImage,
-		PodSA:    c.config.PodsServiceAccount,
-		TmplRev:  cronTemplateRevision,
+		UpdatedAt: entry.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		Schedule:  entry.Schedule,
+		Timezone:  entry.Timezone,
+		SrcPkg:    entry.Source.Package,
+		SrcVer:    entry.Source.Version,
+		SrcCfg:    entry.Source.Credentials,
+		DestCfg:   entry.Destination,
+		Options:   entry.Options,
+		Image:     c.config.SidecarImage,
+		PodSA:     c.config.PodsServiceAccount,
+		TmplRev:   cronTemplateRevision,
 	})
 	return utils.HashStringS(string(b))
 }

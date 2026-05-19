@@ -485,7 +485,9 @@ export async function scheduleSync({
     log
       .atInfo()
       .log(
-        `scheduleSync entry: syncId=${typeof syncIdOrModel === "string" ? syncIdOrModel : (syncIdOrModel as any)?.id} workspaceId=${workspaceId} trigger=${trigger} taskId=${taskId} skipRefresh=${!!skipRefresh} fullSync=${!!fullSync} ignoreRunning=${!!ignoreRunning} nodelay=${!!nodelay}`
+        `scheduleSync entry: syncId=${
+          typeof syncIdOrModel === "string" ? syncIdOrModel : (syncIdOrModel as any)?.id
+        } workspaceId=${workspaceId} trigger=${trigger} taskId=${taskId} skipRefresh=${!!skipRefresh} fullSync=${!!fullSync} ignoreRunning=${!!ignoreRunning} nodelay=${!!nodelay}`
       );
     const appBase = getAppEndpoint(req).baseUrl;
     const sync = typeof syncIdOrModel === "string" ? await getSyncById(syncIdOrModel, workspaceId) : syncIdOrModel;
@@ -712,7 +714,11 @@ export async function scheduleSync({
     if (!res.ok) {
       log
         .atWarn()
-        .log(`scheduleSync: syncctl RPC returned not-ok for sync=${sync.id} task=${taskId}: ${res.error ?? "unknown error"}`);
+        .log(
+          `scheduleSync: syncctl RPC returned not-ok for sync=${sync.id} task=${taskId}: ${
+            res.error ?? "unknown error"
+          }`
+        );
       return { ok: false, error: res.error ?? "unknown error", taskId };
     } else {
       if (trigger === "manual") {
