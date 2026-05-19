@@ -63,7 +63,7 @@
     "chart.js": "^4.4.1",
     "classnames": "^2.3.1",
     "cookie": "1.0.1",
-    "cron-parser": "^5.3.0",
+    "cron-parser": "^5.5.0",
     "cuid": "^2.1.8",
     "dayjs": "^1.11.10",
     "firebase": "^11.4.0",

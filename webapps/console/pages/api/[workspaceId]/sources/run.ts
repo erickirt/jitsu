@@ -69,12 +69,23 @@ export const route = createRoute()
         }
         await verifyAccess(user, workspaceId);
       }
+      log
+        .atInfo()
+        .log(
+          `sources/run entry: workspaceId=${workspaceId} syncId=${query.syncId} taskId=${query.taskId ?? "-"} trigger=${trigger} skipRefresh=${!!query.skipRefresh} fullSync=${!!query.fullSync} nodelay=${!!query.nodelay} ignoreRunning=${!!query.ignoreRunning}`
+        );
       // Scheduled triggers (Cloud Scheduler → SYNCCTL_AUTH_KEY bearer) are
-      // ignored for workspaces opted into the autonomous K8s CronJob path —
-      // those runs are driven by syncctl-managed CronJobs instead, and letting
-      // both fire would double-schedule (the per-sync Lease blocks concurrent
-      // runs but not back-to-back ones).
-      if (trigger === "scheduled") {
+      // ignored for workspaces/syncs opted into the autonomous K8s CronJob
+      // path — those runs are driven by syncctl-managed CronJobs instead, and
+      // letting both fire would double-schedule (the per-sync Lease blocks
+      // concurrent runs but not back-to-back ones).
+      //
+      // `skipRefresh=true` carves out syncctl's internal discover→read chain
+      // (task_manager.runReadTask) which authenticates with the same bearer
+      // but is NOT an external scheduler firing — it's the second half of an
+      // already-admitted sync. Blocking it would orphan the source_task row
+      // in RUNNING with no pod ever created.
+      if (trigger === "scheduled" && !query.skipRefresh) {
         const [ws, syncLink] = await Promise.all([
           db.prisma().workspace.findUnique({
             where: { id: workspaceId },
@@ -94,7 +105,7 @@ export const route = createRoute()
           return { ok: true };
         }
       }
-      return await scheduleSync({
+      const result = await scheduleSync({
         req,
         user,
         trigger,
@@ -106,6 +117,20 @@ export const route = createRoute()
         nodelay: !!query.nodelay,
         taskId: query.taskId,
       });
+      if (!result.ok) {
+        log
+          .atWarn()
+          .log(
+            `sources/run scheduleSync returned ok=false: syncId=${query.syncId} taskId=${query.taskId ?? "-"} error=${result.error ?? "-"} errorType=${result.errorType ?? "-"}`
+          );
+      } else {
+        log
+          .atInfo()
+          .log(
+            `sources/run scheduleSync ok: syncId=${query.syncId} taskId=${result.taskId ?? query.taskId ?? "-"}`
+          );
+      }
+      return result;
     } finally {
       const sw = stopwatch();
       await cleanupTasksLogs(query.syncId);

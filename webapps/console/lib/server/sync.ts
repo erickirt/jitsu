@@ -482,9 +482,15 @@ export async function scheduleSync({
     authHeaders["Authorization"] = `Bearer ${syncAuthKey}`;
   }
   try {
+    log
+      .atInfo()
+      .log(
+        `scheduleSync entry: syncId=${typeof syncIdOrModel === "string" ? syncIdOrModel : (syncIdOrModel as any)?.id} workspaceId=${workspaceId} trigger=${trigger} taskId=${taskId} skipRefresh=${!!skipRefresh} fullSync=${!!fullSync} ignoreRunning=${!!ignoreRunning} nodelay=${!!nodelay}`
+      );
     const appBase = getAppEndpoint(req).baseUrl;
     const sync = typeof syncIdOrModel === "string" ? await getSyncById(syncIdOrModel, workspaceId) : syncIdOrModel;
     if (!sync) {
+      log.atWarn().log(`scheduleSync: sync ${syncIdOrModel} not found (workspace ${workspaceId})`);
       return {
         ok: false,
         error: `Sync ${syncIdOrModel} not found`,
@@ -492,6 +498,7 @@ export async function scheduleSync({
     }
     const service = sync.from;
     if (!service) {
+      log.atWarn().log(`scheduleSync: sync ${sync.id} has no service (from); aborting`);
       return {
         ok: false,
         error: `Service ${sync.from} not found`,
@@ -621,6 +628,11 @@ export async function scheduleSync({
 
     const catalog = await catalogFromDb(serviceConfig.package, serviceConfig.version, versionHash);
     if (!catalog) {
+      log
+        .atWarn()
+        .log(
+          `scheduleSync: source_catalog miss for sync=${sync.id} package=${serviceConfig.package}@${serviceConfig.version} versionHash=${versionHash} — discover did not persist a catalog row matching this key`
+        );
       return {
         ok: false,
         error: `Source catalog not found or outdated. Please run Refresh Catalog in Sync settings`,
@@ -637,6 +649,13 @@ export async function scheduleSync({
     }
     let res: any;
     const schemaChanges = (sync.data as any).schemaChanges;
+    log
+      .atInfo()
+      .log(
+        `scheduleSync dispatch: sync=${sync.id} task=${taskId} branch=${
+          !skipRefresh && (schemaChanges === "fields" || schemaChanges === "streams") ? "discover" : "read"
+        } schemaChanges=${schemaChanges ?? "-"} skipRefresh=${!!skipRefresh}`
+      );
     if (!skipRefresh && (schemaChanges === "fields" || schemaChanges === "streams")) {
       res = await rpc(syncURL + "/discover", {
         method: "POST",
@@ -691,6 +710,9 @@ export async function scheduleSync({
       });
     }
     if (!res.ok) {
+      log
+        .atWarn()
+        .log(`scheduleSync: syncctl RPC returned not-ok for sync=${sync.id} task=${taskId}: ${res.error ?? "unknown error"}`);
       return { ok: false, error: res.error ?? "unknown error", taskId };
     } else {
       if (trigger === "manual") {

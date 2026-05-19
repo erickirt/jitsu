@@ -117,6 +117,10 @@ func (t *TaskManager) CancelHandler(c *gin.Context) {
 
 func (t *TaskManager) ReadHandler(c *gin.Context) {
 	syncID := c.Query("syncId")
+	taskID := c.Query("taskId")
+	pkg := c.Query("package")
+	t.Infof("ReadHandler: syncId=%s taskId=%s package=%s fullSync=%s nodelay=%s startedBy=%s",
+		syncID, taskID, pkg, c.Query("fullSync"), c.Query("nodelay"), c.Query("startedBy"))
 
 	// Admission gate: fail-fast if a Lease is currently held for this sync —
 	// either a cron-spawned Pod is running, or another manual run hasn't
@@ -127,6 +131,7 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 		// own lease-acquire init still enforces the invariant.
 		t.Warnf("admission lease check failed for sync %s: %v (allowing run)", syncID, err)
 	} else if held {
+		t.Infof("ReadHandler: rejecting syncId=%s taskId=%s — lease already held", syncID, taskID)
 		c.JSON(http.StatusConflict, gin.H{
 			"ok":     false,
 			"error":  "sync is already running (lease held)",
@@ -139,6 +144,7 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 	err := jsonorder.NewDecoder(c.Request.Body).Decode(&taskConfig)
 	defer c.Request.Body.Close()
 	if err != nil {
+		t.Warnf("ReadHandler: bad body for syncId=%s taskId=%s: %v", syncID, taskID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
@@ -147,10 +153,10 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 	}
 	taskDescriptor := TaskDescriptor{
 		TaskType:        "read",
-		Package:         c.Query("package"),
+		Package:         pkg,
 		PackageVersion:  c.Query("version"),
 		SyncID:          syncID,
-		TaskID:          c.Query("taskId"),
+		TaskID:          taskID,
 		Namespace:       c.Query("namespace"),
 		TableNamePrefix: c.Query("tableNamePrefix"),
 		ToSameCase:      c.Query("toSameCase"),
@@ -165,9 +171,12 @@ func (t *TaskManager) ReadHandler(c *gin.Context) {
 
 	taskStatus := t.jobRunner.CreateJob(taskDescriptor, &taskConfig)
 	if taskStatus.Status == StatusCreateFailed {
+		t.Errorf("ReadHandler: CreateJob failed for syncId=%s taskId=%s: %s", syncID, taskID, taskStatus.Error)
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": taskStatus.Error})
 		return
 	}
+	t.Infof("ReadHandler: created pod for syncId=%s taskId=%s status=%s pod=%s",
+		syncID, taskID, taskStatus.Status, taskStatus.PodName)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
