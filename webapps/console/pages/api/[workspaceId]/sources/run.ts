@@ -8,7 +8,7 @@ import { cleanupTasksLogs, scheduleSync } from "../../../../lib/server/sync";
 import { isTruish, stopwatch } from "juava";
 import { getServerEnv } from "../../../../lib/server/serverEnv";
 import { db } from "../../../../lib/server/db";
-import { cronjobsEnabledForWorkspace } from "../../../../lib/server/sync-cronjobs";
+import { cronjobsEnabledForSync } from "../../../../lib/server/sync-cronjobs";
 
 const log = getServerLog("sync-run");
 const serverEnv = getServerEnv();
@@ -75,11 +75,17 @@ export const route = createRoute()
       // both fire would double-schedule (the per-sync Lease blocks concurrent
       // runs but not back-to-back ones).
       if (trigger === "scheduled") {
-        const ws = await db.prisma().workspace.findUnique({
-          where: { id: workspaceId },
-          select: { featuresEnabled: true },
-        });
-        if (ws && cronjobsEnabledForWorkspace(ws.featuresEnabled)) {
+        const [ws, syncLink] = await Promise.all([
+          db.prisma().workspace.findUnique({
+            where: { id: workspaceId },
+            select: { featuresEnabled: true },
+          }),
+          db.prisma().configurationObjectLink.findFirst({
+            where: { id: query.syncId, workspaceId, type: "sync", deleted: false },
+            select: { createdAt: true, updatedAt: true },
+          }),
+        ]);
+        if (ws && syncLink && cronjobsEnabledForSync(ws, syncLink)) {
           log
             .atInfo()
             .log(

@@ -11,7 +11,7 @@ import { default as stableHash } from "stable-hash";
 import { WorkspaceDbModel, FunctionsServerDbModel } from "../../../../../prisma/schema";
 import { ProfileBuilder } from "@jitsu/destination-functions";
 import { getServerEnv } from "../../../../../lib/server/serverEnv";
-import { cronjobsEnabledForWorkspace } from "../../../../../lib/server/sync-cronjobs";
+import { cronjobsEnabledForSync } from "../../../../../lib/server/sync-cronjobs";
 
 const serverEnv = getServerEnv();
 const defaultFunctionsClass = serverEnv.DEFAULT_FUNCTIONS_CLASS;
@@ -878,12 +878,13 @@ async function exportSyncs(writer: Writer) {
     getLog().atDebug().log(`Got batch of ${objects.length} syncs for export`);
     lastId = objects[objects.length - 1].id;
 
-    const enriched = objects.flatMap(({ data, from, id, to, updatedAt, workspace }) => {
-      // Only emit syncs for workspaces opted into the autonomous CronJob path.
-      // Without this filter, syncctl would create a K8s CronJob for every sync
-      // — including ones still scheduled by Cloud Scheduler — and we'd get
-      // double execution.
-      if (!cronjobsEnabledForWorkspace(workspace.featuresEnabled)) {
+    const enriched = objects.flatMap(({ data, from, id, to, createdAt, updatedAt, workspace }) => {
+      // Only emit syncs opted into the autonomous CronJob path. Per-sync gate
+      // (createdAt/updatedAt vs cutoff) lets new/recently-touched syncs onto
+      // the new path without disturbing legacy syncs whose Cloud Scheduler
+      // jobs are still firing. Workspace-level featuresEnabled overrides
+      // either direction.
+      if (!cronjobsEnabledForSync(workspace, { createdAt, updatedAt })) {
         return [];
       }
       let destinationConfig: any = { ...(to.config as any) };
