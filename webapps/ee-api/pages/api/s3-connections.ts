@@ -38,7 +38,7 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
       dataLayout: "passthrough",
       deduplicate: false,
       frequency: 60,
-      batchSize: 1_000_000,
+      batchSize: 500_000,
     },
     updatedAt: w.updatedAt,
     credentials: {
