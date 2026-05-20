@@ -137,11 +137,22 @@ func runOAuthRefresh() {
 		logging.Errorf("[oauth] marshal merged config: %v", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(configOutPath, out, 0o644); err != nil {
+	if err := writeSharedConfig(configOutPath, out); err != nil {
 		logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
 		os.Exit(1)
 	}
 	logging.Infof("[oauth] refreshed credentials for %s (sync-source.%s)", pkg, sourceID)
+}
+
+// writeSharedConfig writes /shared/config.json with world-writable mode so the
+// airbyte source container (running as a non-root user, e.g. uid 1000) can
+// persist refreshed OAuth tokens back to it mid-run. os.WriteFile's perm is
+// ANDed with the umask, so we follow up with an explicit Chmod.
+func writeSharedConfig(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o666); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o666)
 }
 
 func passCredentials(cfg map[string]any, raw []byte) {
@@ -151,7 +162,7 @@ func passCredentials(cfg map[string]any, raw []byte) {
 			logging.Errorf("[oauth] marshalling credentials: %v", err)
 			os.Exit(1)
 		}
-		if err := os.WriteFile(configOutPath, out, 0o644); err != nil {
+		if err := writeSharedConfig(configOutPath, out); err != nil {
 			logging.Errorf("[oauth] writing %s: %v", configOutPath, err)
 			os.Exit(1)
 		}

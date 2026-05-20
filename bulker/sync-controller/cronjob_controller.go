@@ -38,7 +38,7 @@ const (
 	// + `PodsServiceAccount` won't capture (init-container command paths,
 	// volume layout, env scaffolding). Forces a one-shot re-patch of every
 	// reconciled CronJob on the next reconcile after upgrade.
-	cronTemplateRevision = 2
+	cronTemplateRevision = 3
 )
 
 // k8sName converts a sync ID into an RFC 1123 subdomain segment safe for use
@@ -449,15 +449,32 @@ func (c *CronJobController) buildCronPodTemplate(entry *SyncEntry) v1.PodTemplat
 		{Name: "DB_LOG_LEVEL", Value: c.config.DBLogLevel},
 	}
 
-	initContainers := []v1.Container{
-		{
-			Name:      "lease-acquire",
+	// Sub-minute jitter: CronJob schedules are minute-resolution, so syncs
+	// sharing the same schedule all fire at the same instant. Spread them
+	// deterministically over a 60s window using a hash of syncID — mirrors
+	// the legacy job_runner.CreateJob delay (see job_runner.go ~L471), just
+	// pushed into a pod init step. Runs before lease-acquire so the lease
+	// is held for the shortest possible window and so the thundering-herd
+	// targets downstream (DB, console, Nango) see staggered traffic.
+	// When the `admission` consolidation lands, this folds into the start
+	// of runAdmission and the dedicated init can be dropped.
+	jitterSec := int(utils.HashStringInt(entry.ID) % 60)
+	initContainers := []v1.Container{}
+	if jitterSec > 0 {
+		initContainers = append(initContainers, v1.Container{
+			Name:      "jitter",
 			Image:     c.config.SidecarImage,
-			Command:   []string{"/app/sidecar", "lease-acquire"},
-			Env:       baseEnv,
+			Command:   []string{"sleep", strconv.Itoa(jitterSec)},
 			Resources: smallResources(),
-		},
+		})
 	}
+	initContainers = append(initContainers, v1.Container{
+		Name:      "lease-acquire",
+		Image:     c.config.SidecarImage,
+		Command:   []string{"/app/sidecar", "lease-acquire"},
+		Env:       baseEnv,
+		Resources: smallResources(),
+	})
 
 	// oauth-refresh: always runs. Reads /config/serviceConfig.json (the
 	// Jitsu wrapper), unwraps `credentials` and writes the airbyte config to
@@ -662,7 +679,7 @@ func sidecarResources() v1.ResourceRequirements {
 func smallResources() v1.ResourceRequirements {
 	return v1.ResourceRequirements{
 		Limits: v1.ResourceList{
-			v1.ResourceCPU:    *resource.NewMilliQuantity(int64(200), resource.DecimalSI),
+			v1.ResourceCPU:    *resource.NewMilliQuantity(int64(20), resource.DecimalSI),
 			v1.ResourceMemory: *resource.NewQuantity(int64(math.Pow(2, 28)), resource.BinarySI), // 256Mi
 		},
 	}

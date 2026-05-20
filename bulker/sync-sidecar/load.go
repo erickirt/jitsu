@@ -141,7 +141,13 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	// 0o666 + explicit Chmod (umask masks WriteFile's perm) so the airbyte
+	// source container (non-root user) can write back if a connector ever
+	// does — matches legacy job_runner's `chmod 777 /config/*`.
+	if err := os.WriteFile(path, b, 0o666); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o666)
 }
 
 // extractCatalogFromDiscover scans the airbyte JSONL output and returns the
