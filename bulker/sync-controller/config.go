@@ -59,7 +59,7 @@ type Config struct {
 	// timeout: a Pod that can't schedule within this window is killed and the
 	// Job is marked Failed. With JobBackoffLimit=0 the Job is not retried;
 	// the next CronJob fire happens normally on the next schedule tick.
-	JobActiveDeadlineSeconds int32 `mapstructure:"JOB_ACTIVE_DEADLINE_SECONDS" default:"1800"`
+	JobActiveDeadlineSeconds int32 `mapstructure:"JOB_ACTIVE_DEADLINE_SECONDS" default:"180000"`
 	JobBackoffLimit          int32 `mapstructure:"JOB_BACKOFF_LIMIT" default:"0"`
 
 	// # Nango (OAuth refresh in autonomous sync Pods)

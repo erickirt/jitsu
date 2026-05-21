@@ -38,7 +38,7 @@ const (
 	// + `PodsServiceAccount` won't capture (init-container command paths,
 	// volume layout, env scaffolding). Forces a one-shot re-patch of every
 	// reconciled CronJob on the next reconcile after upgrade.
-	cronTemplateRevision = 3
+	cronTemplateRevision = 4
 )
 
 // k8sName converts a sync ID into an RFC 1123 subdomain segment safe for use
