@@ -118,6 +118,18 @@ export async function auth(req: NextApiRequest, res: NextApiResponse): Promise<F
   }
 }
 
+/** Verify a Firebase ID token (issued by the client SDK after sign-in). */
+export async function verifyIdToken(idToken: string): Promise<admin.auth.DecodedIdToken> {
+  await firebaseService.waitInit();
+  return firebase().auth().verifyIdToken(idToken);
+}
+
+/** Verify a Firebase session cookie. */
+export async function verifyFirebaseSessionCookie(cookieToken: string): Promise<admin.auth.DecodedIdToken> {
+  await firebaseService.waitInit();
+  return firebase().auth().verifySessionCookie(cookieToken);
+}
+
 export async function createCustomToken(req: NextApiRequest): Promise<string> {
   const authToken = requireDefined(getFirebaseToken(req), `Not authorized`);
 
