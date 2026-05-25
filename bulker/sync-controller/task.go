@@ -28,6 +28,7 @@ type TaskDescriptor struct {
 	TableNamePrefix string `json:"tableNamePrefix"`
 	FullSync        string `json:"fullSync"`
 	Debug           string `json:"debug"`
+	Nodelay         string `json:"nodelay"`
 	StartedBy       string `json:"startedBy"`
 	StartedAt       string `json:"startedAt"`
 	ThenRun         string `json:"thenRun"`
