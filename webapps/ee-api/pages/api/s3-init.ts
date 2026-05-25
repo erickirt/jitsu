@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { auth } from "../../lib/auth";
-import { assertTrue, requireDefined } from "juava";
-import { withErrorHandler } from "../../lib/route-helpers";
+import { auth, requireWorkspaceAccess } from "../../lib/auth";
+import { requireDefined } from "juava";
+import { withBrowserApi } from "../../lib/route-helpers";
 import { s3client, store } from "../../lib/services";
 import { CreateBucketCommand, CreateBucketCommandInput } from "@aws-sdk/client-s3";
 import { getServerLog } from "../../lib/log";
@@ -28,10 +28,7 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
     return;
   }
   const workspaceId = requireDefined(req.query.workspaceId as string, `?workspaceId= is required. Query: ${req.query}`);
-  assertTrue(
-    claims.type === "admin" || (claims.type === "user" && claims.workspaceId === workspaceId),
-    `Token can't access workspace ${workspaceId}`
-  );
+  await requireWorkspaceAccess(claims, workspaceId);
 
   let credentials = await store.getTable("s3-buckets").get(workspaceId);
   if (credentials) {
@@ -60,4 +57,4 @@ const handler = async function handler(req: NextApiRequest, res: NextApiResponse
     ...credentials,
   };
 };
-export default withErrorHandler(handler);
+export default withBrowserApi(handler);

@@ -37,12 +37,32 @@ model KvRecord {
 /// Cached per-workspace event and sync counts, refreshed by /api/sync-cache.
 model StatCache {
   workspaceId String
-  period      DateTime @db.Timestamp(6)
-  events      Decimal  @db.Decimal
-  syncs       Decimal  @default(0) @db.Decimal
+  period      DateTime  @db.Timestamp(6)
+  events      Decimal   @db.Decimal
+  syncs       Decimal   @default(0) @db.Decimal
+  /// Data-freshness watermark: how much of `period` the counts cover. End of
+  /// day for completed days, the sync run time for the in-progress day. Lets
+  /// the UI extrapolate today's partial total. Null on rows cached before this
+  /// column was added.
+  cutoff      DateTime? @db.Timestamp(6)
 
   @@id([workspaceId, period], map: "stat_cache_pk")
   @@map("stat_cache")
+  @@schema("newjitsuee")
+}
+
+/// Stripe overage invoices created for completed billing periods. One row per
+/// workspace per period; `period` is `YYYY-MM-DD_YYYY-MM-DD` (start inclusive,
+/// end exclusive). Populated from the admin workspaces page (manual create) and
+/// backfilled from Stripe — see lib/overage-invoices.ts.
+model OverageInvoice {
+  workspaceId String   @map("workspace_id")
+  period      String
+  invoiceId   String   @map("invoice_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([workspaceId, period], map: "overage_invoices_pk")
+  @@map("overage_invoices")
   @@schema("newjitsuee")
 }
 
