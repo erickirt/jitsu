@@ -123,7 +123,7 @@ export async function checkQuota(opts: {
 }): Promise<ScheduleSyncError | undefined> {
   try {
     const { host } = getEeConnection();
-    const quotaCheck = `${host}/api/quotas/sync`;
+    const quotaCheck = `${host}api/quotas/sync`;
     // Forward the Firebase cookie only when the inbound caller was actually
     // authenticated by Firebase (`user.authType === "firebase"`). API-key
     // / OIDC / scheduler callers go through the service token regardless of
