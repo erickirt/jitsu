@@ -130,7 +130,7 @@ export async function checkQuota(opts: {
     // any cookie they might have attached — see eeAuthHeadersOrServiceToken.
     const authHeaders = eeAuthHeadersOrServiceToken(opts.req, opts.user);
     const quotaCheckResult = await rpc(quotaCheck, {
-      method: "POST",
+      method: "GET",
       query: { workspaceId: opts.workspaceId, trigger: opts.trigger }, //db is created, so the slug won't be really used
       headers: {
         "Content-Type": "application/json",
