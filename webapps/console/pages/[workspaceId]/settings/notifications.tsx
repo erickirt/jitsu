@@ -140,6 +140,7 @@ const NotificationChannelList: React.FC<{}> = () => {
       type: { constant: "notification" },
       workspaceId: { constant: workspace.id },
       cloneId: { hidden: true },
+      updatedAt: { hidden: true },
       events: {
         editor: EventTypeEditor,
       },

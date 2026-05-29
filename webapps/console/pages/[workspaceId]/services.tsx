@@ -130,6 +130,7 @@ const ServicesList: React.FC<{}> = () => {
       type: { constant: "service" },
       workspaceId: { constant: workspace.id },
       cloneId: { hidden: true },
+      updatedAt: { hidden: true },
       protocol: { hidden: true },
       package: { hidden: true },
     },
