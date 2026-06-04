@@ -606,11 +606,11 @@ func (s *Snowflake) copyOrMergeSplit(ctx context.Context, targetTable *Table, so
 	defer func() {
 		buf := strings.Builder{}
 		if execErr := sfDropDedupQueryTemplate.Execute(&buf, payload); execErr != nil {
-			logging.Warnf("failed to build drop dedup query: %v", execErr)
+			s.Warnf("failed to build drop dedup query: %v", execErr)
 			return
 		}
 		if _, dropErr := s.txOrDb(ctx).ExecContext(ctx, buf.String()); dropErr != nil {
-			logging.Warnf("failed to drop dedup table %s%s: %v", payload.NamespaceFrom, payload.DedupTable, dropErr)
+			s.Warnf("failed to drop dedup table %s%s: %v", payload.NamespaceFrom, payload.DedupTable, dropErr)
 		}
 	}()
 
@@ -628,13 +628,13 @@ func (s *Snowflake) copyOrMergeSplit(ctx context.Context, targetTable *Table, so
 		var timeFilter string
 		dates, dlErr := s.collectDedupDates(ctx, timestampColName, payload.NamespaceFrom, payload.DedupTable, startDate)
 		if dlErr != nil {
-			logging.Warnf("[snowflake] dedup date-list lookup failed, falling back to range bound: %v", dlErr)
+			s.Warnf("[snowflake] dedup date-list lookup failed, falling back to range bound: %v", dlErr)
 		}
 		if len(dates) > 0 {
-			logging.Infof("[snowflake] merge date scope for %s%s: %d distinct date(s) in dedup batch", payload.Namespace, payload.TableTo, len(dates))
+			s.Warnf("[snowflake] merge date scope for %s%s: %d distinct date(s) in dedup batch", payload.Namespace, payload.TableTo, len(dates))
 			timeFilter = fmt.Sprintf("TO_DATE(T.%s) IN (%s)", timestampColName, strings.Join(dates, ","))
 		} else {
-			logging.Infof("[snowflake] merge date scope for %s%s: range bound (T.%s >= %s)", payload.Namespace, payload.TableTo, timestampColName, startDate.Format(time.RFC3339))
+			s.Warnf("[snowflake] merge date scope for %s%s: range bound (T.%s >= %s)", payload.Namespace, payload.TableTo, timestampColName, startDate.Format(time.RFC3339))
 			timeFilter = fmt.Sprintf("T.%s >= TO_TIMESTAMP_TZ('%s')", timestampColName, startDate.Format(time.RFC3339))
 		}
 		payload.JoinConditions = strings.Join(append(pkJoinConditions, timeFilter), " AND ")
