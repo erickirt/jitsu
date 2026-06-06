@@ -149,6 +149,7 @@ export const ConfigEntityBase = z.object({
   type: z.string(),
   workspaceId: z.string(),
   name: z.string(),
+  updatedAt: z.coerce.date().nullish(),
   cloneId: z.string().optional(),
 });
 export type ConfigEntityBase = z.infer<typeof ConfigEntityBase>;
