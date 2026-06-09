@@ -126,27 +126,30 @@ export default createRoute()
         errors.push(`reload dictionary: ${e.message}`);
       }
 
-      // 4. Enforce the cap by re-materializing the TTL on the live partitions.
+      // 4. Enforce the cap by re-materializing the TTL on the current month's
+      //    partition only. MATERIALIZE TTL rewrites the partition's parts, so
+      //    doing it for the previous month every run is costly for little gain:
+      //    that data is about to be removed by the DROP PARTITION floor anyway,
+      //    and reads only ever take the newest rows. The current partition is
+      //    where active growth happens and the cap actually needs enforcing.
       //    Async (mutations_sync=0); allow_suspicious_ttl_expressions and
       //    allow_nondeterministic_mutations are required because the TTL uses dictGet.
       const materializeQuery: string = `alter table events_log ${onCluster} materialize TTL in partition {partition:String}`;
-      const partitions = [dayjs().format("YYYYMM"), dayjs().subtract(1, "month").format("YYYYMM")];
-      for (const partition of partitions) {
-        try {
-          await clickhouse.command({
-            query: materializeQuery,
-            query_params: { partition },
-            clickhouse_settings: {
-              allow_suspicious_ttl_expressions: 1,
-              allow_nondeterministic_mutations: 1,
-              mutations_sync: "0",
-            },
-          });
-          log.atInfo().log(`Materialized TTL on partition ${partition}`);
-        } catch (e: any) {
-          log.atError().withCause(e).log(`Failed to materialize TTL on partition ${partition}`);
-          errors.push(`materialize TTL ${partition}: ${e.message}`);
-        }
+      const partition = dayjs().format("YYYYMM");
+      try {
+        await clickhouse.command({
+          query: materializeQuery,
+          query_params: { partition },
+          clickhouse_settings: {
+            allow_suspicious_ttl_expressions: 1,
+            allow_nondeterministic_mutations: 1,
+            mutations_sync: "0",
+          },
+        });
+        log.atInfo().log(`Materialized TTL on partition ${partition}`);
+      } catch (e: any) {
+        log.atError().withCause(e).log(`Failed to materialize TTL on partition ${partition}`);
+        errors.push(`materialize TTL ${partition}: ${e.message}`);
       }
     } else {
       log.atError().log(`Skipping dictionary reload and TTL materialize because cutoff recompute failed`);
