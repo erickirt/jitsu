@@ -9,6 +9,8 @@ import { getServerEnv } from "./serverEnv";
 import { getRequestHost } from "./origin";
 import { serialize } from "cookie";
 
+const log = getServerLog("firebase-server");
+
 export type FirebaseOptions = {
   admin: any;
   client: any;
@@ -215,9 +217,7 @@ export async function getFirebaseUser(req: NextApiRequest, checkRevoked?: boolea
     // on an auth:true route (logged-out browsing, pre-sign-in load, bots), so
     // keep it at debug to avoid log spam — a *failed* cookie below is the real
     // anomaly and is logged at warn.
-    getServerLog()
-      .atDebug()
-      .log(`Firebase auth missing — no token or session cookie (${authLogContext(req)})`);
+    log.atDebug().log(`Firebase auth missing — no token or session cookie (${authLogContext(req)})`);
     return undefined;
   }
   //make sure service is initialized
@@ -233,7 +233,7 @@ export async function getFirebaseUser(req: NextApiRequest, checkRevoked?: boolea
   } catch (e) {
     // Context lets a single line explain the 401 (which route, host) and flags
     // the duplicate-cookie case (jitsuAuthCookies>1) that makes a stale copy win.
-    getServerLog()
+    log
       .atWarn()
       .withCause(e)
       .log(`Failed to verify firebase token: ${getErrorMessage(e)} (${authLogContext(req)})`);
@@ -243,7 +243,7 @@ export async function getFirebaseUser(req: NextApiRequest, checkRevoked?: boolea
   // JITSU-018: reject an unverified email+password account even if the
   // client-side gate was bypassed — no session, no internal user.
   if (isUnverifiedPasswordAccount(decodedIdToken)) {
-    getServerLog().atWarn().log(`Rejecting unverified email+password account: ${decodedIdToken.email}`);
+    log.atWarn().log(`Rejecting unverified email+password account: ${decodedIdToken.email}`);
     return undefined;
   }
 

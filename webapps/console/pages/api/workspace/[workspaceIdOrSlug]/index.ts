@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 import { validateSlug, validateWorkspaceName } from "../validate";
 import { workspaceAuditLog } from "../../../../lib/server/audit-log";
 
-const log = getServerLog();
+const log = getServerLog("api/workspace");
 
 async function savePreferences(user: SessionUser, workspace): Promise<void> {
   await Promise.all([

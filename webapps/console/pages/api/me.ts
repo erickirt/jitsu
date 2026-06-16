@@ -39,7 +39,7 @@ function handleCors(requestDomain: string, origin: string | undefined, res: Next
     .split(",")
     .map(mask => mask.replaceAll("[originTopLevelDomain]", topLevelDomain));
   if (!compiledMasks.map(getMatcher).find(matcher => matcher(originHost))) {
-    getServerLog()
+    log
       .atError()
       .log(
         `CORS error - origin ${origin} is not allowed. Masks: ${allowedOrigins} (compiled: ${compiledMasks}), request domain: ${requestDomain}, top level domain: ${topLevelDomain}`

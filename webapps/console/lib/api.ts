@@ -307,7 +307,7 @@ export async function getUser(
       try {
         await db.prisma().userApiToken.update({ where: { id: keyId }, data: { lastUsed: new Date() } });
       } catch (e: any) {
-        getServerLog().atWarn().withCause(e).log(`Failed to bump lastUsed for API key ${keyId}`);
+        log.atWarn().withCause(e).log(`Failed to bump lastUsed for API key ${keyId}`);
       }
       return {
         internalId: user.id,
