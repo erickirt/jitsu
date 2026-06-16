@@ -8,6 +8,8 @@ import { getUserPreferenceService } from "../../lib/server/user-preferences";
 import { SessionUser } from "../../lib/schema";
 import { getServerEnv } from "../../lib/server/serverEnv";
 
+const log = getServerLog("me");
+
 const serverEnv = getServerEnv();
 const allowedOrigins = serverEnv.ALLOWED_API_ORIGINS || "*.[originTopLevelDomain],[originTopLevelDomain]";
 
@@ -15,12 +17,12 @@ function getMatcher(mask: string): (test: string) => boolean {
   if (mask.startsWith("*")) {
     const suffix = mask.substring(1);
     return (test: string) => {
-      console.log(`Matching ${mask} (suffix: ${suffix}) with ${test} - wildcard`);
+      log.atInfo().log(`Matching ${mask} (suffix: ${suffix}) with ${test} - wildcard`);
       return test.toLowerCase().trim().endsWith(suffix.toLowerCase().trim());
     };
   } else {
     return (test: string) => {
-      console.log(`Matching ${mask} with ${test}`);
+      log.atInfo().log(`Matching ${mask} with ${test}`);
       return test.toLowerCase().trim() === mask.toLowerCase().trim();
     };
   }

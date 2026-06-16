@@ -156,7 +156,7 @@ export default createRoute()
     res.setHeader("Access-Control-Allow-Credentials", "true");
     const includeMeta = query.mode === "full" || query.mode == "meta";
     const includeIcons = query.mode === "full" || query.mode == "icons-only";
-    console.log(JSON.stringify(sortIndexes, null, 2));
+
     const sources: Partial<SourceType>[] = (await db.prisma().connectorPackage.findMany())
       .filter(
         c =>
