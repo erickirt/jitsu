@@ -438,7 +438,7 @@ jobs:
     uses: jitsucom/github-workflows/.github/workflows/slack-notify.yml@1.19.20260511
     secrets: inherit
     with:
-      channel: "#dev"
+      channel: "C0164J8MU12" # #ci-notifications (ID is rename-proof)
       thread_ts: ${{ inputs.slack_thread_ts }}
       color: ${{ needs.finalize_release.result == 'success' && '#36a64f' || '#ff0000' }}
       header: "${{ needs.finalize_release.result == 'success' && '✅' || '❌' }} 🏷️ Jitsu `${{ needs.version.outputs.channel || 'unknown' }}` release ${{ needs.finalize_release.result == 'success' && 'SUCCEEDED' || 'FAILED' }}"
