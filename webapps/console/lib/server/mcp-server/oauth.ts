@@ -137,8 +137,8 @@ export class OAuthHandlers {
         principal: ip,
         method: "POST",
         bucket: "dcr",
-        limit: 20,
-        windowMs: 60 * 60_000, // 20 registrations per hour per IP
+        limit: 200,
+        windowMs: 60 * 60_000, // 200 registrations per hour per IP
       });
       setRateLimitHeaders(res, rl);
       if (!rl.allowed) {
