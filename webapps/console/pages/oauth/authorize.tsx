@@ -1,19 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { Button } from "antd";
+import type { GetServerSideProps } from "next";
 import { useUser } from "../../lib/context";
+import { db } from "../../lib/server/db";
 
 // MCP OAuth consent page. Renders after the user is logged in (LoginWrapper
 // in _app.tsx handles the redirect-to-/signin dance if not). On Approve we
 // POST to /api/mcp/oauth/approve which mints a one-shot code and returns
 // the URL we should bounce the browser to.
-const Authorize = () => {
+const Authorize = ({ clientName }: { clientName: string | null }) => {
   const router = useRouter();
   const user = useUser();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [clientName, setClientName] = useState<string | undefined>();
 
   const q = router.query;
   const clientId = typeof q.client_id === "string" ? q.client_id : undefined;
@@ -23,13 +24,6 @@ const Authorize = () => {
   const state = typeof q.state === "string" ? q.state : undefined;
 
   const valid = clientId && redirectUri && codeChallenge && codeChallengeMethod === "S256";
-
-  // Fetch the client's display name so the user knows what they're approving.
-  // We don't currently have a public client metadata endpoint, so for now we
-  // just show the client_id; a follow-up can add GET /oauth/clients/:id.
-  useEffect(() => {
-    if (clientId) setClientName(clientId);
-  }, [clientId]);
 
   if (!router.isReady) return null;
 
@@ -105,7 +99,7 @@ const Authorize = () => {
       <h1 className="text-lg mb-3">Authorize MCP client</h1>
       <div className="mb-4">
         <div className="text-textLight text-sm">Client</div>
-        <div className="font-mono text-sm break-all">{clientName}</div>
+        <div className="font-mono text-sm break-all">{clientName ?? clientId}</div>
       </div>
       <div className="mb-4">
         <div className="text-textLight text-sm">Redirect URI</div>
@@ -134,6 +128,13 @@ const Authorize = () => {
       </div>
     </Wrap>
   );
+};
+
+export const getServerSideProps: GetServerSideProps = async ({ query }) => {
+  const clientId = typeof query.client_id === "string" ? query.client_id : null;
+  if (!clientId) return { props: { clientName: null } };
+  const client = await db.prisma().oAuthClient.findUnique({ where: { id: clientId }, select: { name: true } });
+  return { props: { clientName: client?.name ?? null } };
 };
 
 const Wrap: React.FC<React.PropsWithChildren> = ({ children }) => (
