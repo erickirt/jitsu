@@ -104,6 +104,9 @@ export class PgKvStore implements KvStore {
     opts: { limit?: number } = {}
   ): Promise<Array<{ key: string; value: T }>> {
     maybeGc(this.prisma);
+    // Hard cap at 1000: callers that need more should paginate or use a different store.
+    // KvEventStore.replayEventsAfter relies on this; long-lived sessions (>1000 events)
+    // will silently miss earlier events. Acceptable for the current 1h TTL window.
     const limit = Math.min(opts.limit ?? 1000, 1000);
     const rows = await this.prisma.kvStoreEntry.findMany({
       where: {

@@ -24,19 +24,23 @@ export interface McpServerDeps {
   refreshTokenTtlDays?: number;
 }
 
+type Session = { transport: StreamableHTTPServerTransport; sdkServer: SdkMcpServer };
+
 // Single class that owns the MCP harness. All page handlers in pages/api/mcp/*
 // are 1-line wrappers that delegate here. Constructor takes every dep
 // explicitly — never reaches for db.prisma()/consoleKv internally — so the
 // class is testable via `new McpServer({ prisma: fakePrisma, ... })`.
 export class McpServer {
-  private readonly sdkServer: SdkMcpServer;
   private readonly oauth: OAuthHandlers;
   private readonly auth: AuthChecker;
   private readonly eventStore: KvEventStore;
+  // One entry per active MCP session. StreamableHTTPServerTransport is per-session
+  // (multiple HTTP requests for the same session route to the same transport), and
+  // SdkMcpServer.connect() only accepts one transport at a time, so each session
+  // gets its own pair.
+  private readonly sessions = new Map<string, Session>();
 
   constructor(private readonly deps: McpServerDeps) {
-    this.sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
-    registerTools(this.sdkServer);
     this.oauth = new OAuthHandlers({
       prisma: deps.prisma,
       kv: deps.kv,
@@ -62,13 +66,31 @@ export class McpServer {
   handleMcpRequest = async (req: NextApiRequest, res: NextApiResponse) => {
     const authInfo = await this.auth.requireAccessToken(req, res);
     if (!authInfo) return; // 401 already sent
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      eventStore: this.eventStore,
-    });
+
+    const incomingSessionId = req.headers["mcp-session-id"] as string | undefined;
+    let session = incomingSessionId ? this.sessions.get(incomingSessionId) : undefined;
+
+    if (!session) {
+      // New session: each session needs its own SdkMcpServer because
+      // Protocol.connect() only allows one active transport per server instance.
+      const sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
+      registerTools(sdkServer);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        eventStore: this.eventStore,
+        onsessioninitialized: sessionId => {
+          this.sessions.set(sessionId, { transport, sdkServer });
+        },
+      });
+      transport.onclose = () => {
+        if (transport.sessionId) this.sessions.delete(transport.sessionId);
+      };
+      await sdkServer.connect(transport);
+      session = { transport, sdkServer };
+    }
+
     try {
-      await this.sdkServer.connect(transport);
-      await transport.handleRequest(req, res, { authInfo });
+      await session.transport.handleRequest(req, res, { authInfo });
     } catch (e) {
       log.atError().withCause(e).log("MCP transport error");
       if (!res.writableEnded) {

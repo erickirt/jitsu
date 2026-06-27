@@ -1,3 +1,4 @@
+import type { NextApiRequest, NextApiResponse } from "next";
 import { mcpServer } from "../../../lib/server/mcp-server";
 
 export const config = {
@@ -7,4 +8,4 @@ export const config = {
   },
 };
 
-export default (req, res) => mcpServer.handleMcpRequest(req, res);
+export default (req: NextApiRequest, res: NextApiResponse) => mcpServer.handleMcpRequest(req, res);
