@@ -96,7 +96,11 @@ const api: Api = {
       const data: { name?: string | null; expiresAt?: Date | null } = {};
       if (Object.prototype.hasOwnProperty.call(body, "name")) data.name = body.name ?? null;
       if (Object.prototype.hasOwnProperty.call(body, "expiresAt")) data.expiresAt = body.expiresAt ?? null;
-      const updated = await db.prisma().userApiToken.update({ where: { id: query.id }, data });
+      const updated = await db.prisma().userApiToken.update({
+        where: { id: query.id },
+        data,
+        include: { oauthClient: { select: { name: true } } },
+      });
       return {
         id: updated.id,
         hint: updated.hint,
@@ -105,6 +109,7 @@ const api: Api = {
         type: updated.type,
         name: updated.name,
         expiresAt: updated.expiresAt,
+        mcpClientName: updated.oauthClient?.name ?? null,
       };
     },
   },
