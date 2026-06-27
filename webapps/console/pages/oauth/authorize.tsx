@@ -22,11 +22,7 @@ const Authorize = () => {
   const codeChallengeMethod = typeof q.code_challenge_method === "string" ? q.code_challenge_method : undefined;
   const state = typeof q.state === "string" ? q.state : undefined;
 
-  const valid =
-    clientId &&
-    redirectUri &&
-    codeChallenge &&
-    codeChallengeMethod === "S256";
+  const valid = clientId && redirectUri && codeChallenge && codeChallengeMethod === "S256";
 
   // Fetch the client's display name so the user knows what they're approving.
   // We don't currently have a public client metadata endpoint, so for now we
@@ -42,8 +38,8 @@ const Authorize = () => {
       <Wrap>
         <h1 className="text-lg mb-3">Invalid authorization request</h1>
         <div className="text-textLight">
-          Missing or unsupported parameters. This page is meant to be opened by an MCP client
-          (e.g. Claude Desktop) — it shouldn't be visited directly.
+          Missing or unsupported parameters. This page is meant to be opened by an MCP client (e.g. Claude Desktop) — it
+          shouldn't be visited directly.
         </div>
       </Wrap>
     );
@@ -120,16 +116,14 @@ const Authorize = () => {
         <div className="text-sm">{user.email}</div>
       </div>
       <div className="text-sm text-textLight mb-6">
-        This client will be able to access your Jitsu account via the API on your behalf.
-        You can revoke access at any time from{" "}
+        This client will be able to access your Jitsu account via the API on your behalf. You can revoke access at any
+        time from{" "}
         <Link className="text-primary underline" href="/user">
           your user settings
         </Link>
         .
       </div>
-      {error && (
-        <div className="text-red-500 text-sm mb-4 border border-red-200 rounded px-2.5 py-1.5">{error}</div>
-      )}
+      {error && <div className="text-red-500 text-sm mb-4 border border-red-200 rounded px-2.5 py-1.5">{error}</div>}
       <div className="flex gap-2 justify-end">
         <Button onClick={deny} disabled={submitting}>
           Deny

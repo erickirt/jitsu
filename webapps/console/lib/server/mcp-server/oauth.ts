@@ -209,8 +209,7 @@ export class OAuthHandlers {
     clientId: string,
     redirectUri: string
   ): Promise<
-    | { client: { id: string; redirectUris: string[] }; redirectUri: string }
-    | { error: string; description: string }
+    { client: { id: string; redirectUris: string[] }; redirectUri: string } | { error: string; description: string }
   > {
     if (!isSafeRedirectUri(redirectUri)) {
       return { error: "invalid_request", description: "unsafe redirect_uri scheme" };
@@ -236,10 +235,7 @@ export class OAuthHandlers {
     return this.tokenFromRefresh(parsed.data, res);
   };
 
-  private async tokenFromCode(
-    body: z.infer<typeof TokenBodyAuthCode>,
-    res: NextApiResponse
-  ): Promise<void> {
+  private async tokenFromCode(body: z.infer<typeof TokenBodyAuthCode>, res: NextApiResponse): Promise<void> {
     const client = await this.clients.verifyCredentials(body.client_id, body.client_secret);
     if (!client) return jsonError(res, 401, "invalid_client");
 
@@ -275,10 +271,7 @@ export class OAuthHandlers {
     res.status(200).json(issued);
   }
 
-  private async tokenFromRefresh(
-    body: z.infer<typeof TokenBodyRefresh>,
-    res: NextApiResponse
-  ): Promise<void> {
+  private async tokenFromRefresh(body: z.infer<typeof TokenBodyRefresh>, res: NextApiResponse): Promise<void> {
     const client = await this.clients.verifyCredentials(body.client_id, body.client_secret);
     if (!client) return jsonError(res, 401, "invalid_client");
 
@@ -377,4 +370,3 @@ export class OAuthHandlers {
     });
   };
 }
-

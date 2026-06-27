@@ -54,8 +54,7 @@ export class McpServer {
   handleToken = (req: NextApiRequest, res: NextApiResponse) => this.oauth.token(req, res);
 
   // ─── Discovery ──────────────────────────────────────────────────────────
-  handleAuthServerMetadata = (req: NextApiRequest, res: NextApiResponse) =>
-    this.oauth.authServerMetadata(req, res);
+  handleAuthServerMetadata = (req: NextApiRequest, res: NextApiResponse) => this.oauth.authServerMetadata(req, res);
   handleProtectedResourceMeta = (req: NextApiRequest, res: NextApiResponse) =>
     this.oauth.protectedResourceMetadata(req, res);
 

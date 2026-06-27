@@ -51,9 +51,7 @@ export class KvEventStore implements EventStore {
   ): Promise<StreamId> {
     const streamId = streamIdFromEventId(lastEventId);
     if (!streamId) return "";
-    const rows = await this.kv.scanByPrefix<{ streamId: StreamId; message: JSONRPCMessage }>(
-      `${PREFIX}${streamId}:`
-    );
+    const rows = await this.kv.scanByPrefix<{ streamId: StreamId; message: JSONRPCMessage }>(`${PREFIX}${streamId}:`);
     // scanByPrefix returns rows sorted by key ascending. Filter strictly-after
     // the cursor so we don't re-send lastEventId, but DO send anything that
     // sorts greater — including events created in the same millisecond, which

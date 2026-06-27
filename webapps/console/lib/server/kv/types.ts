@@ -53,8 +53,5 @@ export interface KvStore {
    * Implementations MAY enforce a hard cap on result size; callers should
    * pass an explicit `limit` when the prefix could match a lot of keys.
    */
-  scanByPrefix<T = unknown>(
-    prefix: string,
-    opts?: { limit?: number }
-  ): Promise<Array<{ key: string; value: T }>>;
+  scanByPrefix<T = unknown>(prefix: string, opts?: { limit?: number }): Promise<Array<{ key: string; value: T }>>;
 }
