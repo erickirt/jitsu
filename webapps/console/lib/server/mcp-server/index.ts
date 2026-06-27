@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { PrismaClient } from "@prisma/client";
 import { McpServer as SdkMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -7,7 +6,6 @@ import { db } from "../db";
 import { consoleKv, type KvStore } from "../kv";
 import { getServerLog } from "../log";
 import { AuthChecker } from "./auth";
-import { KvEventStore } from "./event-store";
 import { OAuthHandlers } from "./oauth";
 import { registerTools } from "./tools";
 
@@ -24,8 +22,6 @@ export interface McpServerDeps {
   refreshTokenTtlDays?: number;
 }
 
-type Session = { transport: StreamableHTTPServerTransport; sdkServer: SdkMcpServer };
-
 // Single class that owns the MCP harness. All page handlers in pages/api/mcp/*
 // are 1-line wrappers that delegate here. Constructor takes every dep
 // explicitly — never reaches for db.prisma()/consoleKv internally — so the
@@ -33,12 +29,6 @@ type Session = { transport: StreamableHTTPServerTransport; sdkServer: SdkMcpServ
 export class McpServer {
   private readonly oauth: OAuthHandlers;
   private readonly auth: AuthChecker;
-  private readonly eventStore: KvEventStore;
-  // One entry per active MCP session. StreamableHTTPServerTransport is per-session
-  // (multiple HTTP requests for the same session route to the same transport), and
-  // SdkMcpServer.connect() only accepts one transport at a time, so each session
-  // gets its own pair.
-  private readonly sessions = new Map<string, Session>();
 
   constructor(private readonly deps: McpServerDeps) {
     this.oauth = new OAuthHandlers({
@@ -48,7 +38,6 @@ export class McpServer {
       refreshTokenTtlDays: deps.refreshTokenTtlDays ?? 90,
     });
     this.auth = new AuthChecker(deps.prisma);
-    this.eventStore = new KvEventStore(deps.kv);
   }
 
   // ─── OAuth endpoints ────────────────────────────────────────────────────
@@ -63,34 +52,20 @@ export class McpServer {
     this.oauth.protectedResourceMetadata(req, res);
 
   // ─── MCP transport ──────────────────────────────────────────────────────
+  // Stateless mode: each request gets a fresh SdkMcpServer + transport pair.
+  // No in-memory session state — safe for multi-instance deployments.
+  // SSE reconnect / persistent sessions require an external event bus and
+  // can be added in a follow-up when real tools need it.
   handleMcpRequest = async (req: NextApiRequest, res: NextApiResponse) => {
     const authInfo = await this.auth.requireAccessToken(req, res);
     if (!authInfo) return; // 401 already sent
 
-    const incomingSessionId = req.headers["mcp-session-id"] as string | undefined;
-    let session = incomingSessionId ? this.sessions.get(incomingSessionId) : undefined;
-
-    if (!session) {
-      // New session: each session needs its own SdkMcpServer because
-      // Protocol.connect() only allows one active transport per server instance.
-      const sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
-      registerTools(sdkServer);
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        eventStore: this.eventStore,
-        onsessioninitialized: sessionId => {
-          this.sessions.set(sessionId, { transport, sdkServer });
-        },
-      });
-      transport.onclose = () => {
-        if (transport.sessionId) this.sessions.delete(transport.sessionId);
-      };
-      await sdkServer.connect(transport);
-      session = { transport, sdkServer };
-    }
-
+    const sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
+    registerTools(sdkServer);
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     try {
-      await session.transport.handleRequest(req, res, { authInfo });
+      await sdkServer.connect(transport);
+      await transport.handleRequest(req, res, { authInfo });
     } catch (e) {
       log.atError().withCause(e).log("MCP transport error");
       if (!res.writableEnded) {
