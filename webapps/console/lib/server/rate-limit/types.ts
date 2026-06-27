@@ -1,6 +1,6 @@
 import type { HttpMethodType } from "../../api";
 
-export type AuthClass = "bearer" | "session";
+export type AuthClass = "bearer" | "session" | "ip";
 
 export type RateLimitOpts = {
   authClass: AuthClass;

@@ -7,6 +7,8 @@ import { getServerLog } from "../log";
 import { getPublicOrigin } from "../origin";
 import { getUser } from "../../api";
 import type { KvStore } from "../kv";
+import { getRateLimiter, setRateLimitHeaders } from "../rate-limit";
+import { getServerEnv } from "../serverEnv";
 import { OAuthClientsRepo } from "./clients";
 import { OAuthCodesRepo } from "./codes";
 
@@ -124,6 +126,27 @@ export class OAuthHandlers {
   // ─── DCR: RFC 7591 ──────────────────────────────────────────────────────
   register = async (req: NextApiRequest, res: NextApiResponse) => {
     if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
+
+    if (getServerEnv().MINUTE_RATE_LIMIT_ENABLED) {
+      const ip =
+        (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+        req.socket.remoteAddress ??
+        "unknown";
+      const rl = await getRateLimiter().check({
+        authClass: "ip",
+        principal: ip,
+        method: "POST",
+        bucket: "dcr",
+        limit: 20,
+        windowMs: 60 * 60_000, // 20 registrations per hour per IP
+      });
+      setRateLimitHeaders(res, rl);
+      if (!rl.allowed) {
+        res.setHeader("Retry-After", String(rl.retryAfterSec));
+        return jsonError(res, 429, "too_many_requests", "Registration rate limit exceeded. Try again later.");
+      }
+    }
+
     const parsed = RegisterBody.safeParse(readBody(req));
     if (!parsed.success) {
       return jsonError(res, 400, "invalid_client_metadata", parsed.error.message);
