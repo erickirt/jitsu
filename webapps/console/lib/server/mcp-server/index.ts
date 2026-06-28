@@ -1,13 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { PrismaClient } from "@prisma/client";
+import type { ClickHouseClient } from "@clickhouse/client";
 import { McpServer as SdkMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { db } from "../db";
 import { consoleKv, type FireAndForget, type KvStore } from "../kv";
+import { clickhouse } from "../clickhouse";
 import { getServerLog } from "../log";
 import { AuthChecker } from "./auth";
 import { OAuthHandlers } from "./oauth";
 import { registerTools } from "./tools";
+import { ConfigObjectsService } from "../config-objects-service";
+import { EventsLogService } from "../events-log-service";
 
 const log = getServerLog("mcp-server");
 
@@ -18,6 +22,8 @@ const log = getServerLog("mcp-server");
 export interface McpServerDeps {
   prisma: PrismaClient;
   kv: KvStore;
+  /** ClickHouse client for the events-log tools. Defaults to the shared singleton. */
+  clickhouse?: ClickHouseClient;
   accessTokenTtlSec?: number;
   refreshTokenTtlDays?: number;
   /** Override the fire-and-forget scheduler (e.g. pass `after` from next/server
@@ -33,6 +39,8 @@ export interface McpServerDeps {
 export class McpServer {
   private readonly oauth: OAuthHandlers;
   private readonly auth: AuthChecker;
+  private readonly configObjects: ConfigObjectsService;
+  private readonly eventsLog: EventsLogService;
 
   constructor(private readonly deps: McpServerDeps) {
     this.oauth = new OAuthHandlers({
@@ -42,6 +50,8 @@ export class McpServer {
       refreshTokenTtlDays: deps.refreshTokenTtlDays ?? 90,
     });
     this.auth = new AuthChecker(deps.prisma, deps.fireAndForget);
+    this.configObjects = new ConfigObjectsService({ prisma: deps.prisma });
+    this.eventsLog = new EventsLogService({ clickhouse: deps.clickhouse ?? clickhouse, prisma: deps.prisma });
   }
 
   // ─── OAuth endpoints ────────────────────────────────────────────────────
@@ -65,7 +75,7 @@ export class McpServer {
     if (!authInfo) return; // 401 already sent
 
     const sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
-    registerTools(sdkServer);
+    registerTools(sdkServer, { service: this.configObjects, eventsLog: this.eventsLog });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     // The SDK reads auth from req.auth — do not pass authInfo as the third arg
     // (parsedBody), which would make the transport treat it as the request body.

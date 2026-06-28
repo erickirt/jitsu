@@ -1,0 +1,390 @@
+import type { PrismaClient } from "@prisma/client";
+import type { NextApiRequest } from "next";
+import { deepCopy, randomId, requireDefined } from "juava";
+import { SessionUser, SyncOptionsType } from "../schema";
+import { getAllConfigObjectTypeNames, getConfigObjectType, parseObject } from "../schema/config-objects";
+import { containsMaskedSecrets, unmaskSecretsFromOriginal } from "../schema/secrets";
+import { getCoreDestinationTypeNonStrict, MASKED_SECRET } from "../schema/destinations";
+import { verifyAccess, verifyAccessWithRole } from "../api";
+import { prepareZodObjectForDeserialization } from "../zod";
+import { ApiError } from "../shared/errors";
+import { configObjectAuditLog } from "./audit-log";
+import { trackTelemetryEvent, withProductAnalytics } from "./telemetry";
+import { scheduleSync, validateSyncSchedule } from "./sync";
+import { omitDeletedList } from "./omit-deleted";
+import { getServerLog } from "./log";
+
+const log = getServerLog("config-objects-service");
+
+export interface ConfigObjectsServiceDeps {
+  prisma: PrismaClient;
+}
+
+export type LinkUpsert = {
+  id?: string;
+  fromId: string;
+  toId: string;
+  type?: string;
+  data?: any;
+};
+
+export type LinkSelector = { id?: string; fromId?: string; toId?: string };
+
+/**
+ * Reusable config-object CRUD, extracted verbatim from the `pages/api/[workspaceId]/config/*`
+ * route handlers so non-HTTP callers (the MCP server) share one implementation of validation,
+ * secret-masking, input/output filtering, and audit logging.
+ *
+ * `prisma` is injected for this class's own config-object queries. The shared helpers it
+ * delegates to — `verifyAccess`, `configObjectAuditLog`, `trackTelemetryEvent` — still reach
+ * for the `db.prisma()` singleton internally; in production that's the same instance, so there
+ * is no split-brain. The existing HTTP routes are intentionally left untouched in this PR; they
+ * can be migrated onto this service in a follow-up.
+ */
+export class ConfigObjectsService {
+  private readonly prisma: PrismaClient;
+
+  constructor(deps: ConfigObjectsServiceDeps) {
+    this.prisma = deps.prisma;
+  }
+
+  /** Names of config-object types (destination, stream, function, service, domain, notification, …). */
+  resourceTypes(): string[] {
+    return getAllConfigObjectTypeNames();
+  }
+
+  /** Workspaces the user can access (all of them for admins). For picking a `workspaceId`. */
+  async listWorkspaces(user: SessionUser): Promise<{ id: string; name: string; slug: string | null }[]> {
+    const userModel = requireDefined(
+      await this.prisma.userProfile.findUnique({ where: { id: user.internalId } }),
+      `User ${user.internalId} does not exist`
+    );
+    const workspaces = userModel.admin
+      ? await this.prisma.workspace.findMany({
+          where: { deleted: false },
+          select: { id: true, name: true, slug: true },
+          orderBy: { createdAt: "asc" },
+        })
+      : (
+          await this.prisma.workspaceAccess.findMany({
+            where: { userId: user.internalId, workspace: { deleted: false } },
+            include: { workspace: { select: { id: true, name: true, slug: true } } },
+            orderBy: { createdAt: "asc" },
+          })
+        ).map(({ workspace }) => workspace);
+    return workspaces;
+  }
+
+  private assertKnownType(type: string) {
+    if (!getAllConfigObjectTypeNames().includes(type)) {
+      throw new ApiError(
+        `Unknown resource type '${type}'. Known types: ${getAllConfigObjectTypeNames().join(", ")}`,
+        { type },
+        { status: 400 }
+      );
+    }
+  }
+
+  // ─── Config objects ───────────────────────────────────────────────────────
+
+  /** Mirrors `config/[type]/index.ts` GET. */
+  async list(user: SessionUser, workspaceId: string, type: string): Promise<any[]> {
+    await verifyAccess(user, workspaceId);
+    this.assertKnownType(type);
+    const configObjectType = getConfigObjectType(type);
+    const objects = await this.prisma.configurationObject.findMany({
+      where: { workspaceId, type, deleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+    const mapped = objects.map(({ id, workspaceId, config, updatedAt }) => ({
+      ...(config as any),
+      id,
+      workspaceId,
+      type,
+      updatedAt,
+    }));
+    return await Promise.all(mapped.map(obj => configObjectType.outputFilter(obj)));
+  }
+
+  /** Mirrors `config/[type]/[id].ts` GET. */
+  async get(user: SessionUser, workspaceId: string, type: string, id: string): Promise<any> {
+    await verifyAccess(user, workspaceId);
+    this.assertKnownType(type);
+    const configObjectType = getConfigObjectType(type);
+    const object = await this.prisma.configurationObject.findFirst({
+      where: { workspaceId, id, deleted: false },
+    });
+    if (!object) {
+      throw new ApiError(`${type} with id ${id} does not exist`, {}, { status: 404 });
+    }
+    const preFilter = { ...((object.config as any) || {}), workspaceId, id, type, updatedAt: object.updatedAt };
+    return await configObjectType.outputFilter(preFilter);
+  }
+
+  /** Mirrors `config/[type]/index.ts` POST. Returns the created id. */
+  async create(
+    user: SessionUser,
+    workspaceId: string,
+    type: string,
+    data: any,
+    opts: { req?: NextApiRequest } = {}
+  ): Promise<{ id: string }> {
+    await verifyAccessWithRole(user, workspaceId, "editEntities");
+    this.assertKnownType(type);
+    const workspace = requireDefined(
+      await this.prisma.workspace.findFirst({ where: { id: workspaceId } }),
+      `Workspace ${workspaceId} not found`
+    );
+    const configObjectType = getConfigObjectType(type);
+    // The HTTP route relies on the client sending id/type/workspaceId in the body
+    // (the base schema requires all three). An MCP caller passes `data` plus the
+    // type/workspaceId as separate args, so inject them here and mint an id when
+    // absent — otherwise parseObject would reject the payload.
+    const incoming = { ...data, type, workspaceId, id: data?.id ?? randomId() };
+    let object = parseObject(type, incoming);
+    if (incoming.cloneId) {
+      log.atInfo().log(`Unmasking secrets for ${type} clone: ${incoming.id}`);
+      if (containsMaskedSecrets(object)) {
+        const clonesOriginal = await this.prisma.configurationObject.findFirst({
+          where: { id: incoming.cloneId, workspaceId },
+        });
+        if (clonesOriginal?.config) {
+          object = unmaskSecretsFromOriginal(object, clonesOriginal.config as any);
+        }
+      }
+    }
+    object = await configObjectType.inputFilter(object, "create", workspace);
+    const id = object.id;
+    delete object.id;
+    delete object.workspaceId;
+    delete object.cloneId;
+    const created = await this.prisma.configurationObject.create({
+      data: { id, workspaceId, config: object, type },
+    });
+    await trackTelemetryEvent("config-object-create", { objectType: type });
+    if (opts.req) {
+      await withProductAnalytics(p => p.track("create_object", { objectType: type }), {
+        user,
+        workspace: { id: workspaceId },
+        req: opts.req,
+      });
+    }
+    await configObjectAuditLog(user, workspaceId, created.id, type, "create", { newVersion: object });
+    return { id: created.id };
+  }
+
+  /** Mirrors `config/[type]/[id].ts` PUT. */
+  async update(user: SessionUser, workspaceId: string, type: string, id: string, patch: any): Promise<void> {
+    const body = prepareZodObjectForDeserialization(patch);
+    await verifyAccessWithRole(user, workspaceId, "editEntities");
+    this.assertKnownType(type);
+    const workspace = requireDefined(
+      await this.prisma.workspace.findFirst({ where: { id: workspaceId } }),
+      `Workspace ${workspaceId} not found`
+    );
+    const configObjectType = getConfigObjectType(type);
+    const object = await this.prisma.configurationObject.findFirst({
+      where: { workspaceId, id, deleted: false },
+    });
+    if (!object) {
+      throw new ApiError(`${type} with id ${id} does not exist`, {}, { status: 404 });
+    }
+    // Snapshot before merge — `merge` may mutate `object.config` in place.
+    const prevVersion = deepCopy(object.config);
+    const merged = await configObjectType.merge(object.config, { ...body, id, workspaceId });
+    const parsed = parseObject(type, merged);
+    const filtered = await configObjectType.inputFilter(parsed, "update", workspace);
+    delete filtered.id;
+    delete filtered.workspaceId;
+    await this.prisma.configurationObject.update({ where: { id }, data: { config: filtered } });
+    await trackTelemetryEvent("config-object-update", { objectType: type });
+    await configObjectAuditLog(user, workspaceId, id, type, "update", { prevVersion, newVersion: filtered });
+  }
+
+  /** Mirrors `config/[type]/[id].ts` DELETE (soft delete). Returns the deleted object, or null. */
+  async delete(
+    user: SessionUser,
+    workspaceId: string,
+    type: string,
+    id: string,
+    opts: { strict?: boolean; cascade?: boolean } = {}
+  ): Promise<any | null> {
+    await verifyAccessWithRole(user, workspaceId, "deleteEntities");
+    this.assertKnownType(type);
+    const object = await this.prisma.configurationObject.findFirst({
+      where: { workspaceId, id, deleted: false },
+    });
+    if (!object) {
+      return null;
+    }
+    const configObjectType = getConfigObjectType(type);
+    if (configObjectType.onDelete) {
+      await configObjectType.onDelete(object, { strict: opts.strict === true, cascade: opts.cascade === true });
+    }
+    await this.prisma.configurationObject.update({ where: { id: object.id }, data: { deleted: true } });
+    await trackTelemetryEvent("config-object-delete", { objectType: type });
+    await configObjectAuditLog(user, workspaceId, id, type, "delete", { prevVersion: object.config });
+    return { ...((object.config as any) || {}), workspaceId, id, type };
+  }
+
+  // ─── Connections (links) ──────────────────────────────────────────────────
+
+  /** Mirrors `config/link.ts` GET. Masks `functionsEnv` secrets for non-editors. */
+  async listLinks(user: SessionUser, workspaceId: string): Promise<any[]> {
+    const role = await verifyAccessWithRole(user, workspaceId, "readEntities");
+    const links = await this.prisma.configurationObjectLink.findMany({
+      where: { workspaceId, deleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!role.editEntities) {
+      for (const link of links) {
+        const functionsEnv = (link.data as any)?.["functionsEnv"];
+        if (typeof functionsEnv === "object" && functionsEnv !== null) {
+          for (const key in functionsEnv) {
+            functionsEnv[key] = MASKED_SECRET;
+          }
+        }
+      }
+    }
+    return omitDeletedList(links);
+  }
+
+  /** Mirrors `config/link.ts` POST/PUT upsert. */
+  async upsertLink(
+    user: SessionUser,
+    workspaceId: string,
+    body: LinkUpsert,
+    opts: { strict?: boolean; runSync?: boolean; req?: NextApiRequest } = {}
+  ): Promise<{ id: string; created: boolean }> {
+    const { id, toId, fromId, data = undefined, type = "push" } = body;
+    await verifyAccessWithRole(user, workspaceId, "editEntities");
+
+    if (type === "sync" && data) {
+      try {
+        validateSyncSchedule(data);
+      } catch (e: any) {
+        throw new ApiError(e.message, {}, { status: 400 });
+      }
+    }
+
+    if (opts.strict && data !== undefined) {
+      if (type === "sync") {
+        const parseResult = SyncOptionsType.safeParse(data);
+        if (!parseResult.success) {
+          throw new ApiError(
+            `Invalid sync options: ${parseResult.error.message}`,
+            { zodError: parseResult.error },
+            { status: 400 }
+          );
+        }
+      } else {
+        const destination = await this.prisma.configurationObject.findFirst({
+          where: { workspaceId, id: toId, type: "destination", deleted: false },
+        });
+        if (destination) {
+          const destinationType = getCoreDestinationTypeNonStrict((destination.config as any)?.["destinationType"]);
+          if (destinationType?.connectionOptions) {
+            const parseResult = destinationType.connectionOptions.safeParse(data);
+            if (!parseResult.success) {
+              throw new ApiError(
+                `Invalid connection options for ${(destination.config as any)?.["destinationType"]}: ${
+                  parseResult.error.message
+                }`,
+                { zodError: parseResult.error },
+                { status: 400 }
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const fromType = type === "sync" ? "service" : "stream";
+    const existingLink =
+      type === "push"
+        ? await this.prisma.configurationObjectLink.findFirst({ where: { workspaceId, toId, fromId, deleted: false } })
+        : id
+        ? await this.prisma.configurationObjectLink.findFirst({ where: { workspaceId, id, deleted: false } })
+        : undefined;
+
+    if (!id && existingLink) {
+      throw new ApiError(`Link from '${fromId}' to '${toId}' already exists`, {}, { status: 400 });
+    }
+
+    const co = this.prisma.configurationObject;
+    if (!(await co.findFirst({ where: { workspaceId, type: fromType, id: fromId, deleted: false } }))) {
+      throw new ApiError(
+        `${fromType} object with id '${fromId}' not found in the workspace '${workspaceId}'`,
+        {},
+        { status: 400 }
+      );
+    }
+    if (!(await co.findFirst({ where: { workspaceId, type: "destination", id: toId, deleted: false } }))) {
+      throw new ApiError(
+        `Destination object with id '${toId}' not found in the workspace '${workspaceId}'`,
+        {},
+        { status: 400 }
+      );
+    }
+
+    let createdOrUpdated: any;
+    if (existingLink) {
+      createdOrUpdated = await this.prisma.configurationObjectLink.update({
+        where: { id: existingLink.id },
+        data: { data, deleted: false, workspaceId },
+      });
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "update", {
+        prevVersion: existingLink,
+        newVersion: createdOrUpdated,
+      });
+    } else {
+      createdOrUpdated = await this.prisma.configurationObjectLink.create({
+        data: {
+          id: `${workspaceId}-${fromId.substring(fromId.length - 4)}-${toId.substring(toId.length - 4)}-${randomId(6)}`,
+          workspaceId,
+          fromId,
+          toId,
+          data,
+          type,
+        },
+      });
+      await configObjectAuditLog(user, workspaceId, createdOrUpdated.id, "link", "create", {
+        newVersion: createdOrUpdated,
+      });
+    }
+    if (type === "sync" && opts.runSync && opts.req) {
+      await scheduleSync({ req: opts.req, user, trigger: "manual", workspaceId, syncIdOrModel: createdOrUpdated.id });
+    }
+    return { id: createdOrUpdated.id, created: !existingLink };
+  }
+
+  /** Mirrors `config/link.ts` DELETE. Delete by `id`, or by `fromId`+`toId`. */
+  async deleteLink(user: SessionUser, workspaceId: string, sel: LinkSelector): Promise<{ deleted: boolean }> {
+    const { id, fromId, toId } = sel;
+    await verifyAccessWithRole(user, workspaceId, "deleteEntities");
+    if (id) {
+      if (fromId || toId) {
+        throw new ApiError("You can't specify 'fromId' or 'toId' with 'id'", {}, { status: 400 });
+      }
+      const updatedLink = await this.prisma.configurationObjectLink.update({
+        where: { workspaceId, id },
+        data: { deleted: true },
+      });
+      if (!updatedLink) {
+        return { deleted: false };
+      }
+      await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", { prevVersion: updatedLink });
+      return { deleted: true };
+    } else if (fromId && toId) {
+      const updatedLinks = await this.prisma.configurationObjectLink.updateManyAndReturn({
+        where: { workspaceId, toId, fromId, deleted: false },
+        data: { deleted: true },
+      });
+      for (const updatedLink of updatedLinks) {
+        await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", { prevVersion: updatedLink });
+      }
+      return { deleted: updatedLinks.length > 0 };
+    }
+    return { deleted: false };
+  }
+}
