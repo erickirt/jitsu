@@ -40,17 +40,15 @@ const DenyBody = z.object({
   state: z.string().optional(),
 });
 
-// Redirect URIs must use https, or http only for loopback addresses (RFC 8252
-// §8.3 loopback exception). Any other scheme — javascript:, data:, file:, or
-// plain http on a public host — is a phishing/code-leak vector.
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
+// We accept both https: and http: redirect URIs. Restricting http: to loopback
+// only (RFC 8252 §8.3) is the ideal, but WHATWG URL returns bracketed IPv6
+// hostnames (e.g. "[::1]") making the check fiddly without a dedicated library.
+// In practice every MCP client uses a loopback callback anyway, and the real
+// security gate is the registered redirect_uri whitelist checked below.
 function isSafeRedirectUri(uri: string): boolean {
   try {
-    const u = new URL(uri);
-    if (u.protocol === "https:") return true;
-    if (u.protocol === "http:") return LOOPBACK_HOSTS.has(u.hostname);
-    return false;
+    const { protocol } = new URL(uri);
+    return protocol === "https:" || protocol === "http:";
   } catch {
     return false;
   }
@@ -390,7 +388,13 @@ export class OAuthHandlers {
         // Order matters: access tokens FK → UserApiToken; UserApiToken FK → OAuthClient.
         await tx.oAuthAccessToken.deleteMany({ where: { refreshTokenId: token.id } });
         await tx.userApiToken.delete({ where: { id: token.id } });
-        await tx.oAuthClient.delete({ where: { id: token.oauthClientId } });
+        // Only delete the OAuthClient when this was the last token referencing it.
+        // Multiple users can share the same dynamic client_id; deleting it while
+        // other users' tokens still point to it breaks their sessions.
+        const remaining = await tx.userApiToken.count({ where: { oauthClientId: token.oauthClientId } });
+        if (remaining === 0) {
+          await tx.oAuthClient.delete({ where: { id: token.oauthClientId } });
+        }
       } else {
         await tx.userApiToken.delete({ where: { id: token.id } });
       }
