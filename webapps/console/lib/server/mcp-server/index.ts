@@ -3,7 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { McpServer as SdkMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { db } from "../db";
-import { consoleKv, type KvStore } from "../kv";
+import { consoleKv, type FireAndForget, type KvStore } from "../kv";
 import { getServerLog } from "../log";
 import { AuthChecker } from "./auth";
 import { OAuthHandlers } from "./oauth";
@@ -20,6 +20,10 @@ export interface McpServerDeps {
   kv: KvStore;
   accessTokenTtlSec?: number;
   refreshTokenTtlDays?: number;
+  /** Override the fire-and-forget scheduler (e.g. pass `after` from next/server
+   *  when running inside an App Router route handler). Defaults to a plain
+   *  detached promise, safe in Pages Router and non-request contexts. */
+  fireAndForget?: FireAndForget;
 }
 
 // Single class that owns the MCP harness. All page handlers in pages/api/mcp/*
@@ -37,7 +41,7 @@ export class McpServer {
       accessTokenTtlSec: deps.accessTokenTtlSec ?? 3600,
       refreshTokenTtlDays: deps.refreshTokenTtlDays ?? 90,
     });
-    this.auth = new AuthChecker(deps.prisma);
+    this.auth = new AuthChecker(deps.prisma, deps.fireAndForget);
   }
 
   // ─── OAuth endpoints ────────────────────────────────────────────────────

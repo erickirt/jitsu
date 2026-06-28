@@ -2,9 +2,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { PrismaClient } from "@prisma/client";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { checkHash } from "juava";
-import { after } from "next/server";
 import { getServerLog } from "../log";
 import { getPublicOrigin } from "../origin";
+import { type FireAndForget, detachedPromise } from "../kv";
 
 const log = getServerLog("mcp-auth");
 
@@ -28,7 +28,7 @@ function send401(res: NextApiResponse, error: string, description: string) {
 }
 
 export class AuthChecker {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient, private readonly schedule: FireAndForget = detachedPromise) {}
 
   async requireAccessToken(req: NextApiRequest, res: NextApiResponse): Promise<AuthInfo | undefined> {
     const raw = bearer(req);
@@ -57,12 +57,12 @@ export class AuthChecker {
       send401(res, "expired_token", "Access token has expired");
       return undefined;
     }
-    after(() => {
+    this.schedule(async () => {
       const now = new Date();
-      this.prisma.oAuthAccessToken
+      await this.prisma.oAuthAccessToken
         .update({ where: { id: at.id }, data: { lastUsed: now } })
         .catch(e => log.atWarn().withCause(e).log("Failed to bump OAuthAccessToken.lastUsed"));
-      this.prisma.userApiToken
+      await this.prisma.userApiToken
         .update({ where: { id: at.refreshTokenId }, data: { lastUsed: now } })
         .catch(e => log.atWarn().withCause(e).log("Failed to bump UserApiToken.lastUsed"));
     });

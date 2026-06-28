@@ -12,6 +12,17 @@
  *     fine, but custom classes need toJSON/serialization.
  */
 
+/**
+ * Schedule work to run after the current response is sent (or immediately in
+ * non-request contexts). Pass `fn => after(() => fn())` when running inside a
+ * Next.js Route Handler; the default is a plain detached promise, safe
+ * everywhere but without the "after response" guarantee.
+ */
+export type FireAndForget = (fn: () => Promise<unknown>) => void;
+
+/** Default: detached promise. Works in any context. */
+export const detachedPromise: FireAndForget = fn => void fn().catch(() => undefined);
+
 export type SetOpts = {
   /** Time-to-live in milliseconds. Omit (or 0) for no expiration. */
   ttlMs?: number;

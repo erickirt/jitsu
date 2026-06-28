@@ -40,16 +40,17 @@ const DenyBody = z.object({
   state: z.string().optional(),
 });
 
-// Redirect URIs must be http/https. Anything else (javascript:, data:,
-// file:, ...) is a phishing vector and we never want to issue a 3xx to one.
-// Loopback redirect URIs MAY use http per RFC 8252; non-loopback should be
-// https in production but we accept http for dev-localhost convenience.
-const ALLOWED_REDIRECT_SCHEMES = new Set(["http:", "https:"]);
+// Redirect URIs must use https, or http only for loopback addresses (RFC 8252
+// §8.3 loopback exception). Any other scheme — javascript:, data:, file:, or
+// plain http on a public host — is a phishing/code-leak vector.
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isSafeRedirectUri(uri: string): boolean {
   try {
     const u = new URL(uri);
-    return ALLOWED_REDIRECT_SCHEMES.has(u.protocol);
+    if (u.protocol === "https:") return true;
+    if (u.protocol === "http:") return LOOPBACK_HOSTS.has(u.hostname);
+    return false;
   } catch {
     return false;
   }
@@ -275,9 +276,10 @@ export class OAuthHandlers {
     }
 
     // 1:1 enforcement: drop any prior refresh tokens (+ their access tokens)
-    // for this client. Reauths via the same client_id replace rather than
-    // accumulate.
+    // for this user+client. Advisory lock serializes concurrent code exchanges
+    // for the same user+client so both can't see prior=[] and both create tokens.
     const issued = await this.deps.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${client.id + ":" + codePayload.userId}))`;
       const prior = await tx.userApiToken.findMany({
         where: { oauthClientId: client.id, userId: codePayload.userId },
         select: { id: true },
@@ -314,15 +316,17 @@ export class OAuthHandlers {
     }
 
     // Rotation: replace the secret on the same row (id stays so /user UI is
-    // stable). Drop access tokens for this refresh and issue a new one.
+    // stable). CAS on the current hash prevents two concurrent rotations both
+    // succeeding — the second updateMany sees count=0 and we return null.
+    const newRefreshSecret = randomId({ digits: 48, strongRandom: true });
+    const newExpiresAt = new Date(Date.now() + this.deps.refreshTokenTtlDays * 86400 * 1000);
     const issued = await this.deps.prisma.$transaction(async tx => {
-      await tx.oAuthAccessToken.deleteMany({ where: { refreshTokenId: refresh.id } });
-      const newRefreshSecret = randomId({ digits: 48, strongRandom: true });
-      const newExpiresAt = new Date(Date.now() + this.deps.refreshTokenTtlDays * 86400 * 1000);
-      await tx.userApiToken.update({
-        where: { id: refresh.id },
+      const rotated = await tx.userApiToken.updateMany({
+        where: { id: refresh.id, hash: refresh.hash },
         data: { hash: createHash(newRefreshSecret), expiresAt: newExpiresAt, lastUsed: new Date() },
       });
+      if (rotated.count === 0) return null; // concurrent rotation already consumed this token
+      await tx.oAuthAccessToken.deleteMany({ where: { refreshTokenId: refresh.id } });
       const accessSecret = randomId({ digits: 48, strongRandom: true });
       const accessExpires = new Date(Date.now() + this.deps.accessTokenTtlSec * 1000);
       const access = await tx.oAuthAccessToken.create({
@@ -335,6 +339,7 @@ export class OAuthHandlers {
         expires_in: this.deps.accessTokenTtlSec,
       };
     });
+    if (!issued) return jsonError(res, 400, "invalid_grant", "refresh token already rotated, please retry");
     res.status(200).json(issued);
   }
 

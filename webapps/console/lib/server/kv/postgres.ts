@@ -1,8 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { after } from "next/server";
 import { getErrorMessage } from "juava";
 import { getServerLog } from "../log";
-import type { KvStore, SetOpts } from "./types";
+import { type FireAndForget, detachedPromise, type KvStore, type SetOpts } from "./types";
 
 const log = getServerLog("kv");
 
@@ -27,14 +26,14 @@ function maybeGc(prisma: PrismaClient) {
 }
 
 export class PgKvStore implements KvStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient, private readonly schedule: FireAndForget = detachedPromise) {}
 
   async get<T = unknown>(key: string): Promise<T | undefined> {
     maybeGc(this.prisma);
     const row = await this.prisma.kvStoreEntry.findUnique({ where: { key } });
     if (!row) return undefined;
     if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-      after(() => this.prisma.kvStoreEntry.deleteMany({ where: { key } }).catch(() => undefined));
+      this.schedule(() => this.prisma.kvStoreEntry.deleteMany({ where: { key } }));
       return undefined;
     }
     return row.value as T;

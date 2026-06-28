@@ -3,7 +3,8 @@ import { db } from "../db";
 import { PgKvStore } from "./postgres";
 import type { KvStore } from "./types";
 
-export type { KvStore, SetOpts } from "./types";
+export type { KvStore, SetOpts, FireAndForget } from "./types";
+export { detachedPromise } from "./types";
 export { PgKvStore } from "./postgres";
 
 // Console-wide KV singleton. Backed by Postgres (the `Kv` Prisma model
