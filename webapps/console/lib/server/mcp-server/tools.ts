@@ -172,7 +172,7 @@ export function registerTools(sdkServer: SdkMcpServer, deps: ToolDeps) {
       run("update_resource", async () => {
         const user = principalFromAuth(ctx.authInfo);
         if (type === CONNECTION) {
-          return service.upsertLink(user, workspaceId, { ...(data as any), id }, { strict: true });
+          return service.updateLink(user, workspaceId, id, data as any);
         }
         await service.update(user, workspaceId, type, id, data);
         return { id, updated: true };

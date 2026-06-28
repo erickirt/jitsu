@@ -111,8 +111,11 @@ export class ConfigObjectsService {
     await verifyAccess(user, workspaceId);
     this.assertKnownType(type);
     const configObjectType = getConfigObjectType(type);
+    // Constrain by `type`: outputFilter is chosen from the caller-supplied type, so an
+    // id of a different type must not match (else e.g. a destination's secrets could be
+    // returned unmasked through the stream filter).
     const object = await this.prisma.configurationObject.findFirst({
-      where: { workspaceId, id, deleted: false },
+      where: { workspaceId, id, type, deleted: false },
     });
     if (!object) {
       throw new ApiError(`${type} with id ${id} does not exist`, {}, { status: 404 });
@@ -183,8 +186,9 @@ export class ConfigObjectsService {
       `Workspace ${workspaceId} not found`
     );
     const configObjectType = getConfigObjectType(type);
+    // Constrain by `type` so merge/inputFilter can't be applied to a different resource type.
     const object = await this.prisma.configurationObject.findFirst({
-      where: { workspaceId, id, deleted: false },
+      where: { workspaceId, id, type, deleted: false },
     });
     if (!object) {
       throw new ApiError(`${type} with id ${id} does not exist`, {}, { status: 404 });
@@ -211,8 +215,9 @@ export class ConfigObjectsService {
   ): Promise<any | null> {
     await verifyAccessWithRole(user, workspaceId, "deleteEntities");
     this.assertKnownType(type);
+    // Constrain by `type` so the onDelete hook and audit type match the actual object.
     const object = await this.prisma.configurationObject.findFirst({
-      where: { workspaceId, id, deleted: false },
+      where: { workspaceId, id, type, deleted: false },
     });
     if (!object) {
       return null;
@@ -267,36 +272,8 @@ export class ConfigObjectsService {
       }
     }
 
-    if (opts.strict && data !== undefined) {
-      if (type === "sync") {
-        const parseResult = SyncOptionsType.safeParse(data);
-        if (!parseResult.success) {
-          throw new ApiError(
-            `Invalid sync options: ${parseResult.error.message}`,
-            { zodError: parseResult.error },
-            { status: 400 }
-          );
-        }
-      } else {
-        const destination = await this.prisma.configurationObject.findFirst({
-          where: { workspaceId, id: toId, type: "destination", deleted: false },
-        });
-        if (destination) {
-          const destinationType = getCoreDestinationTypeNonStrict((destination.config as any)?.["destinationType"]);
-          if (destinationType?.connectionOptions) {
-            const parseResult = destinationType.connectionOptions.safeParse(data);
-            if (!parseResult.success) {
-              throw new ApiError(
-                `Invalid connection options for ${(destination.config as any)?.["destinationType"]}: ${
-                  parseResult.error.message
-                }`,
-                { zodError: parseResult.error },
-                { status: 400 }
-              );
-            }
-          }
-        }
-      }
+    if (opts.strict) {
+      await this.validateLinkData(workspaceId, type, toId, data);
     }
 
     const fromType = type === "sync" ? "service" : "stream";
@@ -356,6 +333,83 @@ export class ConfigObjectsService {
       await scheduleSync({ req: opts.req, user, trigger: "manual", workspaceId, syncIdOrModel: createdOrUpdated.id });
     }
     return { id: createdOrUpdated.id, created: !existingLink };
+  }
+
+  /**
+   * Update a connection (link) by its id. Unlike `upsertLink` (which resolves push links by
+   * the from/to pair), this targets the exact row: it loads by `id` and rejects a `fromId`/
+   * `toId` in the patch that doesn't match the existing link (moving a link = delete + create).
+   * Only `data` is mutable here.
+   */
+  async updateLink(
+    user: SessionUser,
+    workspaceId: string,
+    id: string,
+    patch: { fromId?: string; toId?: string; type?: string; data?: any }
+  ): Promise<{ id: string; updated: boolean }> {
+    await verifyAccessWithRole(user, workspaceId, "editEntities");
+    const existing = await this.prisma.configurationObjectLink.findFirst({
+      where: { workspaceId, id, deleted: false },
+    });
+    if (!existing) {
+      throw new ApiError(`connection with id ${id} does not exist`, {}, { status: 404 });
+    }
+    if (patch.fromId && patch.fromId !== existing.fromId) {
+      throw new ApiError(`fromId '${patch.fromId}' does not match connection ${id}`, {}, { status: 400 });
+    }
+    if (patch.toId && patch.toId !== existing.toId) {
+      throw new ApiError(`toId '${patch.toId}' does not match connection ${id}`, {}, { status: 400 });
+    }
+    const type = patch.type ?? existing.type ?? "push";
+    const data = patch.data !== undefined ? patch.data : existing.data;
+    if (type === "sync" && data) {
+      try {
+        validateSyncSchedule(data);
+      } catch (e: any) {
+        throw new ApiError(e.message, {}, { status: 400 });
+      }
+    }
+    await this.validateLinkData(workspaceId, type, existing.toId, data);
+    const updated = await this.prisma.configurationObjectLink.update({ where: { id: existing.id }, data: { data } });
+    await configObjectAuditLog(user, workspaceId, updated.id, "link", "update", {
+      prevVersion: existing,
+      newVersion: updated,
+    });
+    return { id: updated.id, updated: true };
+  }
+
+  /** Validate connection `data` against the destination's connection options / sync schema. No-op if undefined. */
+  private async validateLinkData(workspaceId: string, type: string, toId: string, data: any): Promise<void> {
+    if (data === undefined) return;
+    if (type === "sync") {
+      const parseResult = SyncOptionsType.safeParse(data);
+      if (!parseResult.success) {
+        throw new ApiError(
+          `Invalid sync options: ${parseResult.error.message}`,
+          { zodError: parseResult.error },
+          { status: 400 }
+        );
+      }
+      return;
+    }
+    const destination = await this.prisma.configurationObject.findFirst({
+      where: { workspaceId, id: toId, type: "destination", deleted: false },
+    });
+    if (destination) {
+      const destinationType = getCoreDestinationTypeNonStrict((destination.config as any)?.["destinationType"]);
+      if (destinationType?.connectionOptions) {
+        const parseResult = destinationType.connectionOptions.safeParse(data);
+        if (!parseResult.success) {
+          throw new ApiError(
+            `Invalid connection options for ${(destination.config as any)?.["destinationType"]}: ${
+              parseResult.error.message
+            }`,
+            { zodError: parseResult.error },
+            { status: 400 }
+          );
+        }
+      }
+    }
   }
 
   /** Mirrors `config/link.ts` DELETE. Delete by `id`, or by `fromId`+`toId`. */

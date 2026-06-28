@@ -145,4 +145,34 @@ describe("ConfigObjectsService", () => {
     expect(res).toEqual([{ id: "ws1", name: "WS", slug: "ws" }]);
     expect(prisma.workspaceAccess.findMany).not.toHaveBeenCalled();
   });
+
+  it("get constrains the lookup by type (so a wrong-type id can't run the wrong filter)", async () => {
+    const prisma = makePrisma();
+    const svc = new ConfigObjectsService({ prisma });
+    await expect(svc.get(user, "ws1", "destination", "id-1")).rejects.toThrow(/does not exist/);
+    expect(prisma.configurationObject.findFirst).toHaveBeenCalledWith({
+      where: { workspaceId: "ws1", id: "id-1", type: "destination", deleted: false },
+    });
+  });
+
+  it("updateLink targets the link by id and rejects a from/to that doesn't match", async () => {
+    const existing = { id: "lnk", workspaceId: "ws1", fromId: "a", toId: "b", type: "push", data: {} };
+    const update = vi.fn(async () => ({ id: "lnk" }));
+    const prisma = makePrisma({
+      configurationObjectLink: { findFirst: vi.fn(async () => existing), update },
+    });
+    const svc = new ConfigObjectsService({ prisma });
+
+    await expect(svc.updateLink(user, "ws1", "lnk", { fromId: "x", data: {} })).rejects.toThrow(/does not match/);
+    expect(update).not.toHaveBeenCalled();
+
+    const res = await svc.updateLink(user, "ws1", "lnk", { data: { batchSize: 10 } });
+    expect(res).toEqual({ id: "lnk", updated: true });
+    expect(update).toHaveBeenCalledWith({ where: { id: "lnk" }, data: { data: { batchSize: 10 } } });
+  });
+
+  it("updateLink throws 404 when the connection is missing", async () => {
+    const svc = new ConfigObjectsService({ prisma: makePrisma() });
+    await expect(svc.updateLink(user, "ws1", "nope", { data: {} })).rejects.toThrow(/does not exist/);
+  });
 });
