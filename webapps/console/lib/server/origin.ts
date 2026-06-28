@@ -17,7 +17,9 @@ export function getRequestHost(req: NextApiRequest) {
  *   2. `VERCEL_URL` — auto-populated on Vercel previews; needs `https://`
  *      prefix since Vercel only exports the host.
  *   3. `NEXTAUTH_URL` — last resort; usually present when NextAuth is wired.
- *   4. `http://localhost:3000` — local-dev convenience so the function is
+ *   4. `PORTLESS_URL` — set by dev-scripts/run-app.ts when running behind the
+ *      portless local-dev proxy (e.g. https://console-feat.jitsu.localhost).
+ *   5. `http://localhost:3000` — local-dev convenience so the function is
  *      total and callers don't have to handle undefined.
  */
 export function getPublicOrigin(): string {
@@ -27,6 +29,7 @@ export function getPublicOrigin(): string {
     env.JITSU_PUBLIC ||
     (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : undefined) ||
     env.NEXTAUTH_URL ||
+    env.PORTLESS_URL ||
     "http://localhost:3000";
   return raw.replace(/\/+$/, "");
 }

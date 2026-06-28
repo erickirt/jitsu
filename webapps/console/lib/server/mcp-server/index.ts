@@ -63,9 +63,12 @@ export class McpServer {
     const sdkServer = new SdkMcpServer({ name: "jitsu", version: "0.1.0" });
     registerTools(sdkServer);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    // The SDK reads auth from req.auth — do not pass authInfo as the third arg
+    // (parsedBody), which would make the transport treat it as the request body.
+    (req as any).auth = authInfo;
     try {
       await sdkServer.connect(transport);
-      await transport.handleRequest(req, res, { authInfo });
+      await transport.handleRequest(req, res);
     } catch (e) {
       log.atError().withCause(e).log("MCP transport error");
       if (!res.writableEnded) {

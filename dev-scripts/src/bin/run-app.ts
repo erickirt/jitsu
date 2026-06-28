@@ -179,7 +179,12 @@ function main(): void {
   const child = spawn("portless", ["--name", slug, "bash", "-c", innerCmd], {
     cwd: SHIM_DIR,
     stdio: "inherit",
-    env: { ...process.env, NODE_OPTIONS: resolvedNodeOptions, JITSU_BRANCH_SUFFIX: branchSuffix },
+    env: {
+      ...process.env,
+      NODE_OPTIONS: resolvedNodeOptions,
+      JITSU_BRANCH_SUFFIX: branchSuffix,
+      PORTLESS_URL: `https://${slug}.localhost`,
+    },
   });
   child.on("error", err => {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {

@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { OAuthClient, Prisma, PrismaClient } from "@prisma/client";
-import { checkHash, createHash, randomId } from "juava";
+import { checkHash, createHash, hint, randomId } from "juava";
 import { z } from "zod";
 import { getServerLog } from "../log";
 import { getPublicOrigin } from "../origin";
@@ -342,12 +342,11 @@ export class OAuthHandlers {
   private async createTokenPair(tx: Prisma.TransactionClient, client: OAuthClient, userId: string) {
     const refreshSecret = randomId(48);
     const refreshExpiresAt = new Date(Date.now() + this.deps.refreshTokenTtlDays * 86400 * 1000);
-    const plaintextPreviewLen = 4;
     const refresh = await tx.userApiToken.create({
       data: {
         userId,
         hash: createHash(refreshSecret),
-        hint: refreshSecret.slice(0, plaintextPreviewLen),
+        hint: hint(refreshSecret),
         name: client.name,
         oauthClientId: client.id,
         expiresAt: refreshExpiresAt,

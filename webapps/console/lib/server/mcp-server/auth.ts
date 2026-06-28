@@ -57,9 +57,13 @@ export class AuthChecker {
       return undefined;
     }
     // Fire-and-forget lastUsed bump — don't block the request on this write.
+    const now = new Date();
     this.prisma.oAuthAccessToken
-      .update({ where: { id: at.id }, data: { lastUsed: new Date() } })
+      .update({ where: { id: at.id }, data: { lastUsed: now } })
       .catch(e => log.atWarn().withCause(e).log("Failed to bump OAuthAccessToken.lastUsed"));
+    this.prisma.userApiToken
+      .update({ where: { id: at.refreshTokenId }, data: { lastUsed: now } })
+      .catch(e => log.atWarn().withCause(e).log("Failed to bump UserApiToken.lastUsed"));
 
     const user = at.refreshToken.user;
     const clientId = at.refreshToken.oauthClientId ?? "unknown";

@@ -314,6 +314,9 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   // Vercel deployment URL
   VERCEL_URL: z.string().optional(),
 
+  // Set by dev-scripts/run-app.ts to the portless proxy URL (e.g. https://console-feat.jitsu.localhost).
+  PORTLESS_URL: z.string().optional(),
+
   // Flag indicating running on Vercel platform
   VERCEL: z.string().default("false").transform(isTruish),
 

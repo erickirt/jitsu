@@ -56,6 +56,7 @@ module.exports = withBundleAnalyzer({
     // internal /api/mcp/* routes. /oauth/authorize is a regular Next page
     // (pages/oauth/authorize.tsx) so it doesn't need a rewrite.
     return [
+      { source: "/mcp", destination: "/api/mcp/mcp" },
       { source: "/mcp/:path*", destination: "/api/mcp/:path*" },
       { source: "/oauth/register", destination: "/api/mcp/oauth/register" },
       { source: "/oauth/token", destination: "/api/mcp/oauth/token" },
