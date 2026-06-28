@@ -14,6 +14,9 @@ export default defineConfig({
       DATABASE_URL: "postgres://test:test@localhost:5432/test",
       JWT_SECRET: "test-jwt-secret",
       NEXTAUTH_SECRET: "test-nextauth-secret",
+      // config-objects-service → ./sync → ./clickhouse builds the CH client at module load,
+      // which throws without this. The client is lazy, so no connection is made in tests.
+      CLICKHOUSE_URL: "http://localhost:8123",
     },
   },
 });
