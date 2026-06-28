@@ -279,7 +279,7 @@ export class OAuthHandlers {
     // accumulate.
     const issued = await this.deps.prisma.$transaction(async tx => {
       const prior = await tx.userApiToken.findMany({
-        where: { oauthClientId: client.id },
+        where: { oauthClientId: client.id, userId: codePayload.userId },
         select: { id: true },
       });
       if (prior.length) {
