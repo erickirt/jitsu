@@ -21,9 +21,10 @@ const Authorize = ({ clientName }: { clientName: string | null }) => {
   const redirectUri = typeof q.redirect_uri === "string" ? q.redirect_uri : undefined;
   const codeChallenge = typeof q.code_challenge === "string" ? q.code_challenge : undefined;
   const codeChallengeMethod = typeof q.code_challenge_method === "string" ? q.code_challenge_method : undefined;
+  const responseType = typeof q.response_type === "string" ? q.response_type : undefined;
   const state = typeof q.state === "string" ? q.state : undefined;
 
-  const valid = clientId && redirectUri && codeChallenge && codeChallengeMethod === "S256";
+  const valid = clientId && redirectUri && codeChallenge && codeChallengeMethod === "S256" && responseType === "code";
 
   if (!router.isReady) return null;
 
@@ -51,6 +52,7 @@ const Authorize = ({ clientName }: { clientName: string | null }) => {
           redirect_uri: redirectUri,
           code_challenge: codeChallenge,
           code_challenge_method: codeChallengeMethod,
+          response_type: responseType,
           state,
         }),
       });

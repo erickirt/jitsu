@@ -4,7 +4,7 @@ import type { OAuthClient, Prisma, PrismaClient } from "@prisma/client";
 import { checkHash, createHash, hint, randomId } from "juava";
 import { z } from "zod";
 import { getServerLog } from "../log";
-import { getPublicOrigin } from "../origin";
+import { getClientIp, getPublicOrigin } from "../origin";
 import { getUser } from "../../api";
 import type { KvStore } from "../kv";
 import { getRateLimiter, setRateLimitHeaders } from "../rate-limit";
@@ -32,6 +32,7 @@ const ApproveBody = z.object({
   code_challenge: z.string().min(1),
   code_challenge_method: z.literal("S256"),
   state: z.string().optional(),
+  response_type: z.literal("code"),
 });
 
 const DenyBody = z.object({
@@ -127,10 +128,7 @@ export class OAuthHandlers {
     if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
 
     if (getServerEnv().MINUTE_RATE_LIMIT_ENABLED) {
-      const ip =
-        (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
-        req.socket.remoteAddress ??
-        "unknown";
+      const ip = getClientIp(req);
       const rl = await getRateLimiter().check({
         authClass: "ip",
         principal: ip,

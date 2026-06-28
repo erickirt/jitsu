@@ -13,13 +13,13 @@ export function getRequestHost(req: NextApiRequest) {
  *
  * Resolution order:
  *   1. `JITSU_PUBLIC_URL` / `JITSU_PUBLIC` — the canonical setting in our
- *      deployments, also used by the dev wrapper for branch hosts.
+ *      deployments; dev-scripts/run-app.ts sets this to the portless host
+ *      (e.g. https://console-feat.jitsu.localhost) when JITSU_BRANCH_SUFFIX
+ *      is in use.
  *   2. `VERCEL_URL` — auto-populated on Vercel previews; needs `https://`
  *      prefix since Vercel only exports the host.
  *   3. `NEXTAUTH_URL` — last resort; usually present when NextAuth is wired.
- *   4. `PORTLESS_URL` — set by dev-scripts/run-app.ts when running behind the
- *      portless local-dev proxy (e.g. https://console-feat.jitsu.localhost).
- *   5. `http://localhost:3000` — local-dev convenience so the function is
+ *   4. `http://localhost:3000` — local-dev convenience so the function is
  *      total and callers don't have to handle undefined.
  */
 export function getPublicOrigin(): string {
@@ -29,9 +29,24 @@ export function getPublicOrigin(): string {
     env.JITSU_PUBLIC ||
     (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : undefined) ||
     env.NEXTAUTH_URL ||
-    env.PORTLESS_URL ||
     "http://localhost:3000";
   return raw.replace(/\/+$/, "");
+}
+
+/**
+ * Returns the best-effort client IP for rate limiting and logging. Takes the
+ * rightmost entry in X-Forwarded-For (added by our closest trusted proxy and
+ * therefore harder to spoof than the leftmost client-supplied value) and falls
+ * back to the raw socket address when the header is absent.
+ */
+export function getClientIp(req: NextApiRequest): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    const list = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(",");
+    const last = list[list.length - 1]?.trim();
+    if (last) return last;
+  }
+  return req.socket.remoteAddress ?? "unknown";
 }
 
 export function getTopLevelDomain(requestDomain: string): string {
