@@ -20,6 +20,9 @@ export interface ConfigObjectsServiceDeps {
   prisma: PrismaClient;
 }
 
+/** Hard cap on the number of workspaces returned per `listWorkspaces` page. */
+export const WORKSPACES_PAGE_MAX = 100;
+
 export type LinkUpsert = {
   id?: string;
   fromId: string;
@@ -53,26 +56,50 @@ export class ConfigObjectsService {
     return getAllConfigObjectTypeNames();
   }
 
-  /** Workspaces the user can access (all of them for admins). For picking a `workspaceId`. */
-  async listWorkspaces(user: SessionUser): Promise<{ id: string; name: string; slug: string | null }[]> {
+  /**
+   * Workspaces the user can access (all of them for admins), paginated.
+   * `limit` is capped at {@link WORKSPACES_PAGE_MAX}; use `offset` + `hasMore` to page.
+   */
+  async listWorkspaces(
+    user: SessionUser,
+    opts: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    workspaces: { id: string; name: string; slug: string | null }[];
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  }> {
+    const limit = Math.min(Math.max(opts.limit ?? WORKSPACES_PAGE_MAX, 1), WORKSPACES_PAGE_MAX);
+    const offset = Math.max(opts.offset ?? 0, 0);
     const userModel = requireDefined(
       await this.prisma.userProfile.findUnique({ where: { id: user.internalId } }),
       `User ${user.internalId} does not exist`
     );
-    const workspaces = userModel.admin
-      ? await this.prisma.workspace.findMany({
-          where: { deleted: false },
-          select: { id: true, name: true, slug: true },
-          orderBy: { createdAt: "asc" },
-        })
-      : (
-          await this.prisma.workspaceAccess.findMany({
-            where: { userId: user.internalId, workspace: { deleted: false } },
-            include: { workspace: { select: { id: true, name: true, slug: true } } },
+    const [total, workspaces] = userModel.admin
+      ? await Promise.all([
+          this.prisma.workspace.count({ where: { deleted: false } }),
+          this.prisma.workspace.findMany({
+            where: { deleted: false },
+            select: { id: true, name: true, slug: true },
             orderBy: { createdAt: "asc" },
-          })
-        ).map(({ workspace }) => workspace);
-    return workspaces;
+            skip: offset,
+            take: limit,
+          }),
+        ])
+      : await Promise.all([
+          this.prisma.workspaceAccess.count({ where: { userId: user.internalId, workspace: { deleted: false } } }),
+          this.prisma.workspaceAccess
+            .findMany({
+              where: { userId: user.internalId, workspace: { deleted: false } },
+              include: { workspace: { select: { id: true, name: true, slug: true } } },
+              orderBy: { createdAt: "asc" },
+              skip: offset,
+              take: limit,
+            })
+            .then(rows => rows.map(({ workspace }) => workspace)),
+        ]);
+    return { workspaces, total, limit, offset, hasMore: offset + workspaces.length < total };
   }
 
   private assertKnownType(type: string) {

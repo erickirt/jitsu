@@ -50,6 +50,7 @@ function makePrisma(overrides: any = {}) {
     workspace: {
       findFirst: vi.fn(async () => ({ id: "ws1", name: "WS" })),
       findMany: vi.fn(async () => []),
+      count: vi.fn(async () => 0),
       ...overrides.workspace,
     },
     configurationObject: {
@@ -65,7 +66,11 @@ function makePrisma(overrides: any = {}) {
       ...overrides.configurationObjectLink,
     },
     userProfile: { findUnique: vi.fn(async () => ({ id: "user-1", admin: false })), ...overrides.userProfile },
-    workspaceAccess: { findMany: vi.fn(async () => []), ...overrides.workspaceAccess },
+    workspaceAccess: {
+      findMany: vi.fn(async () => []),
+      count: vi.fn(async () => 0),
+      ...overrides.workspaceAccess,
+    },
   } as any;
 }
 
@@ -114,24 +119,48 @@ describe("ConfigObjectsService", () => {
     const prisma = makePrisma({
       userProfile: { findUnique: vi.fn(async () => ({ id: "user-1", admin: false })) },
       workspaceAccess: {
+        count: vi.fn(async () => 1),
         findMany: vi.fn(async () => [{ workspace: { id: "ws1", name: "WS", slug: "ws" } }]),
       },
     });
     const svc = new ConfigObjectsService({ prisma });
     const res = await svc.listWorkspaces(user);
-    expect(res).toEqual([{ id: "ws1", name: "WS", slug: "ws" }]);
+    expect(res).toEqual({
+      workspaces: [{ id: "ws1", name: "WS", slug: "ws" }],
+      total: 1,
+      limit: 100,
+      offset: 0,
+      hasMore: false,
+    });
     expect(prisma.workspace.findMany).not.toHaveBeenCalled();
   });
 
   it("listWorkspaces lists all workspaces for admins", async () => {
     const prisma = makePrisma({
       userProfile: { findUnique: vi.fn(async () => ({ id: "user-1", admin: true })) },
-      workspace: { findMany: vi.fn(async () => [{ id: "ws1", name: "WS", slug: "ws" }]) },
+      workspace: {
+        count: vi.fn(async () => 1),
+        findMany: vi.fn(async () => [{ id: "ws1", name: "WS", slug: "ws" }]),
+      },
     });
     const svc = new ConfigObjectsService({ prisma });
     const res = await svc.listWorkspaces(user);
-    expect(res).toEqual([{ id: "ws1", name: "WS", slug: "ws" }]);
+    expect(res.workspaces).toEqual([{ id: "ws1", name: "WS", slug: "ws" }]);
     expect(prisma.workspaceAccess.findMany).not.toHaveBeenCalled();
+  });
+
+  it("listWorkspaces caps the page at 100 and reports hasMore", async () => {
+    const findMany = vi.fn(async () => [{ id: "ws1", name: "WS", slug: "ws" }]);
+    const prisma = makePrisma({
+      userProfile: { findUnique: vi.fn(async () => ({ id: "user-1", admin: true })) },
+      workspace: { count: vi.fn(async () => 250), findMany },
+    });
+    const svc = new ConfigObjectsService({ prisma });
+    const res = await svc.listWorkspaces(user, { limit: 999, offset: 0 });
+    expect(res.limit).toBe(100);
+    expect(res.total).toBe(250);
+    expect(res.hasMore).toBe(true);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 100 }));
   });
 
   it("get constrains the lookup by type (so a wrong-type id can't run the wrong filter)", async () => {

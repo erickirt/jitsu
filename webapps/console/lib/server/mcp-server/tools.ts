@@ -6,7 +6,7 @@ import { SessionUser } from "../../schema";
 import { getResourceJsonSchema } from "../../schema/json-schema";
 import { ApiError } from "../../shared/errors";
 import { getServerLog } from "../log";
-import type { ConfigObjectsService } from "../config-objects-service";
+import { type ConfigObjectsService, WORKSPACES_PAGE_MAX } from "../config-objects-service";
 import { type EventsLogService, QUERYABLE_TYPES } from "../events-log-service";
 
 const log = getServerLog("mcp-tools");
@@ -65,11 +65,16 @@ export function registerTools(sdkServer: SdkMcpServer, deps: ToolDeps) {
     {
       title: "List workspaces",
       description:
-        "List the Jitsu workspaces the authenticated user can access. Use a workspace `id` as the " +
-        "`workspaceId` argument to other tools.",
-      inputSchema: {},
+        "List the Jitsu workspaces the authenticated user can access (paginated, max 100 per page). " +
+        "Returns { workspaces, total, limit, offset, hasMore }; page with `offset` while `hasMore` is true. " +
+        "Use a workspace `id` as the `workspaceId` argument to other tools.",
+      inputSchema: {
+        limit: z.number().optional().describe(`Page size (1–${WORKSPACES_PAGE_MAX}, default ${WORKSPACES_PAGE_MAX})`),
+        offset: z.number().optional().describe("Number of workspaces to skip (default 0)"),
+      },
     },
-    async (_args, ctx) => run("list_workspaces", () => service.listWorkspaces(principalFromAuth(ctx.authInfo)))
+    async ({ limit, offset }, ctx) =>
+      run("list_workspaces", () => service.listWorkspaces(principalFromAuth(ctx.authInfo), { limit, offset }))
   );
 
   sdkServer.registerTool(
