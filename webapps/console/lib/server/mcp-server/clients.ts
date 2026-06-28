@@ -24,7 +24,7 @@ export class OAuthClientsRepo {
         throw new Error(`Invalid redirect_uri: ${uri}`);
       }
     }
-    const clientSecret = randomId(48);
+    const clientSecret = randomId({ digits: 48, strongRandom: true });
     const row = await this.prisma.oAuthClient.create({
       data: {
         clientSecretHash: createHash(clientSecret),

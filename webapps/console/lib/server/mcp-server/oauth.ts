@@ -317,13 +317,13 @@ export class OAuthHandlers {
     // stable). Drop access tokens for this refresh and issue a new one.
     const issued = await this.deps.prisma.$transaction(async tx => {
       await tx.oAuthAccessToken.deleteMany({ where: { refreshTokenId: refresh.id } });
-      const newRefreshSecret = randomId(48);
+      const newRefreshSecret = randomId({ digits: 48, strongRandom: true });
       const newExpiresAt = new Date(Date.now() + this.deps.refreshTokenTtlDays * 86400 * 1000);
       await tx.userApiToken.update({
         where: { id: refresh.id },
         data: { hash: createHash(newRefreshSecret), expiresAt: newExpiresAt, lastUsed: new Date() },
       });
-      const accessSecret = randomId(48);
+      const accessSecret = randomId({ digits: 48, strongRandom: true });
       const accessExpires = new Date(Date.now() + this.deps.accessTokenTtlSec * 1000);
       const access = await tx.oAuthAccessToken.create({
         data: { hash: createHash(accessSecret), expiresAt: accessExpires, refreshTokenId: refresh.id },
@@ -340,7 +340,7 @@ export class OAuthHandlers {
 
   // Shared between fresh authorize and (in theory) future grant types.
   private async createTokenPair(tx: Prisma.TransactionClient, client: OAuthClient, userId: string) {
-    const refreshSecret = randomId(48);
+    const refreshSecret = randomId({ digits: 48, strongRandom: true });
     const refreshExpiresAt = new Date(Date.now() + this.deps.refreshTokenTtlDays * 86400 * 1000);
     const refresh = await tx.userApiToken.create({
       data: {
@@ -352,7 +352,7 @@ export class OAuthHandlers {
         expiresAt: refreshExpiresAt,
       },
     });
-    const accessSecret = randomId(48);
+    const accessSecret = randomId({ digits: 48, strongRandom: true });
     const accessExpiresAt = new Date(Date.now() + this.deps.accessTokenTtlSec * 1000);
     const access = await tx.oAuthAccessToken.create({
       data: {

@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { after } from "next/server";
 import { getErrorMessage } from "juava";
 import { getServerLog } from "../log";
 import type { KvStore, SetOpts } from "./types";
@@ -33,8 +34,7 @@ export class PgKvStore implements KvStore {
     const row = await this.prisma.kvStoreEntry.findUnique({ where: { key } });
     if (!row) return undefined;
     if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
-      // Expired-on-read: drop it. Don't block the response on the delete.
-      this.prisma.kvStoreEntry.deleteMany({ where: { key } }).catch(() => undefined);
+      after(() => this.prisma.kvStoreEntry.deleteMany({ where: { key } }).catch(() => undefined));
       return undefined;
     }
     return row.value as T;
@@ -104,17 +104,13 @@ export class PgKvStore implements KvStore {
     opts: { limit?: number } = {}
   ): Promise<Array<{ key: string; value: T }>> {
     maybeGc(this.prisma);
-    // Hard cap at 1000: callers that need more should paginate or use a different store.
-    // KvEventStore.replayEventsAfter relies on this; long-lived sessions (>1000 events)
-    // will silently miss earlier events. Acceptable for the current 1h TTL window.
-    const limit = Math.min(opts.limit ?? 1000, 1000);
     const rows = await this.prisma.kvStoreEntry.findMany({
       where: {
         key: { startsWith: prefix },
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
       orderBy: { key: "asc" },
-      take: limit,
+      ...(opts.limit !== undefined ? { take: opts.limit } : {}),
     });
     return rows.map(r => ({ key: r.key, value: r.value as T }));
   }

@@ -20,7 +20,7 @@ export class OAuthCodesRepo {
   constructor(private readonly kv: KvStore) {}
 
   async issueCode(payload: Omit<CodePayload, "createdAt">): Promise<string> {
-    const code = randomId(48);
+    const code = randomId({ digits: 48, strongRandom: true });
     await this.kv.set(PREFIX + code, { ...payload, createdAt: Date.now() } satisfies CodePayload, {
       ttlMs: TTL_MS,
     });
