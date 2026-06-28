@@ -388,13 +388,17 @@ export class OAuthHandlers {
         // Order matters: access tokens FK → UserApiToken; UserApiToken FK → OAuthClient.
         await tx.oAuthAccessToken.deleteMany({ where: { refreshTokenId: token.id } });
         await tx.userApiToken.delete({ where: { id: token.id } });
-        // Only delete the OAuthClient when this was the last token referencing it.
-        // Multiple users can share the same dynamic client_id; deleting it while
-        // other users' tokens still point to it breaks their sessions.
-        const remaining = await tx.userApiToken.count({ where: { oauthClientId: token.oauthClientId } });
-        if (remaining === 0) {
-          await tx.oAuthClient.delete({ where: { id: token.oauthClientId } });
-        }
+        // Guarded delete: remove the OAuthClient only when no UserApiToken rows
+        // still reference it. A plain count-then-delete races with concurrent
+        // token issuance, so we use a single DELETE ... WHERE NOT EXISTS to make
+        // it atomic. Prisma doesn't support subquery filters, so raw SQL here.
+        await tx.$executeRaw`
+          DELETE FROM "OAuthClient"
+          WHERE id = ${token.oauthClientId}
+            AND NOT EXISTS (
+              SELECT 1 FROM "UserApiToken"
+              WHERE "oauthClientId" = ${token.oauthClientId}
+            )`;
       } else {
         await tx.userApiToken.delete({ where: { id: token.id } });
       }

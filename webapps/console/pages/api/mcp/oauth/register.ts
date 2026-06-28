@@ -1,3 +1,4 @@
+import type { NextApiRequest, NextApiResponse } from "next";
 import { mcpServer } from "../../../../lib/server/mcp-server";
 
-export default (req, res) => mcpServer.handleRegister(req, res);
+export default (req: NextApiRequest, res: NextApiResponse) => mcpServer.handleRegister(req, res);
