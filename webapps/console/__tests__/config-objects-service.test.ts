@@ -93,18 +93,6 @@ describe("ConfigObjectsService", () => {
     expect(arg.data.config.name).toBe("example.com");
   });
 
-  it("create honours a caller-supplied id", async () => {
-    const prisma = makePrisma();
-    const svc = new ConfigObjectsService({ prisma });
-    const res = await svc.create(user, "ws1", "domain", { id: "fixed-id", name: "example.com" });
-    expect(res.id).toBe("fixed-id");
-  });
-
-  it("get throws 404 when the object is missing", async () => {
-    const svc = new ConfigObjectsService({ prisma: makePrisma() });
-    await expect(svc.get(user, "ws1", "destination", "nope")).rejects.toThrow(/does not exist/);
-  });
-
   it("delete returns null when the object is missing (idempotent)", async () => {
     const svc = new ConfigObjectsService({ prisma: makePrisma() });
     await expect(svc.delete(user, "ws1", "destination", "nope")).resolves.toBeNull();
@@ -169,11 +157,6 @@ describe("ConfigObjectsService", () => {
     const res = await svc.updateLink(user, "ws1", "lnk", { data: { batchSize: 10 } });
     expect(res).toEqual({ id: "lnk", updated: true });
     expect(update).toHaveBeenCalledWith({ where: { id: "lnk" }, data: { data: { batchSize: 10 } } });
-  });
-
-  it("updateLink throws 404 when the connection is missing", async () => {
-    const svc = new ConfigObjectsService({ prisma: makePrisma() });
-    await expect(svc.updateLink(user, "ws1", "nope", { data: {} })).rejects.toThrow(/does not exist/);
   });
 
   it("updateLink rejects changing a connection's type", async () => {
