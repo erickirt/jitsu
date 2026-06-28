@@ -34,17 +34,21 @@ export function getPublicOrigin(): string {
 }
 
 /**
- * Returns the best-effort client IP for rate limiting and logging. Takes the
- * rightmost entry in X-Forwarded-For (added by our closest trusted proxy and
- * therefore harder to spoof than the leftmost client-supplied value) and falls
- * back to the raw socket address when the header is absent.
+ * Best-effort client IP for rate limiting.
+ *
+ * Trust model: one reverse proxy (nginx ingress / Vercel edge) that sets
+ * X-Real-IP to its peer's IP and prepends the real client IP to
+ * X-Forwarded-For (stripping any client-supplied value). Under that model
+ * the leftmost XFF entry is the real client IP. Not forgery-proof if a
+ * proxy lets clients inject XFF unmodified, but good enough for rate limiting.
  */
 export function getClientIp(req: NextApiRequest): string {
+  const realIp = req.headers["x-real-ip"];
+  if (realIp) return Array.isArray(realIp) ? realIp[0] : realIp;
   const forwarded = req.headers["x-forwarded-for"];
   if (forwarded) {
-    const list = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(",");
-    const last = list[list.length - 1]?.trim();
-    if (last) return last;
+    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(",")[0]?.trim();
+    if (first) return first;
   }
   return req.socket.remoteAddress ?? "unknown";
 }
