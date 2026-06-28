@@ -168,7 +168,7 @@ export class EventsLogService {
 
     const specificActor = !!opts.source && opts.source !== ALL;
     if (specificActor) {
-      await this.assertActorBelongsToWorkspace(workspaceId, opts.source!, "actor");
+      await this.assertActorBelongsToWorkspace(workspaceId, opts.source!, "deadletter");
     }
 
     const sql = `select timestamp as date, workspaceId, actorId, type, payload, error
@@ -297,25 +297,43 @@ export class EventsLogService {
     return [...new Set([...links.map(l => l.id), ...destinations.map(d => d.id), ...pbs.map(p => p.id)])];
   }
 
-  /** Mirror of the route handlers' actor-ownership check. Throws 403 if `actorId` isn't in the workspace. */
-  private async assertActorBelongsToWorkspace(workspaceId: string, actorId: string, mode: "incoming" | "actor") {
+  /**
+   * Mirror of the route handlers' actor-ownership checks (throws 403 if `actorId` isn't in the
+   * workspace). The allowed actor kinds differ by log type:
+   *   - incoming   → any config object (the incoming route doesn't restrict by type)
+   *   - actor      → link / profile-builder / destination (events_log function/bulker route)
+   *   - deadletter → any config object / link / profile-builder (the dead-letter route is broad,
+   *                  and list_event_sources("dead-letter") advertises streams as valid sources)
+   */
+  private async assertActorBelongsToWorkspace(
+    workspaceId: string,
+    actorId: string,
+    mode: "incoming" | "actor" | "deadletter"
+  ) {
+    const reject = () => {
+      throw new ApiError(`source '${actorId}' doesn't belong to the current workspace`, {}, { status: 403 });
+    };
     if (mode === "incoming") {
-      const source = await this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId } });
-      if (!source) {
-        throw new ApiError(`source '${actorId}' doesn't belong to the current workspace`, {}, { status: 403 });
-      }
+      if (!(await this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId } }))) reject();
       return;
     }
-    // Route parity: non-incoming actors are links, profile builders, or destinations only —
-    // not any config object (a stream/service/function id must not be accepted, especially
-    // since ids could collide across tables).
+    if (mode === "deadletter") {
+      const [obj, link, pb] = await Promise.all([
+        this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId } }),
+        this.prisma.configurationObjectLink.findFirst({ where: { id: actorId, workspaceId } }),
+        this.prisma.profileBuilder.findFirst({ where: { id: actorId, workspaceId } }),
+      ]);
+      if (!obj && !link && !pb) reject();
+      return;
+    }
+    // mode === "actor": links, profile builders, or destinations only — not any config object
+    // (a stream/service/function id must not be accepted, especially since ids could collide
+    // across tables).
     const [link, pb, dst] = await Promise.all([
       this.prisma.configurationObjectLink.findFirst({ where: { id: actorId, workspaceId } }),
       this.prisma.profileBuilder.findFirst({ where: { id: actorId, workspaceId } }),
       this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId, type: "destination" } }),
     ]);
-    if (!link && !pb && !dst) {
-      throw new ApiError(`source '${actorId}' doesn't belong to the current workspace`, {}, { status: 403 });
-    }
+    if (!link && !pb && !dst) reject();
   }
 }

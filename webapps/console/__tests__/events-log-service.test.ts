@@ -133,6 +133,19 @@ describe("EventsLogService", () => {
     expect(arg.query_params.workspaceId).toBe("ws1");
   });
 
+  it("dead-letter accepts a stream id as a specific source (any config object, not just destinations)", async () => {
+    const { clickhouse, query } = makeClickhouse([]);
+    // Only a config object matches (a stream) — links/profile-builders return null.
+    const prisma = makePrisma({ configurationObject: { findFirst: vi.fn(async () => ({ id: "stream-1" })) } });
+    const svc = new EventsLogService({ clickhouse, prisma });
+    await expect(svc.queryDeadLetter(user, "ws1", { source: "stream-1" })).resolves.toEqual([]);
+    // ownership check looked up the config object by id+workspace, without a destination type filter
+    expect(prisma.configurationObject.findFirst).toHaveBeenCalledWith({
+      where: { id: "stream-1", workspaceId: "ws1" },
+    });
+    expect(query.mock.calls[0][0].query).toContain("and actorId = {actorId:String}");
+  });
+
   it("parses payload/error JSON for dead-letter rows", async () => {
     const { clickhouse } = makeClickhouse([
       {
