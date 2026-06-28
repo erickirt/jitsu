@@ -175,4 +175,23 @@ describe("ConfigObjectsService", () => {
     const svc = new ConfigObjectsService({ prisma: makePrisma() });
     await expect(svc.updateLink(user, "ws1", "nope", { data: {} })).rejects.toThrow(/does not exist/);
   });
+
+  it("updateLink rejects changing a connection's type", async () => {
+    const existing = { id: "lnk", workspaceId: "ws1", fromId: "a", toId: "b", type: "push", data: {} };
+    const update = vi.fn(async () => ({ id: "lnk" }));
+    const prisma = makePrisma({ configurationObjectLink: { findFirst: vi.fn(async () => existing), update } });
+    const svc = new ConfigObjectsService({ prisma });
+    await expect(svc.updateLink(user, "ws1", "lnk", { type: "sync", data: {} })).rejects.toThrow(
+      /type can't be changed/
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("deleteLink by id returns {deleted:false} for a missing connection (no throw)", async () => {
+    const update = vi.fn(async () => ({ id: "lnk" }));
+    const prisma = makePrisma({ configurationObjectLink: { findFirst: vi.fn(async () => null), update } });
+    const svc = new ConfigObjectsService({ prisma });
+    await expect(svc.deleteLink(user, "ws1", { id: "nope" })).resolves.toEqual({ deleted: false });
+    expect(update).not.toHaveBeenCalled();
+  });
 });

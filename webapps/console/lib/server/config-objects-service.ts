@@ -360,7 +360,17 @@ export class ConfigObjectsService {
     if (patch.toId && patch.toId !== existing.toId) {
       throw new ApiError(`toId '${patch.toId}' does not match connection ${id}`, {}, { status: 400 });
     }
-    const type = patch.type ?? existing.type ?? "push";
+    // A link's type is immutable (push↔sync changes the from/to semantics — that's a
+    // delete + create). Reject a mismatched patch.type rather than validate against one
+    // type and persist another.
+    const type = existing.type ?? "push";
+    if (patch.type && patch.type !== type) {
+      throw new ApiError(
+        `connection ${id} is '${type}'; its type can't be changed to '${patch.type}'`,
+        {},
+        { status: 400 }
+      );
+    }
     const data = patch.data !== undefined ? patch.data : existing.data;
     if (type === "sync" && data) {
       try {
@@ -420,14 +430,16 @@ export class ConfigObjectsService {
       if (fromId || toId) {
         throw new ApiError("You can't specify 'fromId' or 'toId' with 'id'", {}, { status: 400 });
       }
-      const updatedLink = await this.prisma.configurationObjectLink.update({
-        where: { workspaceId, id },
-        data: { deleted: true },
+      // Read-then-update: prisma `update` throws when no row matches, so a missing id would
+      // error instead of reporting deleted:false. Look it up first.
+      const existing = await this.prisma.configurationObjectLink.findFirst({
+        where: { workspaceId, id, deleted: false },
       });
-      if (!updatedLink) {
+      if (!existing) {
         return { deleted: false };
       }
-      await configObjectAuditLog(user, workspaceId, updatedLink.id, "link", "delete", { prevVersion: updatedLink });
+      await this.prisma.configurationObjectLink.update({ where: { id: existing.id }, data: { deleted: true } });
+      await configObjectAuditLog(user, workspaceId, existing.id, "link", "delete", { prevVersion: existing });
       return { deleted: true };
     } else if (fromId && toId) {
       const updatedLinks = await this.prisma.configurationObjectLink.updateManyAndReturn({

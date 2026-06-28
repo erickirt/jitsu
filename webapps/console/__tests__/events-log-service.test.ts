@@ -64,21 +64,56 @@ describe("EventsLogService", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it("all-sources query scopes events_log to the workspace's actor ids via IN(...)", async () => {
+  it("all-sources (function) scopes to connections + destinations + profile builders via IN(...)", async () => {
     const { clickhouse, query } = makeClickhouse([]);
     const prisma = makePrisma({
-      configurationObject: { findMany: vi.fn(async () => [{ id: "obj-a" }]) },
+      configurationObject: { findMany: vi.fn(async () => [{ id: "dst-a" }]) }, // destinations
       configurationObjectLink: { findMany: vi.fn(async () => [{ id: "link-b" }]) },
       profileBuilder: { findMany: vi.fn(async () => [{ id: "pb-c" }]) },
     });
     const svc = new EventsLogService({ clickhouse, prisma });
-    await svc.queryEventsLog(user, "ws1", "incoming"); // no source → all sources
+    await svc.queryEventsLog(user, "ws1", "function"); // no source → all sources
 
     expect(query).toHaveBeenCalledOnce();
     const arg = query.mock.calls[0][0];
     expect(arg.query).toContain("actorId in ({actorIds:Array(String)})");
     expect(arg.query).not.toContain("actorId = {actorId:String}");
-    expect(arg.query_params.actorIds).toEqual(["obj-a", "link-b", "pb-c"]);
+    expect(arg.query_params.actorIds).toEqual(["link-b", "dst-a", "pb-c"]);
+    // destinations are looked up with type:"destination", not all config objects
+    expect(prisma.configurationObject.findMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws1", type: "destination", deleted: false },
+      select: { id: true },
+    });
+  });
+
+  it("all-sources (incoming) scopes to streams only", async () => {
+    const { clickhouse, query } = makeClickhouse([]);
+    const prisma = makePrisma({
+      configurationObject: { findMany: vi.fn(async () => [{ id: "stream-1" }]) },
+      configurationObjectLink: { findMany: vi.fn(async () => [{ id: "link-b" }]) },
+      profileBuilder: { findMany: vi.fn(async () => [{ id: "pb-c" }]) },
+    });
+    const svc = new EventsLogService({ clickhouse, prisma });
+    await svc.queryEventsLog(user, "ws1", "incoming");
+
+    expect(query.mock.calls[0][0].query_params.actorIds).toEqual(["stream-1"]);
+    expect(prisma.configurationObject.findMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws1", type: "stream", deleted: false },
+      select: { id: true },
+    });
+    expect(prisma.configurationObjectLink.findMany).not.toHaveBeenCalled();
+    expect(prisma.profileBuilder.findMany).not.toHaveBeenCalled();
+  });
+
+  it("a specific non-incoming source is checked against destinations, not any config object", async () => {
+    const { clickhouse } = makeClickhouse([]);
+    const findFirst = vi.fn(async () => null);
+    const prisma = makePrisma({ configurationObject: { findFirst } });
+    const svc = new EventsLogService({ clickhouse, prisma });
+    await expect(svc.queryEventsLog(user, "ws1", "function", { source: "stream-x" })).rejects.toThrow(
+      /doesn't belong to the current workspace/
+    );
+    expect(findFirst).toHaveBeenCalledWith({ where: { id: "stream-x", workspaceId: "ws1", type: "destination" } });
   });
 
   it("all-sources returns [] without querying when the workspace has no actors", async () => {

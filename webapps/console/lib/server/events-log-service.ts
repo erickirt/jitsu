@@ -128,7 +128,7 @@ export class EventsLogService {
       actorFilter = "actorId = {actorId:String}";
       query_params.actorId = opts.source;
     } else {
-      const actorIds = await this.resolveWorkspaceActorIds(workspaceId);
+      const actorIds = await this.resolveWorkspaceActorIds(workspaceId, type as EventsLogType);
       if (actorIds.length === 0) return [];
       actorFilter = "actorId in ({actorIds:Array(String)})";
       query_params.actorIds = actorIds;
@@ -272,17 +272,29 @@ export class EventsLogService {
   }
 
   /**
-   * Union of the workspace's actor ids (config objects of any type + links + profile builders).
-   * Used to scope an "all sources" events_log query — over-inclusive ids are harmless because the
-   * query also filters by `type`.
+   * The workspace's valid actor ids for the given log type — streams for `incoming`,
+   * connections/destinations/profile-builders for `function`/`bulker_*`. Used to scope an
+   * "all sources" events_log query to actor kinds that actually emit that type, so unrelated
+   * ids (and cross-table id collisions) can't widen the result set.
    */
-  private async resolveWorkspaceActorIds(workspaceId: string): Promise<string[]> {
-    const [objects, links, pbs] = await Promise.all([
-      this.prisma.configurationObject.findMany({ where: { workspaceId, deleted: false }, select: { id: true } }),
+  private async resolveWorkspaceActorIds(workspaceId: string, type: EventsLogType): Promise<string[]> {
+    if (type === "incoming") {
+      const streams = await this.prisma.configurationObject.findMany({
+        where: { workspaceId, type: "stream", deleted: false },
+        select: { id: true },
+      });
+      return [...new Set(streams.map(s => s.id))];
+    }
+    // function / bulker_batch / bulker_stream → connections, destinations, profile builders.
+    const [links, destinations, pbs] = await Promise.all([
       this.prisma.configurationObjectLink.findMany({ where: { workspaceId, deleted: false }, select: { id: true } }),
+      this.prisma.configurationObject.findMany({
+        where: { workspaceId, type: "destination", deleted: false },
+        select: { id: true },
+      }),
       this.prisma.profileBuilder.findMany({ where: { workspaceId }, select: { id: true } }),
     ]);
-    return [...new Set([...objects.map(o => o.id), ...links.map(l => l.id), ...pbs.map(p => p.id)])];
+    return [...new Set([...links.map(l => l.id), ...destinations.map(d => d.id), ...pbs.map(p => p.id)])];
   }
 
   /** Mirror of the route handlers' actor-ownership check. Throws 403 if `actorId` isn't in the workspace. */
@@ -294,10 +306,13 @@ export class EventsLogService {
       }
       return;
     }
+    // Route parity: non-incoming actors are links, profile builders, or destinations only —
+    // not any config object (a stream/service/function id must not be accepted, especially
+    // since ids could collide across tables).
     const [link, pb, dst] = await Promise.all([
       this.prisma.configurationObjectLink.findFirst({ where: { id: actorId, workspaceId } }),
       this.prisma.profileBuilder.findFirst({ where: { id: actorId, workspaceId } }),
-      this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId } }),
+      this.prisma.configurationObject.findFirst({ where: { id: actorId, workspaceId, type: "destination" } }),
     ]);
     if (!link && !pb && !dst) {
       throw new ApiError(`source '${actorId}' doesn't belong to the current workspace`, {}, { status: 403 });
