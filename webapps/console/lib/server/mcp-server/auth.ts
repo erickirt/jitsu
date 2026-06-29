@@ -78,6 +78,12 @@ export class AuthChecker {
         userId: user.id,
         email: user.email,
         name: user.name,
+        // Carried so tools can build a SessionUser for verifyAccess / audit-log
+        // without re-querying UserProfile, and so config-object audit rows are
+        // attributed to the MCP token (refreshTokenId) and login identity.
+        externalId: user.externalId,
+        loginProvider: user.loginProvider,
+        refreshTokenId: at.refreshTokenId,
         clientName: at.refreshToken.oauthClient?.name,
       },
     };
