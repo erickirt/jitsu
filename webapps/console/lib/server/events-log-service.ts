@@ -113,10 +113,15 @@ export class EventsLogService {
     await verifyAccess(user, workspaceId);
     const limit = clampLimit(opts.limit);
 
+    // Parse once and gate both the SQL clause and the param on the result — gating the
+    // clause on raw `opts.levels` while the param is `levelsArray(...)` lets an input like
+    // " , " add the clause but leave `levels` undefined, failing the ClickHouse query.
+    const parsedLevels = levelsArray(opts.levels);
+
     let actorFilter: string;
     const query_params: Record<string, any> = {
       type,
-      levels: levelsArray(opts.levels),
+      levels: parsedLevels,
       start: chDate(opts.start),
       end: chDate(opts.end),
       search: opts.search,
@@ -137,7 +142,7 @@ export class EventsLogService {
     const sql = `select timestamp as date, level, message as content from events_log
        where ${actorFilter}
          and type = {type:String}
-         ${opts.levels ? "and level in ({levels:Array(String)})" : ""}
+         ${parsedLevels ? "and level in ({levels:Array(String)})" : ""}
          ${opts.start ? "and timestamp >= {start:String}" : ""}
          ${opts.end ? "and timestamp < {end:String}" : ""}
          ${opts.search ? "and message ilike concat('%',{search:String},'%')" : ""}

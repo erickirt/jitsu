@@ -105,6 +105,28 @@ describe("EventsLogService", () => {
     expect(prisma.profileBuilder.findMany).not.toHaveBeenCalled();
   });
 
+  it("levels: a blank string adds no level clause and leaves the param undefined", async () => {
+    const { clickhouse, query } = makeClickhouse([]);
+    const prisma = makePrisma({ configurationObject: { findMany: vi.fn(async () => [{ id: "stream-1" }]) } });
+    const svc = new EventsLogService({ clickhouse, prisma });
+    await svc.queryEventsLog(user, "ws1", "incoming", { levels: " , " });
+
+    const arg = query.mock.calls[0][0];
+    expect(arg.query).not.toContain("level in");
+    expect(arg.query_params.levels).toBeUndefined();
+  });
+
+  it("levels: a real list adds the clause and the sanitized param", async () => {
+    const { clickhouse, query } = makeClickhouse([]);
+    const prisma = makePrisma({ configurationObject: { findMany: vi.fn(async () => [{ id: "stream-1" }]) } });
+    const svc = new EventsLogService({ clickhouse, prisma });
+    await svc.queryEventsLog(user, "ws1", "incoming", { levels: "error, warn" });
+
+    const arg = query.mock.calls[0][0];
+    expect(arg.query).toContain("level in ({levels:Array(String)})");
+    expect(arg.query_params.levels).toEqual(["error", "warn"]);
+  });
+
   it("a specific non-incoming source is checked against destinations, not any config object", async () => {
     const { clickhouse } = makeClickhouse([]);
     const findFirst = vi.fn(async () => null);

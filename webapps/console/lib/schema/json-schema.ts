@@ -22,10 +22,12 @@ export function getResourceJsonSchema(type: string, subType?: string): any {
   if (type === "link" || type === "connection") {
     if (subType) {
       if (subType === "sync") {
-        return zodToJsonSchema(BaseLinkType.merge(z.object({ data: SyncOptionsType })));
+        // Pin `type: "sync"` so a schema-following payload isn't treated as a push link
+        // (upsertLink defaults a missing `type` to "push").
+        return zodToJsonSchema(BaseLinkType.merge(z.object({ type: z.literal("sync"), data: SyncOptionsType })));
       }
       const opts = getCoreDestinationType(subType).connectionOptions;
-      return zodToJsonSchema(BaseLinkType.merge(z.object({ data: opts })));
+      return zodToJsonSchema(BaseLinkType.merge(z.object({ type: z.literal("push"), data: opts })));
     }
     return zodToJsonSchema(BaseLinkType.merge(z.object({ data: z.any() })));
   }
