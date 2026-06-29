@@ -142,6 +142,18 @@ When you need to create branches, make commits, or open pull requests, read
 [CONTRIBUTING.md](CONTRIBUTING.md) first. No need to read it for code exploration —
 only when interacting with git.
 
+### Referencing Linear issues
+
+When referencing a Linear issue in GitHub (PR descriptions, commit messages,
+comments), use the bare issue id — `` `JITSU-67` `` — not a Linear URL or a
+markdown link to one.
+
+Before opening a PR, try to work out which Linear issue the work relates to —
+check the branch name, search via the Linear MCP if it's available, or ask the
+user with the question tool. If the PR clearly relates to an issue, prefix the
+PR title with the issue id and put the id in the body. It's fine if there's no
+issue — but offer to create one (when the Linear MCP is available).
+
 ## Deployments
 
 The console can be auto-deployed to **beta** on PR merge via the
