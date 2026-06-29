@@ -164,6 +164,10 @@ export const ApiKey = z.object({
   type: z.string().nullish(),
   name: z.string().nullish(),
   expiresAt: z.coerce.date().nullish(),
+  // When set, this row is an MCP-issued refresh token. Its presence is the
+  // single source of truth for "MCP-ness" (we don't set type="mcp").
+  // mcpClientName carries the registered client_name for display on /user.
+  mcpClientName: z.string().nullish(),
 });
 export type ApiKey = z.infer<typeof ApiKey>;
 

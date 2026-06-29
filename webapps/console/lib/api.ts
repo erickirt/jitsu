@@ -293,6 +293,11 @@ export async function getUser(
       if (!checkHash(token.hash, secret)) {
         throw new ApiError(`Invalid API key secret for ${keyId}`, { keyId }, { status: 401 });
       }
+      // MCP refresh tokens are stored in UserApiToken but must not be usable
+      // as general Console API bearer keys — they are scoped to MCP only.
+      if (token.oauthClientId) {
+        throw new ApiError(`MCP refresh tokens cannot be used as Console API bearer keys`, { keyId }, { status: 401 });
+      }
       if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
         throw new ApiError(`API key ${keyId} has expired`, { keyId }, { status: 401 });
       }
