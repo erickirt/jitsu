@@ -105,6 +105,18 @@ const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
     }
   }, [router.query.projectName]);
 
+  // JITSU-70: the server already deleted the rejected account, so clear the
+  // stale client session — otherwise `auth().currentUser` stays a deleted user
+  // and later fb-auth calls fail until a refresh. We still render the signup
+  // form below; signing out only resets the in-memory Firebase session.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    if (result?.status === "personal-email-rejected") {
+      session.signOut();
+    }
+  }, [result?.status]);
+  /* eslint-enable */
+
   if (loading) {
     return <GlobalLoader title={"Authorizing"} />;
   } else if (authError) {

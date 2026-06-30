@@ -49,13 +49,6 @@ export default createRoute()
         if (serverEnv.DISABLE_SIGNUP) {
           throw new ApiError("Sign up is disabled", { code: "signup-disabled" });
         }
-        // JITSU-70: a Firebase account can already carry an internalId claim
-        // while its Jitsu profile is missing, which skips create-user and lands
-        // here. Enforce the work-email requirement on this path too; the helper
-        // deletes the orphaned Firebase account.
-        if (await shouldRejectPersonalEmailSignup(user)) {
-          throw new ApiError(WORK_EMAIL_REQUIRED_MESSAGE, { code: "personal-email-rejected" }, { status: 403 });
-        }
         if (!user.loginProvider && !user.externalId) {
           //double check so we won't pull first of all users from DB
           throw new ApiError(`Inconsistent state, loginProvider or externalId is empty in users JWT`);
@@ -68,6 +61,16 @@ export default createRoute()
           throw new ApiError(
             `There's another user with given external id (${user.loginProvider}/${user.externalId}, but different internal id - ${dbUser.id}. Please, delete this user. Passed user id: ${user.internalId}`
           );
+        }
+
+        // JITSU-70: a Firebase account can already carry an internalId claim while
+        // its Jitsu profile is missing, which skips create-user and lands here.
+        // Enforce the work-email requirement only once we've confirmed no existing
+        // profile (above) — so we never reject/delete a recovering user — i.e. a
+        // genuinely new account is about to be created. The helper deletes the
+        // orphaned Firebase account.
+        if (await shouldRejectPersonalEmailSignup(user)) {
+          throw new ApiError(WORK_EMAIL_REQUIRED_MESSAGE, { code: "personal-email-rejected" }, { status: 403 });
         }
 
         const newUser = await db.prisma().userProfile.create({
