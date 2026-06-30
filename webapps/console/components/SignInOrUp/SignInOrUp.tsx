@@ -6,7 +6,7 @@ import { useRouter } from "next/router";
 import { EmailFirstLogin } from "./EmailFirstLogin";
 import { OAuthButtons } from "./OAuthButtons";
 import { signIn } from "next-auth/react";
-import { EmailNotVerifiedError, useFirebaseSession } from "../../lib/firebase-client";
+import { EmailNotVerifiedError, PersonalEmailRejectedError, useFirebaseSession } from "../../lib/firebase-client";
 import { useJitsu } from "@jitsu/jitsu-react";
 import { useAppConfig } from "../../lib/context";
 import { safeRedirect } from "../../lib/auth-redirect";
@@ -125,6 +125,13 @@ export const SignInOrUp: React.FC<SigninProps> = ({ signup }) => {
         setError("Unsupported authentication method");
       }
     } catch (e: any) {
+      if (e instanceof PersonalEmailRejectedError) {
+        // JITSU-70: the server refused the personal-email account and deleted it
+        // server-side. Clear the stale client session.
+        setError(e.message);
+        await firebaseSession!.signOut();
+        return;
+      }
       if (e instanceof EmailNotVerifiedError) {
         // Sign-in succeeded but the email is unverified — hand off to the route
         // gate (FirebaseAuthorizer), which renders the verification screen.
@@ -176,6 +183,14 @@ export const SignInOrUp: React.FC<SigninProps> = ({ signup }) => {
           setError(`Unsupported authentication provider: ${provider}`);
       }
     } catch (e: any) {
+      // JITSU-70: signing up via SSO with a personal email is refused server-side,
+      // which already deleted the Firebase account. Sign out so the deleted user
+      // doesn't linger in the client session and break follow-up fb-auth calls.
+      if (e instanceof PersonalEmailRejectedError) {
+        setError(e.message);
+        await firebaseSession!.signOut();
+        return;
+      }
       if (provider.startsWith("firebase-")) {
         setError(handleFirebaseError(e));
         await analytics.track("login_error", {
