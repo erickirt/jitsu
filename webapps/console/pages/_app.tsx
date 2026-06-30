@@ -26,8 +26,14 @@ import { AntdTheme } from "../components/AntdTheme/AntdTheme";
 import { AntdModalProvider } from "../lib/modal";
 import Head from "next/head";
 import { JitsuProvider, useJitsu } from "@jitsu/jitsu-react";
-import { EmailNotVerifiedError, FirebaseProvider, useFirebaseSession } from "../lib/firebase-client";
+import {
+  EmailNotVerifiedError,
+  FirebaseProvider,
+  PersonalEmailRejectedError,
+  useFirebaseSession,
+} from "../lib/firebase-client";
 import { VerifyEmailGate } from "../components/SignInOrUp/VerifyEmailGate";
+import { FirebaseSignup } from "../components/SignInOrUp/FirebaseSignup";
 import { JitsuButton } from "../components/JitsuButton/JitsuButton";
 import { BillingProvider } from "../components/Billing/BillingProvider";
 import { useEeApi } from "../lib/eeApi";
@@ -109,6 +115,10 @@ const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   } else if (authError) {
     if (authError instanceof EmailNotVerifiedError) {
       return <VerifyEmailGate email={authError.email} />;
+    }
+    if (authError instanceof PersonalEmailRejectedError) {
+      // No special page — drop the user back on the signup form with the note.
+      return <FirebaseSignup initialError={authError.message} />;
     }
     return <GlobalError error={authError} title={"Authorization error"} />;
   } else if (user) {

@@ -1,7 +1,7 @@
 import { createContext, PropsWithChildren, useContext } from "react";
 import { getApps, initializeApp } from "firebase/app";
 import * as auth from "firebase/auth";
-import { AppConfig, ContextApiResponse } from "./schema";
+import { AppConfig, ContextApiResponse, CreateUserResult } from "./schema";
 import { getLog, randomId, requireDefined, rpc } from "juava";
 import { useJitsu } from "@jitsu/jitsu-react";
 
@@ -22,6 +22,22 @@ export class EmailNotVerifiedError extends Error {
   constructor(email: string) {
     super(`Email ${email} is not verified`);
     this.name = "EmailNotVerifiedError";
+    this.email = email;
+  }
+}
+
+/**
+ * Thrown by {@link getUserFromFirebase} when the server refuses a signup because
+ * it came from a personal email domain and a work email is required (JITSU-70).
+ * The server has already deleted the orphaned Firebase account by this point, so
+ * callers should surface {@link message} and sign the stale client session out.
+ */
+export class PersonalEmailRejectedError extends Error {
+  readonly email: string;
+
+  constructor(message: string, email: string) {
+    super(message);
+    this.name = "PersonalEmailRejectedError";
     this.email = email;
   }
 }
@@ -139,7 +155,7 @@ async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiRe
   let shouldRefreshToken = false;
   if (!internalId) {
     log.atInfo().log(`Firebase user ${currentUser.uid} / ${email} doesn't have internalId, requesting...`);
-    await rpc(`/api/fb-auth/create-user`, {
+    const createResult: CreateUserResult = await rpc(`/api/fb-auth/create-user`, {
       body: {},
       headers: {
         // Force-refresh so the token's email_verified claim is current. The
@@ -148,6 +164,12 @@ async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiRe
         Authorization: `Bearer ${await currentUser.getIdToken(true)}`,
       },
     });
+    // JITSU-70: the server refused a personal-email signup and already deleted
+    // the Firebase account. Unwind via a typed error the authorizer / signup
+    // handlers can render.
+    if (!createResult.ok && createResult.rejected === "personal-email") {
+      throw new PersonalEmailRejectedError(createResult.message, email);
+    }
     const newToken = await currentUser.getIdTokenResult(true);
     internalId = newToken.claims.internalId as string;
     log.atDebug().log(`Refreshed firebase token`, newToken);

@@ -8,6 +8,8 @@ import { initTelemetry, withProductAnalytics } from "../../lib/server/telemetry"
 import { onUserCreated } from "../../lib/server/ee";
 import { getServerEnv } from "../../lib/server/serverEnv";
 import { isMaintenanceActive } from "../../lib/server/maintenance";
+import { shouldRejectPersonalEmailSignup } from "../../lib/server/signup-restrictions";
+import { WORK_EMAIL_REQUIRED_MESSAGE } from "../../lib/shared/email-domains";
 
 const log = getServerLog("api/init-user");
 const serverEnv = getServerEnv();
@@ -46,6 +48,13 @@ export default createRoute()
         }
         if (serverEnv.DISABLE_SIGNUP) {
           throw new ApiError("Sign up is disabled", { code: "signup-disabled" });
+        }
+        // JITSU-70: a Firebase account can already carry an internalId claim
+        // while its Jitsu profile is missing, which skips create-user and lands
+        // here. Enforce the work-email requirement on this path too; the helper
+        // deletes the orphaned Firebase account.
+        if (await shouldRejectPersonalEmailSignup(user)) {
+          throw new ApiError(WORK_EMAIL_REQUIRED_MESSAGE, { code: "personal-email-rejected" }, { status: 403 });
         }
         if (!user.loginProvider && !user.externalId) {
           //double check so we won't pull first of all users from DB

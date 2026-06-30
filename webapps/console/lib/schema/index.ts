@@ -77,6 +77,18 @@ export const noRestrictions: BillingSettings = {
   profileBuilderEnabled: true,
 };
 
+/**
+ * Result of POST /api/fb-auth/create-user. A discriminated union rather than an
+ * HTTP error: `ok: false` is a normal 200 response carrying the reason a signup
+ * was refused (JITSU-70 — personal email rejected), so the client can show a
+ * friendly message instead of treating it as a request failure.
+ */
+export const CreateUserResult = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), rejected: z.literal("personal-email"), message: z.string() }),
+]);
+export type CreateUserResult = z.infer<typeof CreateUserResult>;
+
 export const AppConfig = z.object({
   docsUrl: z.string().optional(),
   websiteUrl: z.string().optional(),
@@ -94,6 +106,9 @@ export const AppConfig = z.object({
     })
     .optional(),
   disableSignup: z.boolean().optional(),
+  // Display-only hint: signup requires a work email (JITSU-70). Enforcement is
+  // server-side; this only drives the badge on the signup form.
+  limitPersonalEmails: z.boolean().optional(),
   customDomainsEnabled: z.boolean().optional(),
   ee: z.object({
     available: z.boolean(),
