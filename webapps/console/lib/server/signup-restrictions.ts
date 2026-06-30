@@ -2,6 +2,7 @@ import { firebase } from "./firebase-server";
 import { getServerEnv } from "./serverEnv";
 import { isPersonalEmail } from "../shared/email-domains";
 import { getServerLog } from "./log";
+import { db } from "./db";
 
 const log = getServerLog("signup");
 
@@ -39,7 +40,19 @@ export async function shouldRejectPersonalEmailSignup(user: {
   if (!isPersonalEmailSignupBlocked(user)) {
     return false;
   }
+  // Never reject a returning user. An existing account that lost its internalId
+  // custom claim (claim reset / migration) still has a Jitsu profile and must be
+  // relinked, not deleted. Match any Firebase-provider row for this externalId:
+  // create-user stores `firebase`, init-user recovery stores `firebase/<provider>`.
   if (user.externalId) {
+    const existing = await db
+      .prisma()
+      .userProfile.findFirst({ where: { externalId: user.externalId, loginProvider: { startsWith: "firebase" } } });
+    if (existing) {
+      return false;
+    }
+    // Truly new — delete the orphaned Firebase account so nothing lingers
+    // without a Jitsu profile and the user can retry with a work email.
     try {
       await firebase().auth().deleteUser(user.externalId);
     } catch (e) {
