@@ -26,12 +26,7 @@ import { AntdTheme } from "../components/AntdTheme/AntdTheme";
 import { AntdModalProvider } from "../lib/modal";
 import Head from "next/head";
 import { JitsuProvider, useJitsu } from "@jitsu/jitsu-react";
-import {
-  EmailNotVerifiedError,
-  FirebaseProvider,
-  PersonalEmailRejectedError,
-  useFirebaseSession,
-} from "../lib/firebase-client";
+import { FirebaseAuthResult, FirebaseProvider, useFirebaseSession } from "../lib/firebase-client";
 import { VerifyEmailGate } from "../components/SignInOrUp/VerifyEmailGate";
 import { FirebaseSignup } from "../components/SignInOrUp/FirebaseSignup";
 import { JitsuButton } from "../components/JitsuButton/JitsuButton";
@@ -86,7 +81,7 @@ export function Analytics({ user }: { user?: SessionUser }) {
 
 const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   const session = useFirebaseSession();
-  const [user, setUser] = useState<ContextApiResponse["user"] | null>();
+  const [result, setResult] = useState<FirebaseAuthResult | null>();
   const [loading, setLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<any>(undefined);
   const router = useRouter();
@@ -97,7 +92,7 @@ const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   useEffect(() => {
     const { user, cleanup } = session.resolveUser(router.query.token as string);
     user
-      .then(setUser)
+      .then(setResult)
       .catch(setAuthError)
       .finally(() => setLoading(false));
     return cleanup;
@@ -113,21 +108,21 @@ const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   if (loading) {
     return <GlobalLoader title={"Authorizing"} />;
   } else if (authError) {
-    if (authError instanceof EmailNotVerifiedError) {
-      return <VerifyEmailGate email={authError.email} />;
-    }
-    if (authError instanceof PersonalEmailRejectedError) {
-      // No special page — drop the user back on the signup form with the note.
-      return <FirebaseSignup initialError={authError.message} />;
-    }
     return <GlobalError error={authError} title={"Authorization error"} />;
-  } else if (user) {
+  } else if (!result) {
+    return <RedirectToSignIn />;
+  } else if (result.status === "email-not-verified") {
+    return <VerifyEmailGate email={result.email} />;
+  } else if (result.status === "personal-email-rejected") {
+    // No special page — drop the user back on the signup form with the note.
+    return <FirebaseSignup initialError={result.message} />;
+  } else {
     return (
       <UserContextProvider
-        user={user}
+        user={result.user}
         logout={async () => {
           await session.signOut().then(() => {
-            setUser(null);
+            setResult(null);
           });
           router.push("/signin");
         }}
@@ -135,8 +130,6 @@ const FirebaseAuthorizer: React.FC<PropsWithChildren<{}>> = ({ children }) => {
         {children}
       </UserContextProvider>
     );
-  } else {
-    return <RedirectToSignIn />;
   }
 };
 

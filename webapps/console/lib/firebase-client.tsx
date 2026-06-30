@@ -11,36 +11,21 @@ export type FirebaseProviderInstance =
   | { enabled: true; settings: FirebaseClientSettings };
 
 /**
- * Thrown by {@link getUserFromFirebase} when an email+password account signs in
- * before its email address has been verified. OAuth providers (Google, GitHub)
- * verify the address themselves, so the check only applies to the `password`
- * provider. See JITSU-018.
+ * Outcome of resolving the current Firebase user into a Jitsu session. Returned
+ * (not thrown) so callers branch on `status` instead of catching control-flow
+ * exceptions. Genuine failures (popup closed, network, etc.) still reject.
+ *
+ * - `authenticated` — a Jitsu user is ready.
+ * - `email-not-verified` — a single-provider password account hasn't verified
+ *   its email yet (JITSU-018); the caller should show the verification gate.
+ * - `personal-email-rejected` — the server refused a personal-email signup and
+ *   already deleted the orphaned Firebase account (JITSU-70); the caller should
+ *   surface `message` and sign the stale client session out.
  */
-export class EmailNotVerifiedError extends Error {
-  readonly email: string;
-
-  constructor(email: string) {
-    super(`Email ${email} is not verified`);
-    this.name = "EmailNotVerifiedError";
-    this.email = email;
-  }
-}
-
-/**
- * Thrown by {@link getUserFromFirebase} when the server refuses a signup because
- * it came from a personal email domain and a work email is required (JITSU-70).
- * The server has already deleted the orphaned Firebase account by this point, so
- * callers should surface {@link message} and sign the stale client session out.
- */
-export class PersonalEmailRejectedError extends Error {
-  readonly email: string;
-
-  constructor(message: string, email: string) {
-    super(message);
-    this.name = "PersonalEmailRejectedError";
-    this.email = email;
-  }
-}
+export type FirebaseAuthResult =
+  | { status: "authenticated"; user: ContextApiResponse["user"] }
+  | { status: "email-not-verified"; email: string }
+  | { status: "personal-email-rejected"; message: string };
 
 const FirebaseContext = createContext<FirebaseProviderInstance | null>(null);
 
@@ -74,7 +59,7 @@ export interface FirebaseSession {
    */
   signUp(email: string, password: string): Promise<void>;
 
-  signInWith(type: string): Promise<void>;
+  signInWith(type: string): Promise<FirebaseAuthResult>;
 
   signOut(): Promise<void>;
 
@@ -104,7 +89,7 @@ export interface FirebaseSession {
   /**
    * Waits until auth state of the user is resolved
    */
-  resolveUser(token?: string): { user: Promise<ContextApiResponse["user"] | null>; cleanup: () => void };
+  resolveUser(token?: string): { user: Promise<FirebaseAuthResult | null>; cleanup: () => void };
 }
 
 export function getFirebaseAuth(config: FirebaseClientSettings): typeof auth {
@@ -140,7 +125,7 @@ function emailActionSettings(): auth.ActionCodeSettings | undefined {
   return undefined;
 }
 
-async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiResponse["user"]> {
+async function getUserFromFirebase(currentUser: auth.User): Promise<FirebaseAuthResult> {
   const email = requireDefined(currentUser.email, "email of firebase user is undefined");
   // JITSU-018: email+password sign-up issues a valid Firebase JWT before the
   // address is verified. Block such accounts here — before any internal user or
@@ -149,7 +134,7 @@ async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiRe
   const providerData = currentUser.providerData;
   const isPasswordOnly = providerData.length === 1 && providerData[0]?.providerId === "password";
   if (isPasswordOnly && !currentUser.emailVerified) {
-    throw new EmailNotVerifiedError(email);
+    return { status: "email-not-verified", email };
   }
   let internalId = await getCustomClaim(currentUser, "internalId");
   let shouldRefreshToken = false;
@@ -165,10 +150,10 @@ async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiRe
       },
     });
     // JITSU-70: the server refused a personal-email signup and already deleted
-    // the Firebase account. Unwind via a typed error the authorizer / signup
-    // handlers can render.
+    // the Firebase account. Report it as a result the authorizer / signup
+    // handlers branch on.
     if (!createResult.ok && createResult.rejected === "personal-email") {
-      throw new PersonalEmailRejectedError(createResult.message, email);
+      return { status: "personal-email-rejected", message: createResult.message };
     }
     const newToken = await currentUser.getIdTokenResult(true);
     internalId = newToken.claims.internalId as string;
@@ -191,13 +176,16 @@ async function getUserFromFirebase(currentUser: auth.User): Promise<ContextApiRe
   log.atDebug().log(`Firebase token expires in ${expirationMs / (1000 * 60)}min, at ${expirationTime.toISOString()}`);
 
   return {
-    email,
-    externalId: currentUser.uid,
-    externalUsername: email,
-    image: currentUser.photoURL,
-    internalId,
-    loginProvider: "firebase/" + currentUser.providerData[0]?.providerId,
-    name: currentUser.displayName || email,
+    status: "authenticated",
+    user: {
+      email,
+      externalId: currentUser.uid,
+      externalUsername: email,
+      image: currentUser.photoURL,
+      internalId,
+      loginProvider: "firebase/" + currentUser.providerData[0]?.providerId,
+      name: currentUser.displayName || email,
+    },
   };
 }
 
@@ -284,18 +272,20 @@ export function useFirebaseSession(): FirebaseSession {
   const a = getFirebaseAuth(config);
 
   return {
-    async signInWith(type: string): Promise<void> {
+    async signInWith(type: string): Promise<FirebaseAuthResult> {
       try {
-        let user;
         if (type === "github.com") {
-          user = await a.signInWithPopup(a.getAuth(), new auth.GithubAuthProvider());
+          await a.signInWithPopup(a.getAuth(), new auth.GithubAuthProvider());
         } else {
-          user = await a.signInWithPopup(a.getAuth(), new auth.GoogleAuthProvider());
+          await a.signInWithPopup(a.getAuth(), new auth.GoogleAuthProvider());
         }
         await recordFirebaseLogin(a.getAuth().currentUser);
-        const firebaseUser = await getUserFromFirebase(a.getAuth().currentUser!);
-        await analytics.identify(firebaseUser.internalId, { email: firebaseUser.email, name: firebaseUser.name });
-        await analytics.track("login");
+        const result = await getUserFromFirebase(a.getAuth().currentUser!);
+        if (result.status === "authenticated") {
+          await analytics.identify(result.user.internalId, { email: result.user.email, name: result.user.name });
+          await analytics.track("login");
+        }
+        return result;
       } catch (e) {
         log.atError().withCause(e).log(`Can't sign in with ${type}`);
         throw e;
@@ -303,7 +293,7 @@ export function useFirebaseSession(): FirebaseSession {
     },
     resolveUser(token?: string) {
       log.atDebug().log("Authorizing through firebase...");
-      const userPromise: Promise<ContextApiResponse["user"] | null> = new Promise(async (resolve, reject) => {
+      const userPromise: Promise<FirebaseAuthResult | null> = new Promise(async (resolve, reject) => {
         if (token) {
           await auth.signInWithCustomToken(auth.getAuth(), token);
         }
@@ -314,9 +304,9 @@ export function useFirebaseSession(): FirebaseSession {
             try {
               resolve(user ? await getUserFromFirebase(user) : null);
             } catch (e) {
-              // getUserFromFirebase rejecting (e.g. EmailNotVerifiedError) must
-              // reject the outer promise — without this catch the throw escapes
-              // the async callback as an unhandled rejection and the caller hangs.
+              // Genuine errors (token mint, network) must reject the outer
+              // promise — without this catch the throw escapes the async callback
+              // as an unhandled rejection and the caller hangs.
               reject(e);
             } finally {
               unregister();

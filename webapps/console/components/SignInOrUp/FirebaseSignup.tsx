@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Alert, Button, Divider, Input, Tooltip } from "antd";
 import { branding } from "../../lib/branding";
-import { PersonalEmailRejectedError, useFirebaseSession } from "../../lib/firebase-client";
+import { useFirebaseSession } from "../../lib/firebase-client";
 import { safeRedirect } from "../../lib/auth-redirect";
 import { useJitsu } from "@jitsu/jitsu-react";
 import { OAuthButtons } from "./OAuthButtons";
@@ -123,17 +123,17 @@ export const FirebaseSignup: React.FC<{ initialError?: ReactNode }> = ({ initial
   const handleSSOLogin = async (provider: AuthType) => {
     setError(null);
     try {
-      await firebaseSession.signInWith(provider === "firebase-google" ? "google.com" : "github.com");
-      safeRedirect(router, callbackUrl);
-    } catch (e: any) {
+      const result = await firebaseSession.signInWith(provider === "firebase-google" ? "google.com" : "github.com");
       // JITSU-70: the server refused a personal-email Google signup and already
       // deleted the Firebase account. Show the message and clear the now-stale
       // client session so a retry with a work email starts clean.
-      if (e instanceof PersonalEmailRejectedError) {
-        setError(e.message);
+      if (result.status === "personal-email-rejected") {
+        setError(result.message);
         await firebaseSession.signOut();
         return;
       }
+      safeRedirect(router, callbackUrl);
+    } catch (e: any) {
       setError(handleFirebaseError(e));
       await analytics.track("login_error", {
         type: "social",
