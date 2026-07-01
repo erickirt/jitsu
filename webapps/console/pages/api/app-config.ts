@@ -15,8 +15,12 @@ function isSignupDisabled() {
   const serverEnv = getServerEnv();
   return (
     serverEnv.DISABLE_SIGNUP || //explicitly disabled
-    (!githubLoginEnabled && !oidcLoginEnabled)
-  ); // we don't support credentials signup yet ;
+    // Signup needs a provider that supports it: Firebase (Cloud), GitHub, or
+    // OIDC. Credentials signup isn't supported. Firebase was missing here, so a
+    // Firebase-only deployment hid the signup link (prod only worked because it
+    // also sets GITHUB_CLIENT_ID).
+    (!isFirebaseEnabled() && !githubLoginEnabled && !oidcLoginEnabled)
+  );
 }
 
 export default createRoute()
@@ -61,6 +65,9 @@ export default createRoute()
         host: eeBrowserAvailable ? getEeConnection().host : undefined,
       },
       disableSignup: isSignupDisabled(),
+      // Display-only hint for the signup form (JITSU-70). Enforcement stays
+      // server-side; the browser never gets the personal-domain list.
+      limitPersonalEmails: serverEnv.LIMIT_PERSONAL_EMAILS,
       auth,
       billingEnabled: eeBrowserAvailable,
       customDomainsEnabled: customDomainCnames && customDomainCnames.length > 0,

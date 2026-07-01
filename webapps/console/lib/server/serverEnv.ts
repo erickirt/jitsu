@@ -232,6 +232,11 @@ const ServerEnvSchema = ClientEnvSchema.extend({
   // Disable new user registration
   DISABLE_SIGNUP: z.string().default("false").transform(isTruish),
 
+  // Reject signups from personal email domains (require a work email). Applies to
+  // Google and email/password signups; GitHub is exempt (devs often have a
+  // personal email on their GitHub account). See JITSU-70.
+  LIMIT_PERSONAL_EMAILS: z.string().default("false").transform(isTruish),
+
   // Enable MIT-compliant mode (disables proprietary features)
   MIT_COMPLIANT: z.string().default("false").transform(isTruish),
 
