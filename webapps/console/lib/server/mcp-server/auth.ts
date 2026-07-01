@@ -41,14 +41,34 @@ export class AuthChecker {
       send401(res, "invalid_token", "Token format must be tokenId:secret");
       return undefined;
     }
+    // Two auth paths share the `keyId:secret` bearer shape. The OAuth path
+    // (interactive clients) is the hot one, so try it first; on a miss, fall
+    // back to a personal API key — the same key the management REST API accepts,
+    // for CI / headless where the browser OAuth flow can't run.
+    const oauth = await this.fromOAuthAccessToken(res, raw, tokenId, secret);
+    if (oauth) return oauth;
+    // A found-but-invalid OAuth token (bad secret / expired) already sent its
+    // 401; only fall through to the API-key path when the id simply wasn't an
+    // OAuth access token.
+    if (res.headersSent) return undefined;
+    return this.fromApiKey(res, raw, tokenId, secret);
+  }
+
+  // OAuth path: short-lived OAuthAccessToken minted via the authorize flow.
+  // Returns undefined (without sending a response) when no such token exists,
+  // so the caller can try the API-key path. A found-but-invalid token (bad
+  // secret / expired) sends its own 401 and returns undefined.
+  private async fromOAuthAccessToken(
+    res: NextApiResponse,
+    raw: string,
+    tokenId: string,
+    secret: string
+  ): Promise<AuthInfo | undefined> {
     const at = await this.prisma.oAuthAccessToken.findUnique({
       where: { id: tokenId },
       include: { refreshToken: { include: { user: true, oauthClient: true } } },
     });
-    if (!at) {
-      send401(res, "invalid_token", "Access token not found");
-      return undefined;
-    }
+    if (!at) return undefined;
     if (!checkHash(at.hash, secret)) {
       send401(res, "invalid_token", "Access token secret mismatch");
       return undefined;
@@ -68,10 +88,9 @@ export class AuthChecker {
     });
 
     const user = at.refreshToken.user;
-    const clientId = at.refreshToken.oauthClientId ?? "unknown";
     return {
       token: raw,
-      clientId,
+      clientId: at.refreshToken.oauthClientId ?? "unknown",
       scopes: [],
       expiresAt: Math.floor(at.expiresAt.getTime() / 1000),
       extra: {
@@ -85,6 +104,68 @@ export class AuthChecker {
         loginProvider: user.loginProvider,
         refreshTokenId: at.refreshTokenId,
         clientName: at.refreshToken.oauthClient?.name,
+      },
+    };
+  }
+
+  // API-key path: a personal UserApiToken (oauthClientId IS NULL), the same key
+  // type the management REST API accepts (see lib/api.ts). Always sends a 401 on
+  // failure — it's the last path tried, so an unknown id here means the whole
+  // bearer is invalid.
+  private async fromApiKey(
+    res: NextApiResponse,
+    raw: string,
+    tokenId: string,
+    secret: string
+  ): Promise<AuthInfo | undefined> {
+    const token = await this.prisma.userApiToken.findUnique({
+      where: { id: tokenId },
+      include: { user: true },
+    });
+    if (!token) {
+      send401(res, "invalid_token", "Access token not found");
+      return undefined;
+    }
+    // Verify the secret before branching on the token's kind, so a bad secret
+    // returns the same error for every id — without this, the oauthClientId
+    // check below would be a token-type oracle for callers who don't hold the
+    // secret. Matches the check order in lib/api.ts for the REST API.
+    if (!checkHash(token.hash, secret)) {
+      send401(res, "invalid_token", "Access token secret mismatch");
+      return undefined;
+    }
+    // OAuth refresh tokens live in UserApiToken too, but must not be usable as
+    // MCP bearer keys — symmetric to the rejection in lib/api.ts for the REST API.
+    if (token.oauthClientId) {
+      send401(res, "invalid_token", "OAuth refresh tokens cannot be used as MCP API keys");
+      return undefined;
+    }
+    if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
+      send401(res, "expired_token", "API key has expired");
+      return undefined;
+    }
+    this.schedule(async () => {
+      await this.prisma.userApiToken
+        .update({ where: { id: token.id }, data: { lastUsed: new Date() } })
+        .catch(e => log.atWarn().withCause(e).log("Failed to bump UserApiToken.lastUsed"));
+    });
+
+    const user = token.user;
+    return {
+      token: raw,
+      clientId: "api-key",
+      scopes: [],
+      // No server-side expiry for a non-expiring key; carry the row's expiry if set.
+      expiresAt: token.expiresAt ? Math.floor(token.expiresAt.getTime() / 1000) : undefined,
+      extra: {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        externalId: user.externalId,
+        loginProvider: user.loginProvider,
+        // Attribute audit rows to the API key itself (no OAuth refresh token here).
+        refreshTokenId: token.id,
+        clientName: token.name ?? undefined,
       },
     };
   }
