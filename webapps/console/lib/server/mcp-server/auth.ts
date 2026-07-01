@@ -126,14 +126,18 @@ export class AuthChecker {
       send401(res, "invalid_token", "Access token not found");
       return undefined;
     }
+    // Verify the secret before branching on the token's kind, so a bad secret
+    // returns the same error for every id — without this, the oauthClientId
+    // check below would be a token-type oracle for callers who don't hold the
+    // secret. Matches the check order in lib/api.ts for the REST API.
+    if (!checkHash(token.hash, secret)) {
+      send401(res, "invalid_token", "Access token secret mismatch");
+      return undefined;
+    }
     // OAuth refresh tokens live in UserApiToken too, but must not be usable as
     // MCP bearer keys — symmetric to the rejection in lib/api.ts for the REST API.
     if (token.oauthClientId) {
       send401(res, "invalid_token", "OAuth refresh tokens cannot be used as MCP API keys");
-      return undefined;
-    }
-    if (!checkHash(token.hash, secret)) {
-      send401(res, "invalid_token", "Access token secret mismatch");
       return undefined;
     }
     if (token.expiresAt && token.expiresAt.getTime() < Date.now()) {
