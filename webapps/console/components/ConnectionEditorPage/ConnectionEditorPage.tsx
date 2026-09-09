@@ -46,14 +46,15 @@ const DataLayoutEditor: EditorComponent<DataLayoutType, { fileStorage?: boolean 
     onChange={val => props.onChange(val.target.value)}
   >
     <div className={"flex flex-col gap-2"}>
-      {props.fileStorage && (
-        <Radio value="passthrough">
-          <div>
-            <div className={``}>Original</div>
-            <div className={`text-textLight text-sm`}>Keep original event structure.</div>
-          </div>
-        </Radio>
-      )}
+      {props.fileStorage ||
+        (props.value === "passthrough" && (
+          <Radio value="passthrough">
+            <div>
+              <div className={``}>Original</div>
+              <div className={`text-textLight text-sm`}>Keep original event structure.</div>
+            </div>
+          </Radio>
+        ))}
       <Radio value="segment-single-table">
         <div>
           <div className={``}>
