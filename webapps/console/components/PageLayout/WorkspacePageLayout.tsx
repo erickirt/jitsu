@@ -473,6 +473,11 @@ function PageHeader() {
       icon: <User className="w-full h-full" />,
       items: [{ title: "Profile Builder", path: "/profile-builder", icon: <UserRoundPen className="w-full h-full" /> }],
     },
+    workspace.featuresEnabled?.includes("reverse-etl") && {
+      title: "Reverse ETL",
+      icon: <Share2 className="w-full h-full" />,
+      items: [{ title: "Models", path: "/models", icon: <SearchCode className="w-full h-full" /> }],
+    },
     { title: "Functions", path: "/functions", icon: <FunctionSquare className="w-full h-full" /> },
     { title: "Destinations", path: "/destinations", icon: <Server className="w-full h-full" /> },
     {
