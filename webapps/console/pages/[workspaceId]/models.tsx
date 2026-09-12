@@ -1,5 +1,19 @@
 import React, { useRef, useState } from "react";
-import { Alert, Button, Empty, Form, Input, InputNumber, Modal, Select, Space, Table, Typography, message } from "antd";
+import {
+  Alert,
+  Button,
+  Collapse,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Typography,
+  message,
+} from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { randomId, rpc } from "juava";
 import { ModelDefinition, PreviewResult, supportsWarehouseReader } from "@jitsu/warehouse-query/src/schema";
@@ -27,6 +41,7 @@ function Models() {
   const [editing, setEditing] = useState<ModelConfig | "new">();
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const [preview, setPreview] = useState<PreviewResult>();
   const [error, setError] = useState<string>();
   const previewVersion = useRef(0);
@@ -67,7 +82,10 @@ function Models() {
         method: "POST",
         body: { warehouseId: values.warehouseId, query: values.query },
       });
-      if (version === previewVersion.current) setPreview(PreviewResult.parse(result));
+      if (version === previewVersion.current) {
+        setPreview(PreviewResult.parse(result));
+        setPreviewExpanded(true);
+      }
     } catch (e) {
       if (version === previewVersion.current) setError((e as Error).message);
     } finally {
@@ -237,6 +255,44 @@ function Models() {
           >
             Preview up to 100 rows
           </Button>
+          {preview && (
+            <Collapse
+              className="mt-4"
+              activeKey={previewExpanded ? ["preview"] : []}
+              onChange={keys => setPreviewExpanded(keys.includes("preview"))}
+              items={[
+                {
+                  key: "preview",
+                  label: `Preview · ${preview.rows.length} rows${preview.truncated ? " (limited)" : ""}`,
+                  children: (
+                    <Table<{ index: number; values: Record<string, unknown> }>
+                      size="small"
+                      scroll={{ x: true }}
+                      pagination={{ pageSize: 10 }}
+                      rowKey="index"
+                      dataSource={preview.rows.map((values, index) => ({ values, index }))}
+                      columns={preview.columns.map(c => ({
+                        title: c.name,
+                        key: c.name,
+                        render: (_, row) => {
+                          const value = row.values[c.name];
+                          return (
+                            <span className="font-mono whitespace-pre-wrap break-all">
+                              {value == null
+                                ? "NULL"
+                                : typeof value === "object"
+                                ? JSON.stringify(value)
+                                : String(value)}
+                            </span>
+                          );
+                        },
+                      }))}
+                    />
+                  ),
+                },
+              ]}
+            />
+          )}
           <div className="grid grid-cols-2 gap-x-4 mt-4">
             <Form.Item
               name="primaryKey"
@@ -290,32 +346,6 @@ function Models() {
           </Form.Item>
         </Form>
         {error && <Alert className="my-4" type="error" title="Model could not be processed" description={error} />}
-        {preview && (
-          <div className="mt-4">
-            <Typography.Title level={5}>
-              Preview · {preview.rows.length} rows{preview.truncated ? " (limited)" : ""}
-            </Typography.Title>
-            <Table<{ index: number; values: Record<string, unknown> }>
-              size="small"
-              scroll={{ x: true }}
-              pagination={{ pageSize: 10 }}
-              rowKey="index"
-              dataSource={preview.rows.map((values, index) => ({ values, index }))}
-              columns={preview.columns.map(c => ({
-                title: c.name,
-                key: c.name,
-                render: (_, row) => {
-                  const value = row.values[c.name];
-                  return (
-                    <span className="font-mono whitespace-pre-wrap break-all">
-                      {value == null ? "NULL" : typeof value === "object" ? JSON.stringify(value) : String(value)}
-                    </span>
-                  );
-                },
-              }))}
-            />
-          </div>
-        )}
       </Modal>
     </div>
   );
