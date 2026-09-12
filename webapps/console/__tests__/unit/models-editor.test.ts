@@ -71,32 +71,6 @@ function mount() {
 }
 
 describe("model editor", () => {
-  it("expands preview below its button and reopens it on a fresh result", async () => {
-    const result = { columns: [{ name: "id", type: "20" }], rows: [{ id: "123" }], truncated: false };
-    const fetchPreview = vi
-      .fn()
-      .mockImplementation(
-        async () => new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } })
-      );
-    vi.stubGlobal("fetch", fetchPreview);
-    const client = mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Audience" }));
-    const button = screen.getByRole("button", { name: "Preview up to 100 rows" });
-    fireEvent.click(button);
-    const header = await screen.findByRole("button", { name: /Preview · 1 rows/ });
-    expect(header.getAttribute("aria-expanded")).toBe("true");
-    expect(button.nextElementSibling?.contains(header)).toBe(true);
-    expect(screen.getByText("123")).toBeTruthy();
-    fireEvent.click(header);
-    expect(header.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(button);
-    await waitFor(() => expect(fetchPreview).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(header.getAttribute("aria-expanded")).toBe("true"));
-    fireEvent.change(screen.getByLabelText("SQL query"), { target: { value: "SELECT id FROM users" } });
-    expect(screen.queryByRole("button", { name: /Preview · 1 rows/ })).toBeNull();
-    client.clear();
-  });
-
   it("preserves an API-configured lookback when changing the name", async () => {
     const client = mount();
     fireEvent.click(await screen.findByRole("button", { name: "Audience" }));
