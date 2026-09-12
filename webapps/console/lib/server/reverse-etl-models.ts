@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
-import { createWarehouseReader, validateColumns, validateQuery } from "@jitsu/warehouse-query";
+import { createWarehouseReader, getWarehouseSqlDialect } from "@jitsu/warehouse-query";
 import { ModelDefinition, supportsWarehouseReader } from "@jitsu/warehouse-query/src/schema";
 import { ApiError } from "../shared/errors";
 
@@ -60,7 +60,7 @@ export async function validateModelForSave(prisma: PrismaClient, workspaceId: st
   // Query syntax/projection errors are actionable; raw database exceptions may
   // include credentials, SQL literals or source values and are never returned.
   try {
-    validateQuery(model.query, config.destinationType);
+    getWarehouseSqlDialect(config.destinationType).validateQuery(model.query);
   } catch (e) {
     throw new ApiError((e as Error).message, { status: 400 });
   }
@@ -76,7 +76,7 @@ export async function validateModelForSave(prisma: PrismaClient, workspaceId: st
       );
     }
     try {
-      validateColumns(model, columns);
+      reader.sql.validateColumns(model, columns);
     } catch (e) {
       throw new ApiError((e as Error).message, { status: 400 });
     }
@@ -104,7 +104,7 @@ export async function previewModel(
   await assertModelsEnabled(prisma, workspaceId);
   const config = await getModelWarehouse(prisma, workspaceId, warehouseId);
   try {
-    validateQuery(query, config.destinationType);
+    getWarehouseSqlDialect(config.destinationType).validateQuery(query);
   } catch (e) {
     throw new ApiError((e as Error).message, { status: 400 });
   }
