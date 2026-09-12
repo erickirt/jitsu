@@ -14,6 +14,8 @@ import { scheduleSync, validateSyncSchedule } from "./sync";
 import { getEeConnection, isEEAvailable, serviceTokenHeaders } from "./ee";
 import { omitDeletedList } from "./omit-deleted";
 import { getServerLog } from "./log";
+import { guardModelReferences, validateModelForSave, modelMutation, recheckModelWarehouse } from "./reverse-etl-models";
+import { supportsWarehouseReader } from "@jitsu/warehouse-query/src/schema";
 
 const log = getServerLog("config-objects-service");
 
@@ -142,6 +144,7 @@ export class ConfigObjectsService {
   /** Backs `config/[type]/index.ts` GET. */
   async list(user: SessionUser, workspaceId: string, type: string): Promise<any[]> {
     await verifyAccess(user, workspaceId);
+    // Reading existing models remains available for cleanup when rollout is off.
     this.assertKnownType(type);
     const configObjectType = getConfigObjectType(type);
     const objects = await this.prisma.configurationObject.findMany({
@@ -210,13 +213,16 @@ export class ConfigObjectsService {
       }
     }
     object = await configObjectType.inputFilter(object, "create", workspace);
+    const inspectedWarehouse =
+      type === "model" ? await validateModelForSave(this.prisma, workspaceId, object) : undefined;
     const id = object.id;
     delete object.id;
     delete object.workspaceId;
     delete object.cloneId;
 
-    const created = await this.prisma.configurationObject.create({
-      data: { id, workspaceId, config: object, type },
+    const created = await modelMutation(this.prisma, workspaceId, type, async tx => {
+      if (type === "model") await recheckModelWarehouse(tx, workspaceId, object.warehouseId, inspectedWarehouse);
+      return tx.configurationObject.create({ data: { id, workspaceId, config: object, type } });
     });
 
     if (["destination", "service"].includes(type)) {
@@ -302,9 +308,30 @@ export class ConfigObjectsService {
     const merged = await configObjectType.merge(object.config, { ...body, id, workspaceId });
     const parsed = parseObject(type, merged);
     const filtered = await configObjectType.inputFilter(parsed, "update", workspace);
+    const inspectedWarehouse =
+      type === "model" ? await validateModelForSave(this.prisma, workspaceId, filtered) : undefined;
     delete filtered.id;
     delete filtered.workspaceId;
-    await this.prisma.configurationObject.update({ where: { id }, data: { config: filtered } });
+    await modelMutation(this.prisma, workspaceId, type, async tx => {
+      if (type === "model") await recheckModelWarehouse(tx, workspaceId, filtered.warehouseId, inspectedWarehouse);
+      if (type === "destination") {
+        // merge() can mutate object.config, and another request may have updated
+        // the destination since we read it. Compare the row under the lock.
+        const current = await tx.configurationObject.findFirstOrThrow({
+          where: { id, workspaceId, type, deleted: false },
+        });
+        if (
+          !supportsWarehouseReader(filtered) ||
+          filtered.destinationType !== (current.config as any).destinationType
+        ) {
+          await guardModelReferences(tx, workspaceId, id, type);
+        }
+      }
+      await tx.configurationObject.update({
+        where: { id, workspaceId, type, deleted: false },
+        data: { config: filtered },
+      });
+    });
     await trackTelemetryEvent("config-object-update", { objectType: type });
     // Emit for HTTP and MCP callers alike; origin (ui/api/cli/mcp) is stamped by withProductAnalytics.
     await withProductAnalytics(p => p.track("update_object", objectAnalyticsProps(type, id, filtered)), {
@@ -332,11 +359,15 @@ export class ConfigObjectsService {
     if (!object) {
       return null;
     }
+    // Rollout flags gate use, not cleanup. Roles and live references still apply.
     const configObjectType = getConfigObjectType(type);
-    if (configObjectType.onDelete) {
-      await configObjectType.onDelete(object, { strict: opts.strict === true, cascade: opts.cascade === true });
-    }
-    await this.prisma.configurationObject.update({ where: { id: object.id }, data: { deleted: true } });
+    await modelMutation(this.prisma, workspaceId, type, async tx => {
+      await guardModelReferences(tx, workspaceId, id, type);
+      if (configObjectType.onDelete) {
+        await configObjectType.onDelete(object, { strict: opts.strict === true, cascade: opts.cascade === true });
+      }
+      await tx.configurationObject.update({ where: { id: object.id }, data: { deleted: true } });
+    });
     await trackTelemetryEvent("config-object-delete", { objectType: type });
     // Emit for HTTP and MCP callers alike (origin is stamped by withProductAnalytics).
     // delete() doesn't otherwise load the workspace — fetch it only when telemetry is on
@@ -427,6 +458,11 @@ export class ConfigObjectsService {
   ): Promise<{ id: string; created: boolean }> {
     const { id, toId, fromId, data = undefined, type = "push" } = body;
     await verifyAccessWithRole(user, workspaceId, "editEntities");
+    if (type === "reverse-sync") {
+      throw new ApiError("Reverse sync execution is not available yet; models can be created and previewed", {
+        status: 400,
+      });
+    }
 
     if (type === "sync" && data) {
       try {
