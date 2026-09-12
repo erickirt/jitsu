@@ -123,7 +123,7 @@ export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
           throw new Error(`Cursor type '${model.cursor.type}' does not match warehouse type '${type}'`);
         // Validate before saving/reading, not only when a checkpoint is resumed.
         // Lookback binds only the cursor; other incremental queries also bind keys.
-        for (const name of model.cursor.lookbackSeconds
+        for (const name of model.cursor.lookbackSeconds !== undefined
           ? [model.cursor.column]
           : [model.cursor.column, ...model.primaryKey]) {
           rules.validateCheckpointType?.(columns.find(c => c.name === name)!.type);
@@ -142,12 +142,12 @@ export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
         if (!model.cursor || after.primaryKeyValues.length !== model.primaryKey.length)
           throw new Error("Checkpoint does not match model");
         const checkpointValues = [after.value, ...after.primaryKeyValues];
-        const params = (model.cursor.lookbackSeconds ? order.slice(0, 1) : order).map((name, i) => {
+        const params = (model.cursor.lookbackSeconds !== undefined ? order.slice(0, 1) : order).map((name, i) => {
           const value = checkpointValues[i];
           if (typeof value !== "string") throw new Error("Checkpoint values must be lossless strings");
           return parameters.bind(value, columns.find(c => c.name === name)!.type, i);
         });
-        if (model.cursor.lookbackSeconds) {
+        if (model.cursor.lookbackSeconds !== undefined) {
           where = rules.lookbackPredicate(q(model.cursor.column), params[0], model.cursor.lookbackSeconds);
         } else {
           where = order

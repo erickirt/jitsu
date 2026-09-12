@@ -4,7 +4,7 @@ import { createWarehouseReader, SourceRecord } from "@jitsu/warehouse-query";
 import { ModelDefinition } from "@jitsu/warehouse-query/src/schema";
 import { compilePostgresPreview, postgresSql } from "@jitsu/warehouse-query/src/postgres";
 import { ConfigObjectsService } from "../../lib/server/config-objects-service";
-import { previewModel } from "../../lib/server/reverse-etl-models";
+import { modelMutation, previewModel, recheckModelWarehouse } from "../../lib/server/reverse-etl-models";
 import { getServerEnv } from "../../lib/server/serverEnv";
 import { deps, seedWorkspace } from "./support/harness";
 import { server } from "./support/msw";
@@ -130,6 +130,14 @@ describe.each([
     await expect(
       collect(reader.stream({ ...definition, query: "SELECT 1 AS id, changed, removed FROM retl_audience" }))
     ).rejects.toThrow(/duplicate primary keys/);
+  });
+  it("zero lookback replays cursor ties before the saved key, but not older rows", async () => {
+    const input = { ...definition, cursor: { ...definition.cursor!, lookbackSeconds: 0 } };
+    const rows = await collect(reader.stream(input));
+    expect(await collect(reader.stream(input, rows[1].checkpoint))).toEqual(rows);
+    expect(await collect(reader.stream(input, rows[2].checkpoint))).toEqual(rows.slice(2));
+    // An omitted lookback retains strict composite resume semantics.
+    expect(await collect(reader.stream(definition, rows[1].checkpoint))).toEqual(rows.slice(2));
   });
   it("rejects null keys", async () => {
     await expect(
@@ -455,6 +463,66 @@ describe("Models service", () => {
     ).rejects.toThrow("Preview failed or exceeded its limit");
   });
 
+  it.each(["create", "update"] as const)(
+    "rejects %s when the flag is disabled during warehouse inspection",
+    async operation => {
+      const { user, workspace, model } = await fixture({ ...chConfig, hosts: ["flag-race.test.local"] });
+      let disableDuringInspection = false;
+      server.use(
+        http.post("http://flag-race.test.local:8123", async () => {
+          if (disableDuringInspection) {
+            await deps().prisma.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: [] } });
+          }
+          return HttpResponse.json({
+            meta: [
+              { name: "id", type: "UInt64" },
+              { name: "changed", type: "DateTime64(6)" },
+              { name: "removed", type: "UInt8" },
+            ],
+            data: [],
+            rows: 0,
+          });
+        })
+      );
+      const existing =
+        operation === "update"
+          ? await service.create(user, workspace.id, "model", model, { generateId: true })
+          : undefined;
+      disableDuringInspection = true;
+      const write = existing
+        ? service.update(user, workspace.id, "model", existing.id, { name: "Changed" })
+        : service.create(user, workspace.id, "model", model, { generateId: true });
+      await expect(write).rejects.toMatchObject({
+        status: 403,
+        message: "Reverse ETL is not enabled for this workspace",
+      });
+      const saved = await service.list(user, workspace.id, "model");
+      expect(saved.map(m => m.name)).toEqual(existing ? [model.name] : []);
+      expect(
+        await deps().prisma.auditLog.count({ where: { workspaceId: workspace.id, type: `config-object-${operation}` } })
+      ).toBe(0);
+    }
+  );
+  it("keeps the final rollout check stable against ordinary workspace updates until commit", async () => {
+    const { workspace, warehouse } = await fixture();
+    await modelMutation(deps().prisma, workspace.id, "model", async tx => {
+      await recheckModelWarehouse(tx, workspace.id, warehouse.id, warehouse.config);
+      // A separate transaction updating flags must wait for the reader's SHARE
+      // lock even though it does not participate in modelMutation's advisory lock.
+      await expect(
+        deps().prisma.$transaction(async competing => {
+          await competing.$executeRaw`SET LOCAL lock_timeout = '100ms'`;
+          await competing.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: [] } });
+        })
+      ).rejects.toThrow(/lock timeout/);
+    });
+    await deps().prisma.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: [] } });
+    await expect(
+      modelMutation(deps().prisma, workspace.id, "model", tx =>
+        recheckModelWarehouse(tx, workspace.id, warehouse.id, warehouse.config)
+      )
+    ).rejects.toMatchObject({ status: 403 });
+  });
   it("does not leave a live model referencing a concurrently deleted warehouse", async () => {
     const { user, workspace, warehouse, model } = await fixture();
     await Promise.allSettled([

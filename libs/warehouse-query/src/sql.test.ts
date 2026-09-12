@@ -53,6 +53,11 @@ describe("model contracts", () => {
     expect(() => ModelDefinition.parse({ ...model, primaryKey: ["id", "id"] })).toThrow();
     expect(() => ModelDefinition.parse({ ...model, cursor: { ...model.cursor, lookbackSeconds: 1 } })).toThrow();
   });
+  it.each(["number", "string"])("rejects zero lookback for a %s cursor", type => {
+    expect(() => ModelDefinition.parse({ ...model, cursor: { column: "changed", type, lookbackSeconds: 0 } })).toThrow(
+      /Lookback requires a timestamp cursor/
+    );
+  });
   it("requires unique projected columns with a compatible cursor type", () => {
     expect(() => postgresSql.validateColumns(model, columns)).not.toThrow();
     expect(() => postgresSql.validateColumns(model, [columns[0]])).toThrow(/project/);
@@ -85,14 +90,35 @@ describe("checkpoint queries", () => {
     expect(compiled.query).not.toContain("DELETE");
     expect(compiled.query).toContain('PARTITION BY "id"');
   });
-  it("lookback binds only the timestamp, without unused key parameters", () => {
-    const input = { ...model, cursor: { column: "changed", type: "timestamp" as const, lookbackSeconds: 60 } };
+  it.each([0, 60])("lookback %s binds only the timestamp, without unused key parameters", lookbackSeconds => {
+    const input = ModelDefinition.parse({
+      ...model,
+      cursor: { column: "changed", type: "timestamp", lookbackSeconds },
+    });
     const result = postgresSql.compileModel(input, [columns[0], { name: "changed", type: "1184" }], {
       value: "2026-01-01 00:00:00.123456+00",
       primaryKeyValues: ["7"],
     });
     expect(result.values).toHaveLength(1);
-    expect(result.query).toContain("INTERVAL '60 seconds'");
+    expect(result.query).toContain(`INTERVAL '${lookbackSeconds} seconds'`);
+    expect(result.query).toContain('"changed" >=');
+    expect(result.query).not.toContain('"id" >');
+  });
+  it("zero lookback does not validate or bind an unbound ClickHouse enum key", () => {
+    const input = ModelDefinition.parse({
+      ...model,
+      cursor: { column: "changed", type: "timestamp", lookbackSeconds: 0 },
+    });
+    const result = clickhouseSql.compileModel(
+      input,
+      [
+        { name: "id", type: "Enum8('a' = 1)" },
+        { name: "changed", type: "DateTime64(6)" },
+      ],
+      { value: "2026-01-01 00:00:00.123456", primaryKeyValues: ["a"] }
+    );
+    expect(result.queryParams).toEqual({ p0: "2026-01-01 00:00:00.123456" });
+    expect(result.query).toContain("`changed` >= subtractSeconds({p0: DateTime64(6)}, 0)");
   });
   it("ClickHouse parameters use trusted scalar metadata types", () => {
     const result = clickhouseSql.compileModel(
