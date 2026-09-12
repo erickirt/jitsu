@@ -37,7 +37,7 @@ function Models() {
   const api = useConfigApi<ModelConfig>("model");
   const enabled = workspace.featuresEnabled.includes("reverse-etl");
   const warehouses = useConfigObjectList("destination").filter(supportsWarehouseReader);
-  const models = useQuery({ queryKey: ["reverse-etl-models", workspace.id], queryFn: () => api.list(), enabled });
+  const models = useQuery({ queryKey: ["reverse-etl-models", workspace.id], queryFn: () => api.list() });
   const [editing, setEditing] = useState<ModelConfig | "new">();
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -48,7 +48,6 @@ function Models() {
   const [form] = Form.useForm();
   const cursorType = Form.useWatch(["cursor", "type"], form);
 
-  if (!enabled) return <Alert type="info" title="Reverse ETL is not enabled for this workspace" />;
   const open = (model: ModelConfig | "new") => {
     previewVersion.current++;
     setPreview(undefined);
@@ -73,6 +72,7 @@ function Models() {
     setPreview(undefined);
   };
   const doPreview = async () => {
+    if (!enabled) return;
     const values = await form.validateFields(["warehouseId", "query"]);
     const version = ++previewVersion.current;
     setPreviewing(true);
@@ -93,6 +93,7 @@ function Models() {
     }
   };
   const save = async () => {
+    if (!enabled) return;
     const values = await form.validateFields();
     setSaving(true);
     setError(undefined);
@@ -135,11 +136,23 @@ function Models() {
             Reusable warehouse queries for Reverse ETL audiences.
           </Typography.Paragraph>
         </div>
-        <Button type="primary" disabled={!role.editEntities || !warehouses.length} onClick={() => open("new")}>
+        <Button
+          type="primary"
+          disabled={!enabled || !role.editEntities || !warehouses.length}
+          onClick={() => open("new")}
+        >
           New model
         </Button>
       </div>
-      {!warehouses.length && (
+      {!enabled && (
+        <Alert
+          className="mb-4"
+          type="info"
+          title="Reverse ETL is not enabled for this workspace"
+          description="Existing models can be viewed or deleted. Creating, editing and previewing models requires Reverse ETL to be enabled."
+        />
+      )}
+      {enabled && !warehouses.length && (
         <Alert
           className="mb-4"
           type="info"
@@ -200,7 +213,7 @@ function Models() {
         ]}
       />
       <Modal
-        title={editing === "new" ? "New model" : "Edit model"}
+        title={!enabled ? "View model" : editing === "new" ? "New model" : "Edit model"}
         open={!!editing}
         width={1000}
         onCancel={close}
@@ -215,7 +228,7 @@ function Models() {
             <Button
               type="primary"
               loading={saving}
-              disabled={!role.editEntities}
+              disabled={!enabled || !role.editEntities}
               onClick={() => void save().catch(() => {})}
             >
               Save model
@@ -226,7 +239,7 @@ function Models() {
         <Form
           form={form}
           layout="vertical"
-          disabled={!role.editEntities || saving}
+          disabled={!enabled || !role.editEntities || saving}
           onValuesChange={changed => {
             if ("query" in changed || "warehouseId" in changed) {
               previewVersion.current++;
@@ -250,7 +263,7 @@ function Models() {
           </Form.Item>
           <Button
             loading={previewing}
-            disabled={!role.editEntities || saving}
+            disabled={!enabled || !role.editEntities || saving}
             onClick={() => void doPreview().catch(() => {})}
           >
             Preview up to 100 rows

@@ -27,14 +27,23 @@ describe("warehouse-owned SQL", () => {
   it("uses only the current warehouse's cursor type vocabulary", () => {
     const model = ModelDefinition.parse({
       warehouseId: "wh",
-      query: "SELECT id FROM t",
+      query: "SELECT id, changed FROM t",
       primaryKey: ["id"],
-      cursor: { column: "id", type: "number" },
+      cursor: { column: "changed", type: "number" },
     });
-    expect(() => postgresSql.validateColumns(model, [{ name: "id", type: "20" }])).not.toThrow();
-    expect(() => clickhouseSql.validateColumns(model, [{ name: "id", type: "Nullable(Int64)" }])).not.toThrow();
-    expect(() => postgresSql.validateColumns(model, [{ name: "id", type: "Int64" }])).toThrow(/does not match/);
-    expect(() => clickhouseSql.validateColumns(model, [{ name: "id", type: "20" }])).toThrow(/does not match/);
+    for (const [dialect, ownType, otherType] of [
+      [postgresSql, "20", "Int64"],
+      [clickhouseSql, "Nullable(Int64)", "20"],
+    ] as const) {
+      const columns = [
+        { name: "id", type: ownType },
+        { name: "changed", type: ownType },
+      ];
+      expect(() => dialect.validateColumns(model, columns)).not.toThrow();
+      expect(() => dialect.validateColumns(model, [columns[0], { name: "changed", type: otherType }])).toThrow(
+        /does not match/
+      );
+    }
   });
 
   it("preserves ClickHouse literals and hash comments", () => {
@@ -78,7 +87,7 @@ describe("warehouse-owned SQL", () => {
         ],
         { value: "1", primaryKeyValues: ["key"] }
       )
-    ).toThrow(/Unsupported checkpoint type/);
+    ).toThrow(/Primary-key column 'id' has unsupported warehouse type/);
   });
 });
 
@@ -122,8 +131,11 @@ describe("ClickHouse checkpoint compatibility", () => {
       { name: "id", type },
       { name: "changed", type: "UInt64" },
     ];
-    expect(() => clickhouseSql.validateColumns(model, columns)).toThrow(/Unsupported checkpoint type/);
-    expect(() => clickhouseSql.compileModel(model, columns)).toThrow(/Unsupported checkpoint type/);
+    const error = type.startsWith("Enum")
+      ? /Unsupported checkpoint type/
+      : /Primary-key column 'id' has unsupported warehouse type/;
+    expect(() => clickhouseSql.validateColumns(model, columns)).toThrow(error);
+    expect(() => clickhouseSql.compileModel(model, columns)).toThrow(error);
   });
   it("applies the binding restriction to cursor metadata too", () => {
     const input = { ...model, cursor: { column: "changed", type: "timestamp" as const } };
@@ -134,7 +146,7 @@ describe("ClickHouse checkpoint compatibility", () => {
       ])
     ).toThrow();
   });
-  it("does not restrict unbound full-query or lookback keys", () => {
+  it("allows scalar Enum keys when full-query or lookback does not bind them", () => {
     const columns = [
       { name: "id", type: "Enum8('a' = 1)" },
       { name: "changed", type: "DateTime64(6)" },
@@ -147,6 +159,110 @@ describe("ClickHouse checkpoint compatibility", () => {
         primaryKeyValues: ["a"],
       })
     ).not.toThrow();
+  });
+});
+
+describe.each([
+  {
+    warehouse: "Postgres",
+    dialect: postgresSql,
+    cursorType: "1184",
+    supported: [
+      "16",
+      "18",
+      "19",
+      "20",
+      "21",
+      "23",
+      "25",
+      "26",
+      "700",
+      "701",
+      "1042",
+      "1043",
+      "1082",
+      "1083",
+      "1114",
+      "1184",
+      "1266",
+      "1700",
+      "2950",
+    ],
+    unsupported: ["17", "114", "3802", "1007", "1009", "1186", "600", "718", "999999"],
+  },
+  {
+    warehouse: "ClickHouse",
+    dialect: clickhouseSql,
+    cursorType: "DateTime64(6)",
+    supported: [
+      "String",
+      "UInt64",
+      "Decimal(18, 6)",
+      "DateTime64(6, 'UTC')",
+      "DateTime('Etc/GMT+3')",
+      "DateTime64(6, 'Etc/GMT+3')",
+      "Nullable(String)",
+      "LowCardinality(Nullable(String))",
+      "Bool",
+      "IPv4",
+      "IPv6",
+      "Enum8('a' = 1)",
+      "Enum16('a' = 1)",
+    ],
+    unsupported: [
+      "Array(String)",
+      "Map(String, UInt64)",
+      "Tuple(String, UInt64)",
+      "JSON",
+      "Object('json')",
+      "Nullable(Nothing)",
+      "LowCardinality(Array(String))",
+      "Dynamic",
+      "Unknown",
+    ],
+  },
+])("$warehouse primary-key decoding compatibility", ({ dialect, cursorType, supported, unsupported }) => {
+  const model = ModelDefinition.parse({
+    warehouseId: "wh",
+    query: "SELECT id, changed FROM t",
+    primaryKey: ["id"],
+  });
+  it.each(unsupported)("rejects %s in full-query, incremental and lookback models", type => {
+    const columns = [
+      { name: "id", type },
+      { name: "changed", type: cursorType },
+    ];
+    for (const cursor of [
+      undefined,
+      { column: "changed", type: "timestamp" as const },
+      { column: "changed", type: "timestamp" as const, lookbackSeconds: 60 },
+    ]) {
+      expect(() => dialect.validateColumns({ ...model, cursor }, columns)).toThrow(
+        /Primary-key column 'id'.*cast it to a supported scalar type/
+      );
+      expect(() => dialect.compileModel({ ...model, cursor }, columns)).toThrow(/Primary-key column 'id'/);
+    }
+  });
+  it.each(supported)("accepts scalar %s for full-query and lookback keys", type => {
+    const columns = [
+      { name: "id", type },
+      { name: "changed", type: cursorType },
+    ];
+    expect(() => dialect.validateColumns(model, columns)).not.toThrow();
+    expect(() =>
+      dialect.validateColumns(
+        { ...model, cursor: { column: "changed", type: "timestamp", lookbackSeconds: 60 } },
+        columns
+      )
+    ).not.toThrow();
+  });
+  it("validates every member of a composite key", () => {
+    expect(() =>
+      dialect.validateColumns({ ...model, primaryKey: ["changed", "id"] }, [
+        { name: "id", type: unsupported[0] },
+        { name: "changed", type: cursorType },
+      ])
+    ).toThrow(/Primary-key column 'id'/);
   });
 });
 

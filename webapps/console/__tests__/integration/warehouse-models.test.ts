@@ -39,6 +39,7 @@ const keyTypes = [
   "LowCardinality(Nullable(String))",
   "Nullable(FixedString(16))",
 ];
+const structuredKeyTypes = ["Array(String)", "Map(String, UInt64)", "Tuple(String, UInt64)"];
 const definition = ModelDefinition.parse({
   warehouseId: "test",
   query: "SELECT id, changed, removed FROM retl_audience",
@@ -54,6 +55,11 @@ async function collect(rows: AsyncIterable<SourceRecord>) {
 }
 
 beforeAll(async () => {
+  for (const [index, type] of structuredKeyTypes.entries()) {
+    await deps().clickhouse.command({
+      query: `CREATE TABLE retl_structured_keys_${index} (id ${type}, changed DateTime64(6)) ENGINE = Memory`,
+    });
+  }
   for (const [index, type] of keyTypes.entries()) {
     await deps().clickhouse.command({
       query: `CREATE TABLE retl_keys_${index} (id ${type}, changed UInt64) ENGINE = Memory`,
@@ -257,13 +263,123 @@ describe("Models service", () => {
   }
   it("gates Models and denies foreign warehouse references", async () => {
     const disabled = await seedWorkspace();
-    await expect(service.list(disabled.user, disabled.workspace.id, "model")).rejects.toMatchObject({ status: 403 });
+    await expect(service.list(disabled.user, disabled.workspace.id, "model")).resolves.toEqual([]);
     const a = await fixture();
     const b = await fixture();
     await expect(
       service.create(a.user, a.workspace.id, "model", { ...a.model, warehouseId: b.warehouse.id }, { generateId: true })
     ).rejects.toMatchObject({ status: 404 });
     await expect(service.list(b.user, a.workspace.id, "model")).rejects.toMatchObject({ status: 403 });
+  });
+  it.each([
+    ["Postgres bytea", pgConfig, "SELECT NULL::bytea AS id, now() AS changed WHERE false"],
+    ["Postgres json", pgConfig, "SELECT NULL::json AS id, now() AS changed WHERE false"],
+    ["Postgres jsonb", pgConfig, "SELECT NULL::jsonb AS id, now() AS changed WHERE false"],
+    ["Postgres array", pgConfig, "SELECT NULL::integer[] AS id, now() AS changed WHERE false"],
+    ...structuredKeyTypes.map(
+      (type, index) =>
+        ["ClickHouse " + type, chConfig, `SELECT id, changed FROM retl_structured_keys_${index}`] as const
+    ),
+  ] as const)("rejects %s from metadata before saving, even with zero rows", async (_, config, query) => {
+    const { user, workspace, model } = await fixture(config);
+    for (const cursor of [undefined, definition.cursor, { ...definition.cursor!, lookbackSeconds: 60 }]) {
+      await expect(
+        service.create(
+          user,
+          workspace.id,
+          "model",
+          { ...model, query, cursor, deleteColumn: undefined },
+          { generateId: true }
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringMatching(/Primary-key column 'id'.*cast it to a supported scalar type/),
+      });
+    }
+    expect(await service.list(user, workspace.id, "model")).toEqual([]);
+    const { id } = await service.create(user, workspace.id, "model", model, { generateId: true });
+    await expect(
+      service.update(user, workspace.id, "model", id, { query, deleteColumn: undefined })
+    ).rejects.toMatchObject({ status: 400 });
+    expect((await service.get(user, workspace.id, "model", id)).query).toBe(model.query);
+  });
+  it.each([
+    ["Postgres boolean", pgConfig, pgReader, "SELECT true AS id, now() AS changed"],
+    ["Postgres JSON cast to text", pgConfig, pgReader, "SELECT ('{\"key\":1}'::jsonb)::text AS id, now() AS changed"],
+    ["ClickHouse boolean", chConfig, chReader, "SELECT true AS id, now() AS changed"],
+    ["ClickHouse enum", chConfig, chReader, "SELECT CAST('a', 'Enum8(''a'' = 1)') AS id, now() AS changed"],
+    ["ClickHouse IPv4", chConfig, chReader, "SELECT toIPv4('127.0.0.1') AS id, now() AS changed"],
+    [
+      "ClickHouse DateTime timezone",
+      chConfig,
+      chReader,
+      "SELECT toDateTime('2026-01-01 00:00:00', 'Etc/GMT+3') AS id, now() AS changed",
+    ],
+    [
+      "ClickHouse DateTime64 timezone",
+      chConfig,
+      chReader,
+      "SELECT toDateTime64('2026-01-01 00:00:00.123456', 6, 'Etc/GMT+3') AS id, now() AS changed",
+    ],
+    ["ClickHouse array cast to String", chConfig, chReader, "SELECT toString(array('a', 'b')) AS id, now() AS changed"],
+  ] as const)("saves and reads %s keys in full-query and lookback models", async (_, config, reader, query) => {
+    const { user, workspace, model } = await fixture(config);
+    for (const cursor of [undefined, { ...definition.cursor!, lookbackSeconds: 60 }]) {
+      const input = { ...model, query, cursor, deleteColumn: undefined };
+      await expect(service.create(user, workspace.id, "model", input, { generateId: true })).resolves.toHaveProperty(
+        "id"
+      );
+      const rows = await collect(reader.stream(input));
+      expect(rows).toHaveLength(1);
+      expect(["boolean", "string", "number"]).toContain(typeof rows[0].row.id);
+      if (cursor) expect(await collect(reader.stream(input, rows[0].checkpoint))).toHaveLength(1);
+    }
+  });
+  it("allows authorized cleanup after disabling the flag, but still gates use and protects references", async () => {
+    const { user, workspace, warehouse, model } = await fixture();
+    const { id } = await service.create(user, workspace.id, "model", model, { generateId: true });
+    await deps().prisma.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: [] } });
+    expect((await service.list(user, workspace.id, "model")).map(m => m.id)).toEqual([id]);
+    await expect(service.get(user, workspace.id, "model", id)).resolves.toMatchObject({ id });
+    await expect(service.create(user, workspace.id, "model", model, { generateId: true })).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(service.update(user, workspace.id, "model", id, { name: "Changed" })).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(previewModel(deps().prisma, workspace.id, warehouse.id, model.query)).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(
+      service.delete(user, workspace.id, "destination", warehouse.id, { cascade: true })
+    ).rejects.toMatchObject({ status: 409 });
+    const link = await deps().prisma.configurationObjectLink.create({
+      data: { workspaceId: workspace.id, fromId: id, toId: warehouse.id, type: "reverse-sync", data: {} },
+    });
+    await expect(service.delete(user, workspace.id, "model", id, { cascade: true })).rejects.toMatchObject({
+      status: 409,
+    });
+    await service.deleteLink(user, workspace.id, { id: link.id });
+    await service.delete(user, workspace.id, "model", id);
+    expect(await deps().prisma.auditLog.count({ where: { objectId: id, type: "config-object-delete" } })).toBe(1);
+    await expect(service.delete(user, workspace.id, "destination", warehouse.id)).resolves.toMatchObject({
+      id: warehouse.id,
+    });
+  });
+  it("does not grant foreign-workspace or analyst deletion access during cleanup", async () => {
+    const { user, workspace, model } = await fixture();
+    const { id } = await service.create(user, workspace.id, "model", model, { generateId: true });
+    const foreign = await seedWorkspace();
+    await deps().prisma.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: [] } });
+    await expect(service.list(foreign.user, workspace.id, "model")).rejects.toMatchObject({ status: 403 });
+    await expect(service.get(foreign.user, workspace.id, "model", id)).rejects.toMatchObject({ status: 403 });
+    await expect(service.delete(foreign.user, workspace.id, "model", id)).rejects.toMatchObject({ status: 403 });
+    await deps().prisma.workspaceAccess.updateMany({
+      where: { workspaceId: workspace.id, userId: user.internalId },
+      data: { role: "analyst" },
+    });
+    await expect(service.get(user, workspace.id, "model", id)).resolves.toMatchObject({ id });
+    await expect(service.delete(user, workspace.id, "model", id)).rejects.toMatchObject({ status: 403 });
   });
   it.each(keyTypes.map((type, index) => [type, index] as const))(
     "saves and resumes ClickHouse %s keys and cursors",

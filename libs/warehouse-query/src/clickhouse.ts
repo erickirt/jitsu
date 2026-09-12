@@ -18,15 +18,14 @@ function unwrapLowCardinality(type: string): string {
   return type.replace(/^LowCardinality\((.*)\)$/, "$1");
 }
 
+const checkpointScalarType =
+  /^(?:U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|String|FixedString\([1-9]\d*\)|UUID|Date|Date32|DateTime(?:\('[A-Za-z_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))$/;
+
 /** Shared by save-time validation and binding; never interpolate unchecked metadata. */
 function checkpointType(type: string): string {
   const parameterType = unwrapLowCardinality(type);
   const scalar = parameterType.replace(/^Nullable\((.*)\)$/, "$1");
-  if (
-    !/^(?:U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|String|FixedString\([1-9]\d*\)|UUID|Date|Date32|DateTime(?:\('[A-Za-z_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))$/.test(
-      scalar
-    )
-  ) {
+  if (!checkpointScalarType.test(scalar)) {
     throw new Error("Unsupported checkpoint type: " + type);
   }
   return parameterType;
@@ -40,6 +39,16 @@ export const clickhouseSql = createSqlDialect({
   lineCommentPrefixes: ["--", "#"],
   backslashEscapes: () => true,
   quoteColumn: name => "`" + name.replaceAll("\\", "\\\\").replaceAll("`", "``") + "`",
+
+  supportsPrimaryKeyType(type) {
+    const scalar = unwrapLowCardinality(type).replace(/^Nullable\((.*)\)$/, "$1");
+    // JSON scalar decoding is broader than safe checkpoint binding. Enum and
+    // timestamp timezone metadata is only classified here, never interpolated.
+    return (
+      checkpointScalarType.test(scalar) ||
+      /^(?:Bool|IPv4|IPv6|Enum(?:8|16)\(.*\)|DateTime\('[^']+'\)|DateTime64\(\d+,\s*'[^']+'\))$/s.test(scalar)
+    );
+  },
 
   supportsCursorType(cursorType, warehouseType) {
     const unwrapped = unwrapLowCardinality(warehouseType).replace(/^Nullable\((.*)\)$/, "$1");

@@ -13,6 +13,7 @@ interface SqlDialectRules {
   backslashEscapes(query: string, index: number): boolean;
   dollarQuote?(query: string, index: number): string | undefined;
   quoteColumn(name: string): string;
+  supportsPrimaryKeyType(warehouseType: string): boolean;
   supportsCursorType(cursorType: NonNullable<ModelDefinition["cursor"]>["type"], warehouseType: string): boolean;
   validateCheckpointType?(warehouseType: string): void;
   createParameters(): SqlParameters;
@@ -105,6 +106,15 @@ export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
       if (names.includes(keyCountColumn)) throw new Error(`${keyCountColumn} is reserved`);
       for (const name of [...model.primaryKey, model.cursor?.column, model.deleteColumn].filter(Boolean) as string[]) {
         if (!names.includes(name)) throw new Error(`Query must project column '${name}'`);
+      }
+      // Every key must decode to a scalar, even when it is never bound in a
+      // checkpoint (full-query models and timestamp lookback).
+      for (const name of model.primaryKey) {
+        const type = columns.find(c => c.name === name)!.type;
+        if (!rules.supportsPrimaryKeyType(type))
+          throw new Error(
+            `Primary-key column '${name}' has unsupported warehouse type '${type}'; cast it to a supported scalar type`
+          );
       }
 
       if (model.cursor) {

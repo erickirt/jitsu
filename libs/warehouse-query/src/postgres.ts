@@ -45,6 +45,10 @@ export const postgresSql = createSqlDialect({
       return query.slice(i).match(/^\$(?:[a-zA-Z_\u0080-\uFFFF][\w\u0080-\uFFFF]*)?\$/)?.[0];
   },
   quoteColumn: name => '"' + name.replaceAll('"', '""') + '"',
+  // Known OIDs decoded as string/number/boolean by losslessTypes and pg's text
+  // parsers. Fail closed for custom/structured types; SQL can cast them to text.
+  supportsPrimaryKeyType: type =>
+    /^(16|18|19|20|21|23|25|26|700|701|1042|1043|1082|1083|1114|1184|1266|1700|2950)$/.test(type),
   supportsCursorType(cursorType, warehouseType) {
     return {
       timestamp: /^(1082|1114|1184)$/,

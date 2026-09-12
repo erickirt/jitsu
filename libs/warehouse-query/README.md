@@ -13,7 +13,7 @@ putting execution methods on a SQL-only consumer.
 - `reader.ts`: shared row decoding and preview bounds.
 - `types.ts`: reader, dialect, and checkpoint contracts.
 
-Each warehouse owns parsing, literal/comment rules, identifier quoting, cursor
+Each warehouse owns parsing, literal/comment rules, identifier quoting, key/cursor
 types, parameter binding, and timestamp lookback syntax. New readers implement
 `WarehouseReader` and provide a `WarehouseSqlDialect`; common planning can be
 reused through `createSqlDialect`.
@@ -22,6 +22,14 @@ PostgreSQL `losslessTypes` preserves bigint, numeric, date, and timestamp text i
 both direct queries and cursors. Exact values matter for stable keys, checkpoint
 resumption, and destination payloads; JavaScript numbers and dates can lose
 precision or change timezone interpretation.
+
+Model saves validate every primary-key column's metadata, including full-query
+and lookback models: keys must decode as strings, numbers, or booleans. PostgreSQL
+uses a conservative scalar OID allowlist; ClickHouse accepts supported JSON scalar
+types (including nullable/low-cardinality encodings). Structured/binary and unknown
+types require an explicit SQL cast to a supported scalar, such as text/String.
+Actual null or duplicate key values still fail the run immediately. Checkpoint
+binding has a separate, stricter type check where keys are used as parameters.
 
 PostgreSQL previews use a materialized query (PostgreSQL 12+) to evaluate at most
 101 source rows once. The database measures native text output for the first 100
