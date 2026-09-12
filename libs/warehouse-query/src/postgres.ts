@@ -49,6 +49,9 @@ export const postgresSql = createSqlDialect({
   // parsers. Fail closed for custom/structured types; SQL can cast them to text.
   supportsPrimaryKeyType: type =>
     /^(16|18|19|20|21|23|25|26|700|701|1042|1043|1082|1083|1114|1184|1266|1700|2950)$/.test(type),
+  // Boolean and numeric/text 0/1 representations. Metadata cannot prove values;
+  // decodeDelete still rejects anything other than true/false, 0/1 or null.
+  supportsDeleteType: type => /^(16|18|19|20|21|23|25|26|700|701|1042|1043|1700)$/.test(type),
   supportsCursorType(cursorType, warehouseType) {
     return {
       timestamp: /^(1082|1114|1184)$/,

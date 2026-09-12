@@ -14,6 +14,7 @@ interface SqlDialectRules {
   dollarQuote?(query: string, index: number): string | undefined;
   quoteColumn(name: string): string;
   supportsPrimaryKeyType(warehouseType: string): boolean;
+  supportsDeleteType(warehouseType: string): boolean;
   supportsCursorType(cursorType: NonNullable<ModelDefinition["cursor"]>["type"], warehouseType: string): boolean;
   validateCheckpointType?(warehouseType: string): void;
   createParameters(): SqlParameters;
@@ -94,6 +95,7 @@ function withoutDelimiter(query: string, rules: SqlDialectRules): string {
 /** Compose a pure SQL dialect from warehouse rules and common model invariants. */
 export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
   const dialect: WarehouseSqlDialect = {
+    supportsDeleteType: rules.supportsDeleteType,
     validateQuery(query) {
       validateSelect(query, rules.parse);
       // Preserve spelling/case folding and SQL literals. Only remove delimiters.
@@ -114,6 +116,13 @@ export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
         if (!rules.supportsPrimaryKeyType(type))
           throw new Error(
             `Primary-key column '${name}' has unsupported warehouse type '${type}'; cast it to a supported scalar type`
+          );
+      }
+      if (model.deleteColumn) {
+        const type = columns.find(c => c.name === model.deleteColumn)!.type;
+        if (!rules.supportsDeleteType(type))
+          throw new Error(
+            `Delete column '${model.deleteColumn}' has unsupported warehouse type '${type}'; use a boolean expression or a supported 0/1 column`
           );
       }
 

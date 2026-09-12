@@ -49,7 +49,12 @@ export function validateReverseSyncModel(model: ModelDefinition, options: Revers
 }
 
 export const PreviewRequest = ModelDefinition.pick({ warehouseId: true, query: true });
-export const WarehouseColumn = z.object({ name: z.string(), type: z.string() });
+export const WarehouseColumn = z.object({
+  name: z.string(),
+  type: z.string(),
+  // Advisory preview metadata for the picker; save-time validation is authoritative.
+  supportsDelete: z.boolean().optional(),
+});
 export type WarehouseColumn = z.infer<typeof WarehouseColumn>;
 export const PreviewResult = z.object({
   columns: z.array(WarehouseColumn),

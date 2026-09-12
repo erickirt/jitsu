@@ -115,7 +115,11 @@ export async function previewModel(
   }
   const reader = safeReader(config);
   try {
-    return await reader.preview(query, signal ?? AbortSignal.timeout(30_000));
+    const preview = await reader.preview(query, signal ?? AbortSignal.timeout(30_000));
+    return {
+      ...preview,
+      columns: preview.columns.map(c => ({ ...c, supportsDelete: reader.sql.supportsDeleteType(c.type) })),
+    };
   } catch {
     throw new ApiError(
       "Preview failed or exceeded its limit. Check read permissions and SQL, or select fewer columns.",

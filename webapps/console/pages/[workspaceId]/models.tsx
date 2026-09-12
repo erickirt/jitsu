@@ -127,6 +127,8 @@ function Models() {
     }
   };
   const columns = preview?.columns.map(c => ({ label: `${c.name} (${c.type})`, value: c.name })) ?? [];
+  const deleteColumns =
+    preview?.columns.filter(c => c.supportsDelete).map(c => ({ label: `${c.name} (${c.type})`, value: c.name })) ?? [];
   return (
     <div className="w-full max-w-6xl px-6 py-6 mx-auto">
       <div className="flex items-start justify-between mb-6">
@@ -318,9 +320,9 @@ function Models() {
             <Form.Item
               name="deleteColumn"
               label="Delete column (optional)"
-              extra="A boolean SELECT expression marks rows to remove."
+              extra="Use a boolean SELECT expression, or a column containing only 0/1 values (null means keep). Preview to list compatible types."
             >
-              <Select allowClear options={columns} />
+              <Select allowClear options={deleteColumns} />
             </Form.Item>
             <Form.Item name={["cursor", "column"]} label="Incremental cursor (optional)">
               <Select

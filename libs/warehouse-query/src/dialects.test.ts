@@ -92,6 +92,46 @@ describe("warehouse-owned SQL", () => {
 });
 
 describe("ClickHouse checkpoint compatibility", () => {
+  it.each(["DateTime('Etc/GMT+3')", "DateTime64(6, 'Etc/GMT+3')"])("validates and binds numeric timezone %s", type => {
+    const input = ModelDefinition.parse({
+      warehouseId: "wh",
+      query: "SELECT id, changed FROM t",
+      primaryKey: ["id"],
+      cursor: { column: "changed", type: "timestamp" },
+    });
+    const columns = [
+      { name: "id", type },
+      { name: "changed", type },
+    ];
+    expect(() => clickhouseSql.validateColumns(input, columns)).not.toThrow();
+    const result = clickhouseSql.compileModel(input, columns, {
+      value: "2026-01-01 00:00:00",
+      primaryKeyValues: ["2026-01-01 00:00:00"],
+    });
+    expect(result.query).toContain("{p0: " + type + "}");
+    expect(result.query).toContain("{p1: " + type + "}");
+  });
+  it.each(["DateTime('Etc/GMT+3'); DROP TABLE t", "DateTime64(6, 'Etc/GMT+3'} )", "DateTime64(6, 'Etc/GMT+3\\')"])(
+    "still rejects unsafe timezone metadata %s",
+    type => {
+      const input = ModelDefinition.parse({
+        warehouseId: "wh",
+        query: "SELECT id, changed FROM t",
+        primaryKey: ["id"],
+        cursor: { column: "changed", type: "timestamp" },
+      });
+      expect(() =>
+        clickhouseSql.compileModel(
+          input,
+          [
+            { name: "id", type: "String" },
+            { name: "changed", type },
+          ],
+          { value: "1", primaryKeyValues: ["a"] }
+        )
+      ).toThrow();
+    }
+  );
   const model = ModelDefinition.parse({
     warehouseId: "wh",
     query: "SELECT id, changed FROM t",

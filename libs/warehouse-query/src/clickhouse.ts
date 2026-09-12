@@ -19,7 +19,7 @@ function unwrapLowCardinality(type: string): string {
 }
 
 const checkpointScalarType =
-  /^(?:U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|String|FixedString\([1-9]\d*\)|UUID|Date|Date32|DateTime(?:\('[A-Za-z_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))$/;
+  /^(?:U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|String|FixedString\([1-9]\d*\)|UUID|Date|Date32|DateTime(?:\('[A-Za-z0-9_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z0-9_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))$/;
 
 /** Shared by save-time validation and binding; never interpolate unchecked metadata. */
 function checkpointType(type: string): string {
@@ -57,6 +57,16 @@ export const clickhouseSql = createSqlDialect({
       number: /^(U?Int\d+|Float\d+|Decimal\w*\(.*\))$/,
       string: /^(String|FixedString\([1-9]\d*\)|UUID)$/,
     }[cursorType].test(unwrapped);
+  },
+  supportsDeleteType(type) {
+    const scalar = unwrapLowCardinality(type).replace(/^Nullable\((.*)\)$/, "$1");
+    // Enum labels may be '0'/'1'; wider FixedString pads with NULs and cannot
+    // represent those exact values. Nullable(Nothing) represents only null.
+    return (
+      /^(?:Bool|U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\)|String|FixedString\(1\)|Enum(?:8|16)\(.*\))$/s.test(
+        scalar
+      ) || type === "Nullable(Nothing)"
+    );
   },
   validateCheckpointType: checkpointType,
   createParameters() {

@@ -20,6 +20,8 @@ export interface WarehouseSqlDialect {
   /** Validate one supported read-only SELECT and remove its statement delimiter. */
   validateQuery(query: string): string;
   validateColumns(model: ModelDefinition, columns: WarehouseColumn[]): void;
+  /** Type can represent a tombstone; actual values still need decodeDelete validation. */
+  supportsDeleteType(warehouseType: string): boolean;
   /** Wrap the model with duplicate-key checks, ordering and bound checkpoint values. */
   compileModel(model: ModelDefinition, columns: WarehouseColumn[], after?: CompositeCursor): CompiledModelQuery;
 }

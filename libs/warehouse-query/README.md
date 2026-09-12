@@ -31,6 +31,14 @@ types require an explicit SQL cast to a supported scalar, such as text/String.
 Actual null or duplicate key values still fail the run immediately. Checkpoint
 binding has a separate, stricter type check where keys are used as parameters.
 
+Delete-column metadata is validated separately: boolean and numeric/text 0/1
+representations are supported, while structured, binary, date/time and other
+incompatible types need an explicit boolean SQL expression. Console previews
+annotate compatible columns for the picker using the same warehouse-owned rule.
+Type compatibility is not a value guarantee: runtime decoding still accepts only
+true/false, numeric 0/1, exact strings "0"/"1", or null (keep); other values fail
+immediately, including noncanonical decimal text or padded strings.
+
 PostgreSQL previews use a materialized query (PostgreSQL 12+) to evaluate at most
 101 source rows once. The database measures native text output for the first 100
 rows and withholds their values if the combined size exceeds 2 MB; the 101st row

@@ -55,6 +55,8 @@ async function collect(rows: AsyncIterable<SourceRecord>) {
 }
 
 beforeAll(async () => {
+  await deps().clickhouse.command({ query: "CREATE TABLE retl_delete_flags (id UInt64, flag UInt8) ENGINE = Memory" });
+  await deps().clickhouse.command({ query: "INSERT INTO retl_delete_flags VALUES (1, 0), (2, 1)" });
   for (const [index, type] of structuredKeyTypes.entries()) {
     await deps().clickhouse.command({
       query: `CREATE TABLE retl_structured_keys_${index} (id ${type}, changed DateTime64(6)) ENGINE = Memory`,
@@ -280,6 +282,108 @@ describe("Models service", () => {
     await expect(service.list(b.user, a.workspace.id, "model")).rejects.toMatchObject({ status: 403 });
   });
   it.each([
+    ["Postgres bytea", pgConfig, "SELECT 1 AS pk, NULL::bytea AS removed WHERE false"],
+    ["Postgres jsonb", pgConfig, "SELECT 1 AS pk, NULL::jsonb AS removed WHERE false"],
+    ["Postgres array", pgConfig, "SELECT 1 AS pk, NULL::integer[] AS removed WHERE false"],
+    ["Postgres timestamp", pgConfig, "SELECT 1 AS pk, now() AS removed WHERE false"],
+    ["ClickHouse timestamp", chConfig, "SELECT 1 AS pk, now() AS removed WHERE false"],
+    ...structuredKeyTypes.map(
+      (type, index) =>
+        ["ClickHouse " + type, chConfig, `SELECT 1 AS pk, id AS removed FROM retl_structured_keys_${index}`] as const
+    ),
+  ] as const)("rejects incompatible %s delete columns even without rows", async (_, config, query) => {
+    const { user, workspace, warehouse, model } = await fixture(config);
+    const input = { ...model, query, primaryKey: ["pk"], cursor: undefined };
+    await expect(service.create(user, workspace.id, "model", input, { generateId: true })).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/Delete column 'removed'.*use a boolean expression/),
+    });
+    expect(await service.list(user, workspace.id, "model")).toEqual([]);
+    const preview = await previewModel(deps().prisma, workspace.id, warehouse.id, query);
+    expect(preview.columns.find(c => c.name === "removed")?.supportsDelete).toBe(false);
+    const { id } = await service.create(user, workspace.id, "model", model, { generateId: true });
+    await expect(
+      service.update(user, workspace.id, "model", id, { query, primaryKey: ["pk"], cursor: null })
+    ).rejects.toMatchObject({ status: 400 });
+    expect((await service.get(user, workspace.id, "model", id)).query).toBe(model.query);
+  });
+  it.each([
+    [
+      "Postgres boolean",
+      pgConfig,
+      pgReader,
+      "SELECT id, id = 2 AS removed FROM generate_series(1, 2) AS id",
+      [false, true],
+    ],
+    [
+      "Postgres bigint",
+      pgConfig,
+      pgReader,
+      "SELECT id, (id - 1)::bigint AS removed FROM generate_series(1, 2) AS id",
+      [false, true],
+    ],
+    [
+      "Postgres text",
+      pgConfig,
+      pgReader,
+      "SELECT id, (id - 1)::text AS removed FROM generate_series(1, 2) AS id",
+      [false, true],
+    ],
+    [
+      "Postgres null",
+      pgConfig,
+      pgReader,
+      "SELECT id, NULL::text AS removed FROM generate_series(1, 2) AS id",
+      [false, false],
+    ],
+    ["ClickHouse boolean", chConfig, chReader, "SELECT id, flag = 1 AS removed FROM retl_delete_flags", [false, true]],
+    [
+      "ClickHouse Int64",
+      chConfig,
+      chReader,
+      "SELECT id, toInt64(flag) AS removed FROM retl_delete_flags",
+      [false, true],
+    ],
+    [
+      "ClickHouse String",
+      chConfig,
+      chReader,
+      "SELECT id, toString(flag) AS removed FROM retl_delete_flags",
+      [false, true],
+    ],
+    [
+      "ClickHouse FixedString",
+      chConfig,
+      chReader,
+      "SELECT id, toFixedString(toString(flag), 1) AS removed FROM retl_delete_flags",
+      [false, true],
+    ],
+    ["ClickHouse null", chConfig, chReader, "SELECT id, NULL AS removed FROM retl_delete_flags", [false, false]],
+  ] as const)("preserves supported %s delete values", async (_, config, reader, query, expected) => {
+    const { user, workspace, warehouse, model } = await fixture(config);
+    const input = { ...model, query, cursor: undefined };
+    await expect(service.create(user, workspace.id, "model", input, { generateId: true })).resolves.toHaveProperty(
+      "id"
+    );
+    expect((await collect(reader.stream(input))).map(r => r.deleted)).toEqual(expected);
+    const preview = await previewModel(deps().prisma, workspace.id, warehouse.id, query);
+    expect(preview.columns.find(c => c.name === "removed")?.supportsDelete).toBe(true);
+  });
+  it.each([
+    [pgConfig, pgReader, "SELECT 1 AS id, 2::bigint AS removed"],
+    [pgConfig, pgReader, "SELECT 1 AS id, 'customer' AS removed"],
+    [chConfig, chReader, "SELECT 1 AS id, 2 AS removed"],
+    [chConfig, chReader, "SELECT 1 AS id, 'customer' AS removed"],
+  ] as const)(
+    "still fails immediately for invalid values in a compatible delete type: %j",
+    async (config, reader, query) => {
+      const { user, workspace, model } = await fixture(config);
+      const input = { ...model, query, cursor: undefined };
+      await service.create(user, workspace.id, "model", input, { generateId: true });
+      await expect(collect(reader.stream(input))).rejects.toThrow(/Delete column must contain/);
+    }
+  );
+  it.each([
     ["Postgres bytea", pgConfig, "SELECT NULL::bytea AS id, now() AS changed WHERE false"],
     ["Postgres json", pgConfig, "SELECT NULL::json AS id, now() AS changed WHERE false"],
     ["Postgres jsonb", pgConfig, "SELECT NULL::jsonb AS id, now() AS changed WHERE false"],
@@ -439,6 +543,31 @@ describe("Models service", () => {
       0
     );
   });
+  it.each(["toDateTime(changed, 'Etc/GMT+3')", "toTimeZone(changed, 'Etc/GMT+3')"])(
+    "saves and resumes numeric-timezone cursor %s",
+    async expression => {
+      const { user, workspace, model } = await fixture(chConfig);
+      const { id } = await service.create(
+        user,
+        workspace.id,
+        "model",
+        { ...model, query: `SELECT id, ${expression} AS changed, removed FROM retl_audience` },
+        { generateId: true }
+      );
+      const saved = ModelDefinition.parse(await service.get(user, workspace.id, "model", id));
+      const rows = await collect(chReader.stream(saved));
+      expect(rows).toHaveLength(3);
+      expect(await collect(chReader.stream(saved, rows[0].checkpoint))).toEqual(rows.slice(1));
+      expect(await collect(chReader.stream(saved, rows[2].checkpoint))).toEqual([]);
+      for (const lookbackSeconds of [0, 60]) {
+        expect(
+          await collect(
+            chReader.stream({ ...saved, cursor: { ...saved.cursor!, lookbackSeconds } }, rows[0].checkpoint)
+          )
+        ).toEqual(rows);
+      }
+    }
+  );
   it("saves with audit, checks projections, and protects referenced warehouses", async () => {
     const { user, workspace, warehouse, model } = await fixture();
     const { id } = await service.create(user, workspace.id, "model", model, { generateId: true });
