@@ -2,6 +2,10 @@ import type { ModelDefinition, PreviewResult, WarehouseColumn } from "./schema";
 import type { CompositeCursor, SourceRecord } from "./types";
 import { decodeDelete, keyCountColumn } from "./sql";
 
+export const previewRowLimit = 100;
+export const previewByteLimit = 2_000_000;
+export const previewSizeError = "Preview exceeds 2 MB; select fewer or smaller columns";
+
 export function decodeRecord(model: ModelDefinition, record: Record<string, unknown>): SourceRecord {
   if (String(record[keyCountColumn]) !== "1") throw new Error("Model query contains duplicate primary keys");
   delete record[keyCountColumn];
@@ -24,8 +28,7 @@ export function decodeRecord(model: ModelDefinition, record: Record<string, unkn
 }
 
 export function boundedPreview(columns: WarehouseColumn[], rows: Record<string, unknown>[]): PreviewResult {
-  const shown = rows.slice(0, 100);
-  if (Buffer.byteLength(JSON.stringify(shown)) > 2_000_000)
-    throw new Error("Preview exceeds 2 MB; select fewer or smaller columns");
-  return { columns, rows: shown, truncated: rows.length > 100 };
+  // Include incoming overflow rows too, even though they are not displayed.
+  if (Buffer.byteLength(JSON.stringify(rows)) > previewByteLimit) throw new Error(previewSizeError);
+  return { columns, rows: rows.slice(0, previewRowLimit), truncated: rows.length > previewRowLimit };
 }

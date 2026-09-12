@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Parser } from "node-sql-parser";
 import { ModelDefinition } from "./schema";
 import { createSqlDialect } from "./sql";
-import { boundedPreview, decodeRecord } from "./reader";
+import { boundedPreview, decodeRecord, previewByteLimit, previewRowLimit, previewSizeError } from "./reader";
 import type { WarehouseReader } from "./types";
 const pgCredentials = z.object({
   host: z.string().min(1),
@@ -66,6 +66,29 @@ export const postgresSql = createSqlDialect({
   lookbackPredicate: (column, parameter, seconds) =>
     column + " >= (" + parameter + "::timestamp with time zone - INTERVAL '" + seconds + " seconds')",
 });
+
+/** Internal preview projection; sql must already have passed postgresSql.validateQuery. */
+export function compilePostgresPreview(sql: string, columnCount: number) {
+  const fields = Array.from({ length: columnCount }, (_, i) => `c${i}`);
+  // Materialize once so volatile SELECT expressions cannot differ between sizing
+  // and delivery. record_out uses native text output, not JSON casts that could
+  // hide large wire values. Sizing happens in Postgres; row 101 is only a marker.
+  return {
+    text: `WITH preview_source(n${fields.map(f => `, ${f}`).join("")}) AS MATERIALIZED (
+      SELECT pg_catalog.row_number() OVER (), model.* FROM (${sql}\n) AS model LIMIT ${previewRowLimit + 1}
+    ), preview_sized AS MATERIALIZED (
+      SELECT *, pg_catalog.sum(CASE WHEN n <= ${previewRowLimit}
+        THEN pg_catalog.octet_length(pg_catalog.record_out(ROW(${fields.join(", ")}))::pg_catalog.text)::bigint
+        ELSE 0 END) OVER () > $1 AS oversized
+      FROM preview_source
+    ) SELECT n, oversized${fields
+      .map(f => `, CASE WHEN n <= ${previewRowLimit} AND NOT oversized THEN ${f} END AS ${f}`)
+      .join("")}
+      FROM preview_sized ORDER BY n`,
+    values: [previewByteLimit],
+    rowMode: "array" as const,
+  };
+}
 
 export function createPostgresReader(input: Record<string, any>): WarehouseReader {
   const config = pgCredentials.parse(input);
@@ -139,17 +162,14 @@ export function createPostgresReader(input: Record<string, any>): WarehouseReade
       const { client, release } = await connect(signal);
       try {
         const columns = await probe(client, sql);
-        const cursor = client.query(
-          new Cursor(`SELECT * FROM (${sql}\n) AS model LIMIT 101`, [], { types: losslessTypes })
+        // The server guards the complete result before pg can decode any payload.
+        const result = await client.query(compilePostgresPreview(sql, columns.length));
+        signal?.throwIfAborted();
+        if (result.rows.some(row => row[1])) throw new Error(previewSizeError);
+        const rows = result.rows.map(row =>
+          Number(row[0]) > previewRowLimit ? {} : Object.fromEntries(columns.map((c, i) => [c.name, row[i + 2]]))
         );
-        const rows: Record<string, unknown>[] = [];
-        while (true) {
-          signal?.throwIfAborted();
-          const batch = await cursor.read(10);
-          if (!batch.length) return boundedPreview(columns, rows);
-          rows.push(...batch);
-          boundedPreview(columns, rows);
-        }
+        return boundedPreview(columns, rows);
       } finally {
         await release();
       }

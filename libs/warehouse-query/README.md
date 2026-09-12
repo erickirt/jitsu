@@ -23,6 +23,13 @@ both direct queries and cursors. Exact values matter for stable keys, checkpoint
 resumption, and destination payloads; JavaScript numbers and dates can lose
 precision or change timezone interpretation.
 
+PostgreSQL previews use a materialized query (PostgreSQL 12+) to evaluate at most
+101 source rows once. The database measures native text output for the first 100
+rows and withholds their values if the combined size exceeds 2 MB; the 101st row
+returns only a truncation marker, never its field values. A final JSON-size check
+also bounds the displayed result after decoding. This protects console memory;
+it does not cap memory used by the source query inside PostgreSQL.
+
 ClickHouse currently accepts the portable SELECT subset recognized by the MySQL
 grammar: [node-sql-parser's supported dialects](https://github.com/taozhi8833998/node-sql-parser#supported-database-sql-syntax)
 do not include ClickHouse. This is a compatibility limit, not full ClickHouse SQL

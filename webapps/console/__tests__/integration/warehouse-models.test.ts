@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { createWarehouseReader, SourceRecord } from "@jitsu/warehouse-query";
 import { ModelDefinition } from "@jitsu/warehouse-query/src/schema";
+import { compilePostgresPreview, postgresSql } from "@jitsu/warehouse-query/src/postgres";
 import { ConfigObjectsService } from "../../lib/server/config-objects-service";
 import { previewModel } from "../../lib/server/reverse-etl-models";
 import { getServerEnv } from "../../lib/server/serverEnv";
@@ -176,6 +177,68 @@ it("ClickHouse preserves null, boolean, and decimal values", async () => {
 it("both readers enforce the preview byte limit", async () => {
   await expect(pgReader.preview("SELECT repeat('x', 2000001) AS large")).rejects.toThrow(/2 MB/);
   await expect(chReader.preview("SELECT repeat('x', 2000001) AS large")).rejects.toThrow();
+});
+
+describe("Postgres preview server-side byte guard", () => {
+  it("evaluates volatile source expressions only once for sizing and delivery", async () => {
+    await deps().pgPool.query(`CREATE FUNCTION public.retl_preview_once() RETURNS text LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN
+        IF current_setting('jitsu.preview_evaluated', true) = 'yes' THEN
+          RAISE EXCEPTION 'Source expression was evaluated twice';
+        END IF;
+        PERFORM set_config('jitsu.preview_evaluated', 'yes', true);
+        RETURN 'small';
+      END;
+    $$`);
+    expect((await pgReader.preview("SELECT retl_preview_once() AS value")).rows).toEqual([{ value: "small" }]);
+  });
+  it("never transfers the overflow row's large payload", async () => {
+    const query =
+      "SELECT id, CASE WHEN id = 101 THEN repeat('x', 4000000) ELSE 'small' END AS value FROM generate_series(1, 101) AS id ORDER BY id";
+    const raw = await deps().pgPool.query(compilePostgresPreview(postgresSql.validateQuery(query), 2));
+    expect(raw.rows).toHaveLength(101);
+    expect(raw.rows[100]).toEqual(["101", false, null, null]);
+    expect(Buffer.byteLength(JSON.stringify(raw.rows))).toBeLessThan(10_000);
+    const preview = await pgReader.preview(query);
+    expect(preview.rows).toHaveLength(100);
+    expect(preview.truncated).toBe(true);
+    expect(preview.rows.every(row => row.value === "small")).toBe(true);
+  });
+  it.each([
+    "SELECT repeat('x', 2000001) AS value",
+    "SELECT repeat('x', 30000) AS value FROM generate_series(1, 100)",
+    "SELECT repeat('界', 700000) AS value",
+  ])("withholds oversized displayed values at the SQL boundary: %s", async query => {
+    const raw = await deps().pgPool.query(compilePostgresPreview(postgresSql.validateQuery(query), 1));
+    expect(raw.rows.length).toBeGreaterThan(0);
+    expect(raw.rows.every(row => row[1] === true && row[2] === null)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(raw.rows))).toBeLessThan(10_000);
+    await expect(pgReader.preview(query)).rejects.toThrow(/2 MB/);
+  });
+  it("still rejects values that exceed the final JSON budget after escaping", async () => {
+    await expect(pgReader.preview("SELECT repeat(chr(1), 400000) AS value")).rejects.toThrow(/2 MB/);
+  });
+  it("preserves native decoding, metadata and names that match internal columns", async () => {
+    const result = await pgReader.preview(
+      "SELECT 9007199254740993::bigint AS n, 1.234567890123456789::numeric AS oversized, '2026-01-01 00:00:00.123456+00'::timestamptz AS c0, true AS enabled, NULL::text AS missing, '{\"x\":1}'::jsonb AS obj"
+    );
+    expect(result.rows).toEqual([
+      {
+        n: "9007199254740993",
+        oversized: "1.234567890123456789",
+        c0: "2026-01-01 00:00:00.123456+00",
+        enabled: true,
+        missing: null,
+        obj: { x: 1 },
+      },
+    ]);
+    expect(result.columns.map(c => c.name)).toEqual(["n", "oversized", "c0", "enabled", "missing", "obj"]);
+    expect(result.truncated).toBe(false);
+    const empty = await pgReader.preview("SELECT id FROM retl_audience WHERE false");
+    expect(empty.rows).toEqual([]);
+    expect(empty.columns).toEqual([{ name: "id", type: "20" }]);
+    expect(empty.truncated).toBe(false);
+  });
 });
 
 describe("Models service", () => {
