@@ -31,6 +31,13 @@ const chConfig = {
 };
 const pgReader = createWarehouseReader(pgConfig);
 const chReader = createWarehouseReader(chConfig);
+const keyTypes = [
+  "LowCardinality(String)",
+  "FixedString(16)",
+  "LowCardinality(FixedString(16))",
+  "LowCardinality(Nullable(String))",
+  "Nullable(FixedString(16))",
+];
 const definition = ModelDefinition.parse({
   warehouseId: "test",
   query: "SELECT id, changed, removed FROM retl_audience",
@@ -46,6 +53,15 @@ async function collect(rows: AsyncIterable<SourceRecord>) {
 }
 
 beforeAll(async () => {
+  for (const [index, type] of keyTypes.entries()) {
+    await deps().clickhouse.command({
+      query: `CREATE TABLE retl_keys_${index} (id ${type}, changed UInt64) ENGINE = Memory`,
+    });
+    await deps().clickhouse.command({ query: `INSERT INTO retl_keys_${index} VALUES ('a', 7), ('b', 7), ('c', 8)` });
+  }
+  await deps().clickhouse.command({
+    query: "CREATE TABLE retl_unsupported_keys (id Enum8('a' = 1), changed UInt64) ENGINE = Memory",
+  });
   await deps().pgPool.query("CREATE TABLE public.retl_audience (id bigint, changed timestamptz, removed boolean)");
   await deps().pgPool.query(
     "INSERT INTO public.retl_audience VALUES (9007199254740993, '2026-01-01 00:00:00.123456+00', false), (9007199254740994, '2026-01-01 00:00:00.123456+00', true), (9007199254740995, '2026-01-01 00:00:00.123457+00', false)"
@@ -164,14 +180,14 @@ it("both readers enforce the preview byte limit", async () => {
 
 describe("Models service", () => {
   const service = new ConfigObjectsService({ prisma: deps().prisma });
-  async function fixture() {
+  async function fixture(config: Record<string, unknown> = pgConfig) {
     const { user, workspace } = await seedWorkspace();
     await deps().prisma.workspace.update({ where: { id: workspace.id }, data: { featuresEnabled: ["reverse-etl"] } });
     const warehouse = await deps().prisma.configurationObject.create({
       data: {
         workspaceId: workspace.id,
         type: "destination",
-        config: { ...pgConfig, type: "destination", name: "Warehouse" },
+        config: { ...config, type: "destination", name: "Warehouse" },
       },
     });
     return { user, workspace, warehouse, model: { ...definition, name: "Audience", warehouseId: warehouse.id } };
@@ -185,6 +201,56 @@ describe("Models service", () => {
       service.create(a.user, a.workspace.id, "model", { ...a.model, warehouseId: b.warehouse.id }, { generateId: true })
     ).rejects.toMatchObject({ status: 404 });
     await expect(service.list(b.user, a.workspace.id, "model")).rejects.toMatchObject({ status: 403 });
+  });
+  it.each(keyTypes.map((type, index) => [type, index] as const))(
+    "saves and resumes ClickHouse %s keys and cursors",
+    async (_, index) => {
+      const { user, workspace, model } = await fixture(chConfig);
+      for (const cursor of [
+        { column: "changed", type: "number" },
+        { column: "id", type: "string" },
+      ]) {
+        const { id } = await service.create(
+          user,
+          workspace.id,
+          "model",
+          {
+            ...model,
+            query: `SELECT id, changed FROM retl_keys_${index}`,
+            cursor,
+            deleteColumn: undefined,
+          },
+          { generateId: true }
+        );
+        const saved = ModelDefinition.parse(await service.get(user, workspace.id, "model", id));
+        const rows = await collect(chReader.stream(saved));
+        expect(rows).toHaveLength(3);
+        if (keyTypes[index].includes("FixedString"))
+          expect(rows[0].checkpoint!.primaryKeyValues[0]).toBe("a" + "\0".repeat(15));
+        expect(await collect(chReader.stream(saved, rows[0].checkpoint))).toEqual(rows.slice(1));
+        expect(await collect(chReader.stream(saved, rows[2].checkpoint))).toEqual([]);
+      }
+    }
+  );
+  it("rejects unsupported ClickHouse checkpoint keys before saving", async () => {
+    const { user, workspace, model } = await fixture(chConfig);
+    await expect(
+      service.create(
+        user,
+        workspace.id,
+        "model",
+        {
+          ...model,
+          query: "SELECT id, changed FROM retl_unsupported_keys",
+          cursor: { column: "changed", type: "number" },
+          deleteColumn: undefined,
+        },
+        { generateId: true }
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("Unsupported checkpoint type") });
+    expect(await deps().prisma.configurationObject.count({ where: { workspaceId: workspace.id, type: "model" } })).toBe(
+      0
+    );
   });
   it("saves with audit, checks projections, and protects referenced warehouses", async () => {
     const { user, workspace, warehouse, model } = await fixture();

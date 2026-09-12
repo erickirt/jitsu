@@ -14,6 +14,7 @@ interface SqlDialectRules {
   dollarQuote?(query: string, index: number): string | undefined;
   quoteColumn(name: string): string;
   supportsCursorType(cursorType: NonNullable<ModelDefinition["cursor"]>["type"], warehouseType: string): boolean;
+  validateCheckpointType?(warehouseType: string): void;
   createParameters(): SqlParameters;
   lookbackPredicate(column: string, parameter: string, seconds: number): string;
 }
@@ -110,6 +111,13 @@ export function createSqlDialect(rules: SqlDialectRules): WarehouseSqlDialect {
         const type = columns.find(c => c.name === model.cursor!.column)!.type;
         if (!rules.supportsCursorType(model.cursor.type, type))
           throw new Error(`Cursor type '${model.cursor.type}' does not match warehouse type '${type}'`);
+        // Validate before saving/reading, not only when a checkpoint is resumed.
+        // Lookback binds only the cursor; other incremental queries also bind keys.
+        for (const name of model.cursor.lookbackSeconds
+          ? [model.cursor.column]
+          : [model.cursor.column, ...model.primaryKey]) {
+          rules.validateCheckpointType?.(columns.find(c => c.name === name)!.type);
+        }
       }
     },
     compileModel(model, columns, after) {

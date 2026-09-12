@@ -13,6 +13,25 @@ const chCredentials = z.object({
   password: z.string(),
 });
 
+// LowCardinality is a storage encoding, not part of the bound scalar value.
+function unwrapLowCardinality(type: string): string {
+  return type.replace(/^LowCardinality\((.*)\)$/, "$1");
+}
+
+/** Shared by save-time validation and binding; never interpolate unchecked metadata. */
+function checkpointType(type: string): string {
+  const parameterType = unwrapLowCardinality(type);
+  const scalar = parameterType.replace(/^Nullable\((.*)\)$/, "$1");
+  if (
+    !/^(?:U?Int(?:8|16|32|64|128|256)|Float(?:32|64)|String|FixedString\([1-9]\d*\)|UUID|Date|Date32|DateTime(?:\('[A-Za-z_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))$/.test(
+      scalar
+    )
+  ) {
+    throw new Error("Unsupported checkpoint type: " + type);
+  }
+  return parameterType;
+}
+
 const parser = new Parser();
 export const clickhouseSql = createSqlDialect({
   // node-sql-parser 5.4.0 has no ClickHouse dialect. Accept its portable MySQL
@@ -23,29 +42,23 @@ export const clickhouseSql = createSqlDialect({
   quoteColumn: name => "`" + name.replaceAll("\\", "\\\\").replaceAll("`", "``") + "`",
 
   supportsCursorType(cursorType, warehouseType) {
-    const unwrapped = warehouseType.replace(/^Nullable\((.*)\)$/, "$1");
+    const unwrapped = unwrapLowCardinality(warehouseType).replace(/^Nullable\((.*)\)$/, "$1");
     return {
       timestamp: /^(Date|Date32|DateTime(?:\(.*\))?|DateTime64\(.*\))$/,
       number: /^(U?Int\d+|Float\d+|Decimal\w*\(.*\))$/,
-      string: /^(String|UUID)$/,
+      string: /^(String|FixedString\([1-9]\d*\)|UUID)$/,
     }[cursorType].test(unwrapped);
   },
+  validateCheckpointType: checkpointType,
   createParameters() {
     const queryParams: Record<string, string> = {};
     return {
       values: [],
       queryParams,
       bind(value, type, index) {
-        // Server-provided metadata must still be restricted before inclusion in SQL.
-        if (
-          !/^(?:Nullable\()?((?:U?Int(?:8|16|32|64|128|256))|Float(?:32|64)|String|UUID|Date|Date32|DateTime(?:\('[A-Za-z_/+-]+'\))?|DateTime64\(\d+(?:,\s*'[A-Za-z_/+-]+')?\)|Decimal(?:32|64|128|256)?\(\d+(?:,\s*\d+)?\))(?:\))?$/.test(
-            type
-          )
-        ) {
-          throw new Error("Unsupported checkpoint type: " + type);
-        }
+        const parameterType = checkpointType(type);
         queryParams["p" + index] = value;
-        return "{p" + index + ": " + type + "}";
+        return "{p" + index + ": " + parameterType + "}";
       },
     };
   },
